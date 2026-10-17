@@ -7,7 +7,11 @@ export default defineProject({
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
-        bindings: { LINEAR_API_KEY: "test-linear-api-key", LINEAR_WEBHOOK_SECRET: "test-secret" },
+        bindings: {
+          LINEAR_CLIENT_ID: "test-client-id",
+          LINEAR_CLIENT_SECRET: "test-client-secret",
+          LINEAR_WEBHOOK_SECRET: "test-secret",
+        },
       },
     }),
   ],

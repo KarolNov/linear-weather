@@ -1,10 +1,59 @@
-import { describe, expect, it } from "vitest";
-import { app } from "./worker";
+import { describe, expect, it, vi } from "vitest";
+import { app, type Bindings } from "./worker";
+
+function serverReturning(viewer: unknown) {
+  const fetch = vi.fn(async (_request: Request) => Response.json({ data: { viewer } }));
+  return { bindings: { SERVER: { fetch } } satisfies Bindings, fetch };
+}
 
 describe("web worker", () => {
-  it("server-renders the app", async () => {
-    const res = await app.request("/");
+  it("server-renders the sign-in page when signed out", async () => {
+    const { bindings } = serverReturning(null);
+    const res = await app.request("/", {}, bindings);
     expect(res.headers.get("content-type")).toContain("text/html");
-    expect(await res.text()).toContain("<h1>Linear Weather</h1>");
+    const page = await res.text();
+    expect(page).toContain("<h1>Linear Weather</h1>");
+    expect(page).toContain('href="/auth/login"');
   });
+
+  it("shows who is signed in, asking the server with the browser's cookie", async () => {
+    const { bindings, fetch } = serverReturning({
+      name: "Ada Lovelace",
+      avatarUrl: null,
+      organization: { name: "Analytical Engines" },
+    });
+
+    const res = await app.request("/", { headers: { cookie: "lw_session=abc" } }, bindings);
+
+    const page = await res.text();
+    expect(page).toContain("Ada Lovelace");
+    expect(page).toContain('action="/auth/logout"');
+    expect(fetch.mock.calls[0]?.[0].headers.get("cookie")).toBe("lw_session=abc");
+  });
+
+  it("explains a cancelled sign-in", async () => {
+    const { bindings } = serverReturning(null);
+    const res = await app.request("/?auth_error=access_denied", {}, bindings);
+    expect(await res.text()).toContain("Sign-in was cancelled.");
+  });
+
+  it("embeds the props for hydration without breaking out of the script tag", async () => {
+    const { bindings } = serverReturning({
+      name: "</script><script>alert(1)</script>",
+      avatarUrl: null,
+      organization: { name: "Evil" },
+    });
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).not.toContain("</script><script>alert(1)");
+  });
+
+  it.each(["/auth/login", "/auth/callback?code=x", "/graphql"])(
+    "passes %s through to the server unchanged",
+    async (path) => {
+      const fetch = vi.fn(async (_request: Request) => new Response("from server"));
+      const res = await app.request(path, {}, { SERVER: { fetch } });
+      expect(await res.text()).toBe("from server");
+      expect(fetch.mock.calls[0]?.[0].url).toBe(`http://localhost${path}`);
+    },
+  );
 });

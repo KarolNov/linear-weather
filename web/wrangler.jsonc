@@ -3,5 +3,8 @@
   "name": "linear-weather-web",
   "main": "src/worker.tsx",
   "compatibility_date": "2026-10-01",
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  // The browser only talks to this Worker. /auth/* and /graphql are passed through to the
+  // server Worker, so the session cookie stays first-party.
+  "services": [{ "binding": "SERVER", "service": "linear-weather-server" }]
 }

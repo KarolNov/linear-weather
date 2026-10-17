@@ -1,10 +1,64 @@
 import SchemaBuilder from "@pothos/core";
+import { LinearAuthError, type LinearClient } from "./linear";
 
-const builder = new SchemaBuilder({});
+export interface GraphQLContext {
+  /** Null when nobody is signed in. */
+  linear: LinearClient | null;
+}
+
+const builder = new SchemaBuilder<{ Context: GraphQLContext }>({});
+
+interface Organization {
+  name: string;
+  urlKey: string;
+}
+
+interface User {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  organization: Organization;
+}
+
+const OrganizationRef = builder.objectRef<Organization>("Organization").implement({
+  description: "A Linear workspace.",
+  fields: (t) => ({
+    name: t.exposeString("name"),
+    urlKey: t.exposeString("urlKey"),
+  }),
+});
+
+const UserRef = builder.objectRef<User>("User").implement({
+  description: "A Linear user.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    name: t.exposeString("name"),
+    avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
+    organization: t.field({ type: OrganizationRef, resolve: (user) => user.organization }),
+  }),
+});
 
 builder.queryType({
   fields: (t) => ({
     hello: t.string({ resolve: () => "☀️" }),
+    viewer: t.field({
+      type: UserRef,
+      nullable: true,
+      description: "The signed-in Linear user, or null when signed out.",
+      resolve: async (_root, _args, { linear }) => {
+        if (!linear) return null;
+        try {
+          const { viewer } = await linear.request<{ viewer: User }>(
+            "{ viewer { id name avatarUrl organization { name urlKey } } }",
+          );
+          return viewer;
+        } catch (error) {
+          // A revoked token means signed out, not a server error.
+          if (error instanceof LinearAuthError) return null;
+          throw error;
+        }
+      },
+    }),
   }),
 });
 

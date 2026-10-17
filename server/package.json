@@ -1,0 +1,22 @@
+{
+  "name": "server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@pothos/core": "^4.15.1",
+    "graphql": "^17.0.2",
+    "graphql-yoga": "^5.24.6",
+    "hono": "^4.13.13"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.4",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.151.1"
+  }
+}

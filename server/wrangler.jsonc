@@ -1,0 +1,8 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "linear-weather-server",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "secrets": { "required": ["LINEAR_API_KEY", "LINEAR_WEBHOOK_SECRET"] }
+}

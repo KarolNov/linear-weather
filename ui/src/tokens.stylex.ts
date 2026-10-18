@@ -69,3 +69,10 @@ export const motion = stylex.defineVars({
   // Strong ease-out: moves at once, so a response feels immediate. The built-in curves are weak.
   easeOut: "cubic-bezier(0.23, 1, 0.32, 1)",
 });
+
+export const media = stylex.defineConsts({
+  /** Touch screens fire :hover on tap and leave it stuck, so hover styles apply only with a mouse. */
+  hover: "@media (hover: hover) and (pointer: fine)",
+  /** A finger, which needs bigger targets. */
+  touch: "@media (pointer: coarse)",
+});

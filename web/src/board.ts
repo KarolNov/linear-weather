@@ -1,3 +1,5 @@
+import type { Viewer } from "./App";
+
 // The board as the server's `GET /board` sends it (server/src/board.ts). Temporary, like that
 // route: the web app will query our GraphQL schema instead once it has the board (#8).
 
@@ -51,6 +53,9 @@ export interface Board {
 
 /** Why the board couldn't load: Linear's rate limit (with when it resets), or anything else. */
 export type BoardError = { kind: "rate_limited"; resetAt: number | null } | { kind: "unavailable" };
+
+/** `GET /board` when signed in: who it is, and their board or why it couldn't load. */
+export type BoardResponse = { viewer: Viewer } & ({ board: Board } | { boardError: BoardError });
 
 const MS_PER_DAY = 86_400_000;
 

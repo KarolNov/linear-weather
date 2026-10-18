@@ -26,6 +26,11 @@ function workspace(...answers: [TypedDocumentString<unknown, never>, unknown][])
   };
 }
 
+/** The `Teams` answer: every team the viewer can see, and the ones they're on. */
+function teams(all: { id: string; name: string; key: string }[], theirs: string[] = []) {
+  return { teams: { nodes: all }, viewer: { teams: { nodes: theirs.map((id) => ({ id })) } } };
+}
+
 const ada = { id: "u-ada", name: "Ada", avatarUrl: null };
 const grace = { id: "u-grace", name: "Grace", avatarUrl: null };
 const linus = { id: "u-linus", name: "Linus", avatarUrl: null };
@@ -59,6 +64,63 @@ describe("loadBoard", () => {
       DEMO_OPS_TEAM.id,
     );
     expect((await loadBoard(demo, { ...options, teamId: "nope" })).team?.id).toBe(DEMO_TEAM.id);
+  });
+
+  it("defaults to a team the viewer is on rather than the first by name", async () => {
+    const eng = { id: "t-eng", name: "Engineering", key: "ENG" };
+    const accounts = { id: "t-acc", name: "Accounts", key: "ACC" };
+    const asked: string[] = [];
+    const linear: LinearSource = {
+      request: async (document: { toString(): string }, ...variables: unknown[]) => {
+        const query = document.toString();
+        if (query === TeamsDocument.toString()) return teams([eng, accounts], [eng.id]) as never;
+        asked.push((variables[0] as { teamId: string }).teamId);
+        if (query === TeamMembersDocument.toString()) {
+          return { team: { members: { nodes: [] } } } as never;
+        }
+        return {
+          issues: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        } as never;
+      },
+    };
+    const board = await loadBoard(linear, options);
+    expect(board.team).toEqual(eng);
+    expect(asked).toEqual([eng.id, eng.id]);
+  });
+
+  it("asks for the requested team alongside the team list, and drops it if unknown", async () => {
+    const order: string[] = [];
+    let releaseTeams = () => {};
+    const teamsAnswered = new Promise<void>((resolve) => {
+      releaseTeams = resolve;
+    });
+    const linear: LinearSource = {
+      request: async (document: { toString(): string }, ...variables: unknown[]) => {
+        const query = document.toString();
+        if (query === TeamsDocument.toString()) {
+          order.push("teams");
+          await teamsAnswered;
+          return teams([{ id: "t", name: "Eng", key: "ENG" }]) as never;
+        }
+        const { teamId } = variables[0] as { teamId: string };
+        order.push(teamId);
+        if (teamId === "gone") throw new Error("Entity not found: Team gone");
+        if (query === TeamMembersDocument.toString()) {
+          return { team: { members: { nodes: [ada] } } } as never;
+        }
+        return {
+          issues: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        } as never;
+      },
+    };
+    const loading = loadBoard(linear, { ...options, teamId: "gone" });
+    await Promise.resolve();
+    // The asked-for team's queries went out before the team list answered.
+    expect(order).toEqual(["gone", "gone", "teams"]);
+    releaseTeams();
+    const board = await loading;
+    expect(board.team?.id).toBe("t");
+    expect(board.people.map((p) => p.assignee?.name)).toEqual(["Ada"]);
   });
 
   it("gives every member a matrix, even with nothing assigned, and unassigned work last", async () => {
@@ -105,7 +167,7 @@ describe("loadBoard", () => {
     ];
     const board = await loadBoard(
       workspace(
-        [TeamsDocument, { teams: { nodes: [{ id: "t", name: "Eng", key: "ENG" }] } }],
+        [TeamsDocument, teams([{ id: "t", name: "Eng", key: "ENG" }])],
         [TeamMembersDocument, { team: { members: { nodes: [ada] } } }],
         [
           TeamOpenIssuesDocument,
@@ -125,7 +187,7 @@ describe("loadBoard", () => {
   it("adds people who hold the team's issues without being on it, after the members", async () => {
     const board = await loadBoard(
       workspace(
-        [TeamsDocument, { teams: { nodes: [{ id: "t", name: "Eng", key: "ENG" }] } }],
+        [TeamsDocument, teams([{ id: "t", name: "Eng", key: "ENG" }])],
         [TeamMembersDocument, { team: { members: { nodes: [linus, grace] } } }],
         [
           TeamOpenIssuesDocument,
@@ -143,7 +205,7 @@ describe("loadBoard", () => {
   });
 
   it("is empty when the workspace has no teams", async () => {
-    const board = await loadBoard(workspace([TeamsDocument, { teams: { nodes: [] } }]), options);
+    const board = await loadBoard(workspace([TeamsDocument, teams([])]), options);
     expect(board).toEqual({ today, teams: [], team: null, people: [] });
   });
 });

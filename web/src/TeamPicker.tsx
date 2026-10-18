@@ -1,7 +1,8 @@
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { colors, fonts, motion, radii, shadows, space } from "ui/tokens.stylex";
+import { colors, fonts, media, motion, radii, shadows, space } from "ui/tokens.stylex";
 import type { Team } from "./board";
+import { entrance } from "./motion";
 
 export interface TeamPickerProps {
   teams: Team[];
@@ -18,6 +19,11 @@ export interface TeamPickerProps {
 export function TeamPicker({ teams, selected, demo }: TeamPickerProps) {
   const ref = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);
+
+  // Hydration leaves `open` as the DOM has it, so catch up with a menu opened before then.
+  useEffect(() => {
+    if (ref.current?.open) setOpen(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -66,7 +72,7 @@ export function TeamPicker({ teams, selected, demo }: TeamPickerProps) {
           />
         </svg>
       </summary>
-      <nav aria-label="Teams" {...stylex.props(styles.menu)}>
+      <nav aria-label="Teams" {...stylex.props(styles.menu, entrance.menu)}>
         <p {...stylex.props(styles.menuHeading)}>Switch team</p>
         <ul {...stylex.props(styles.list)}>
           {teams.map((team) => {
@@ -116,15 +122,6 @@ function teamHref(team: Team, demo?: boolean): string {
   return `/?${params}`;
 }
 
-const HOVER = "@media (hover: hover) and (pointer: fine)";
-
-const menuIn = stylex.keyframes({
-  from: { opacity: 0, transform: "translateY(-4px) scale(0.98)" },
-  to: { opacity: 1, transform: "none" },
-});
-
-const fadeIn = stylex.keyframes({ from: { opacity: 0 } });
-
 const styles = stylex.create({
   picker: { position: "relative" },
   trigger: {
@@ -140,7 +137,7 @@ const styles = stylex.create({
     borderColor: colors.border,
     backgroundColor: {
       default: "rgba(255, 255, 255, 0.55)",
-      [HOVER]: { default: "rgba(255, 255, 255, 0.55)", ":hover": colors.surfaceStrong },
+      [media.hover]: { default: "rgba(255, 255, 255, 0.55)", ":hover": colors.surfaceStrong },
     },
     backdropFilter: "blur(12px)",
     color: colors.ink,
@@ -195,9 +192,6 @@ const styles = stylex.create({
     backdropFilter: "blur(16px)",
     boxShadow: shadows.card,
     transformOrigin: "top right",
-    animationName: { default: menuIn, "@media (prefers-reduced-motion: reduce)": fadeIn },
-    animationDuration: "160ms",
-    animationTimingFunction: motion.easeOut,
   },
   menuHeading: {
     paddingBlock: "6px",
@@ -212,7 +206,7 @@ const styles = stylex.create({
   option: {
     display: "flex",
     alignItems: "center",
-    minHeight: { default: null, "@media (pointer: coarse)": "44px" },
+    minHeight: { default: null, [media.touch]: "44px" },
     gap: space.xs,
     paddingBlock: space.xs,
     paddingInline: space.xs,
@@ -224,7 +218,7 @@ const styles = stylex.create({
     backgroundColor: {
       default: "transparent",
       ":focus-visible": "rgba(29, 26, 51, 0.06)",
-      [HOVER]: { default: "transparent", ":hover": "rgba(29, 26, 51, 0.06)" },
+      [media.hover]: { default: "transparent", ":hover": "rgba(29, 26, 51, 0.06)" },
     },
     outline: "none",
   },

@@ -118,7 +118,7 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
         <WeatherIcon weather="fog" size={56} label="" />
         <h1 {...stylex.props(styles.title)}>No teams to show</h1>
         <p {...stylex.props(styles.lead)}>
-          Your Linear account isn't on any team yet. Join one in Linear, then come back.
+          Your Linear account can't see any teams yet. Join or create one in Linear, then come back.
         </p>
       </Card>
     );
@@ -131,7 +131,7 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
             {team.name}
           </h1>
           <p {...stylex.props(styles.muted)}>
-            {people.length === 0
+            {withIssues.length === 0
               ? "Nobody on this team has open issues."
               : "Open issues by person, soonest due first."}
           </p>
@@ -140,7 +140,6 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
           {withIssues.length > 0 && (
             <Button
               variant="quiet"
-              aria-pressed={allExpanded}
               onClick={() => setExpanded(new Set(allExpanded ? [] : withIssues))}
               xstyle={styles.expandAll}
             >

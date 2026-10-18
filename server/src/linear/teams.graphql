@@ -1,8 +1,16 @@
-# The teams a PM can pick on the board. Workspaces have a handful of teams, so one page is plenty.
+# The teams a PM can pick on the board, and which of them they're on (the default). Workspaces
+# have a handful of teams, so one page is plenty.
 query Teams {
   teams(first: 250) {
     nodes {
       ...TeamSummary
+    }
+  }
+  viewer {
+    teams(first: 250) {
+      nodes {
+        id
+      }
     }
   }
 }

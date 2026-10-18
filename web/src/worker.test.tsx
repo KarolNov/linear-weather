@@ -47,13 +47,15 @@ const board: Board = {
   ],
 };
 
-/** The server Worker: `viewer` for GraphQL, `boardResponse` for `/board`. */
-function serverReturning(viewer: unknown, boardResponse = () => Response.json(board)) {
-  const fetch = vi.fn(async (request: Request) =>
-    new URL(request.url).pathname === "/board"
-      ? boardResponse()
-      : Response.json({ data: { viewer } }),
-  );
+/** The server Worker's `/board`: signed out (401) without a viewer, else the viewer's board. */
+function serverReturning(
+  viewer: unknown,
+  boardResponse = () =>
+    viewer
+      ? Response.json({ viewer, board })
+      : Response.json({ error: "signed_out" }, { status: 401 }),
+) {
+  const fetch = vi.fn(async (_request: Request) => boardResponse());
   return { bindings: { SERVER: { fetch } } satisfies Bindings, fetch };
 }
 
@@ -118,7 +120,7 @@ describe("web worker", () => {
   it("asks for the picked team and keeps the demo in the picker", async () => {
     const { bindings, fetch } = serverReturning(fury);
     const page = await (await app.request("/?demo=true&team=t-ops", {}, bindings)).text();
-    const boardUrl = new URL(fetch.mock.calls[1]?.[0].url ?? "");
+    const boardUrl = new URL(fetch.mock.calls[0]?.[0].url ?? "");
     expect(boardUrl.pathname).toBe("/board");
     expect(boardUrl.searchParams.get("team")).toBe("t-ops");
     expect(boardUrl.searchParams.get("demo")).toBe("true");
@@ -126,12 +128,21 @@ describe("web worker", () => {
     expect(page).toContain('aria-current="page"');
   });
 
+  it("says nobody has open issues when every member's matrix is empty", async () => {
+    const empty = { do: 0, schedule: 0, delegate: 0, drop: 0 };
+    const quiet: Board = { ...board, people: [{ assignee: tony, counts: empty, issues: [] }] };
+    const { bindings } = serverReturning(fury, () => Response.json({ viewer: fury, board: quiet }));
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain("Nobody on this team has open issues.");
+    expect(page).not.toContain("Expand all");
+  });
+
   it("explains a spent rate limit instead of showing an empty board", async () => {
     const { bindings } = serverReturning(fury, () =>
-      Response.json(
-        { error: "rate_limited", resetAt: Date.UTC(2026, 9, 18, 16, 30) },
-        { status: 503 },
-      ),
+      Response.json({
+        viewer: fury,
+        boardError: { kind: "rate_limited", resetAt: Date.UTC(2026, 9, 18, 16, 30) },
+      }),
     );
     const page = await (await app.request("/", {}, bindings)).text();
     expect(page).toContain("Couldn't load your team");
@@ -139,15 +150,28 @@ describe("web worker", () => {
   });
 
   it("says Linear didn't answer when the board fails to load", async () => {
-    const { bindings } = serverReturning(fury, () => new Response("boom", { status: 500 }));
+    const { bindings } = serverReturning(fury, () =>
+      Response.json({ viewer: fury, boardError: { kind: "unavailable" } }),
+    );
     const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain("Fury");
     expect(page).toContain("Linear didn't answer just now");
   });
 
-  it("doesn't ask for the board when signed out", async () => {
-    const { bindings, fetch } = serverReturning(null);
+  it("asks the server once per page, for the viewer and the board together", async () => {
+    const { bindings, fetch } = serverReturning(fury);
     await app.request("/", {}, bindings);
     expect(fetch).toHaveBeenCalledTimes(1);
+    expect(new URL(fetch.mock.calls[0]?.[0].url ?? "").pathname).toBe("/board");
+  });
+
+  it("shows the sign-in page when the server has just ended a rejected session", async () => {
+    const { bindings } = serverReturning(fury, () =>
+      Response.json({ error: "signed_out" }, { status: 401 }),
+    );
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain('href="/auth/login"');
+    expect(page).not.toContain("Linear didn't answer");
   });
 
   it("doesn't ask for the demo without ?demo=true", async () => {
@@ -158,7 +182,7 @@ describe("web worker", () => {
 
   it("says Linear is unreachable instead of showing signed out when the server fails", async () => {
     const errored = vi.fn(async (_request: Request) =>
-      Response.json({ data: { viewer: null }, errors: [{ message: "Unexpected error." }] }),
+      Response.json({ error: "unavailable" }, { status: 503 }),
     );
     const crashed = vi.fn(
       async (_request: Request) => new Response("Internal Server Error", { status: 500 }),

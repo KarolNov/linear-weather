@@ -35,7 +35,10 @@ export interface Board {
   today: CalendarDate;
   /** Every team to pick from, by name. */
   teams: Team[];
-  /** The team shown: the one asked for, else the first. Null when there are no teams. */
+  /**
+   * The team shown: the one asked for, else the first the viewer is on, else the first.
+   * Null when there are no teams.
+   */
   team: Team | null;
   /** Team members by name, then anyone else holding the team's issues, then unassigned. */
   people: PersonMatrix[];
@@ -51,26 +54,32 @@ export async function loadBoard(
   linear: LinearSource,
   { teamId, today, rules }: BoardOptions,
 ): Promise<Board> {
-  const { teams } = await linear.request(TeamsDocument);
+  // Most loads ask for a team they picked before, so fetch it alongside the team list rather
+  // than after it. If it turns out not to be one of theirs, it's dropped.
+  const asked = teamId ? loadTeam(linear, teamId) : null;
+  asked?.catch(() => {});
+  const { teams, viewer } = await linear.request(TeamsDocument);
   const sorted = teams.nodes.toSorted((a, b) => a.name.localeCompare(b.name));
-  const team = sorted.find((t) => t.id === teamId) ?? sorted[0] ?? null;
+  // Teams lists every team the viewer can see, so default to one they're on.
+  const theirs = new Set(viewer.teams.nodes.map((t) => t.id));
+  const team =
+    sorted.find((t) => t.id === teamId) ?? sorted.find((t) => theirs.has(t.id)) ?? sorted[0];
   if (!team) return { today, teams: [], team: null, people: [] };
 
-  const [{ team: members }, issues] = await Promise.all([
-    linear.request(TeamMembersDocument, { teamId: team.id }),
-    fetchTeamOpenIssues(linear, team.id),
-  ]);
+  const { members, issues } = await (asked && team.id === teamId
+    ? asked
+    : loadTeam(linear, team.id));
 
   const groups = new Map(
     groupByAssignee(issues).map((group) => [group.assignee?.id ?? null, group]),
   );
   const byName = (a: Assignee, b: Assignee) => a.name.localeCompare(b.name);
-  const memberIds = new Set(members.members.nodes.map((m) => m.id));
+  const memberIds = new Set(members.map((m) => m.id));
   // People can hold a team's issues without being on it, e.g. after moving teams.
   const outsiders = [...groups.values()]
     .flatMap((g) => (g.assignee && !memberIds.has(g.assignee.id) ? [g.assignee] : []))
     .toSorted(byName);
-  const assignees = [...members.members.nodes.toSorted(byName), ...outsiders];
+  const assignees = [...members.toSorted(byName), ...outsiders];
 
   const people = assignees.map((assignee) =>
     personMatrix(assignee, groups.get(assignee.id)?.issues ?? [], rules, today),
@@ -79,6 +88,14 @@ export async function loadBoard(
   if (unassigned) people.push(personMatrix(null, unassigned.issues, rules, today));
 
   return { today, teams: sorted, team, people };
+}
+
+async function loadTeam(linear: LinearSource, teamId: string) {
+  const [{ team }, issues] = await Promise.all([
+    linear.request(TeamMembersDocument, { teamId }),
+    fetchTeamOpenIssues(linear, teamId),
+  ]);
+  return { members: team.members.nodes, issues };
 }
 
 function personMatrix(

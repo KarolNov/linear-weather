@@ -17,7 +17,7 @@ export type TeamOpenIssuesQuery = { issues: { nodes: Array<{ id: string, identif
 export type TeamsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type TeamsQuery = { teams: { nodes: Array<{ id: string, name: string, key: string }> } };
+export type TeamsQuery = { teams: { nodes: Array<{ id: string, name: string, key: string }> }, viewer: { teams: { nodes: Array<{ id: string }> } } };
 
 export type TeamSummaryFragment = { id: string, name: string, key: string };
 
@@ -120,6 +120,13 @@ export const TeamsDocument = /*#__PURE__*/ new TypedDocumentString(`
   teams(first: 250) {
     nodes {
       ...TeamSummary
+    }
+  }
+  viewer {
+    teams(first: 250) {
+      nodes {
+        id
+      }
     }
   }
 }

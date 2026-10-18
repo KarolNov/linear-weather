@@ -206,7 +206,9 @@ export class DemoLinear implements LinearSource {
     }
     if (query === TeamsDocument.toString()) {
       const nodes = TEAMS.map(({ team: { id, name, key } }) => ({ id, name, key }));
-      return { teams: { nodes } } satisfies TeamsQuery as TResult;
+      // Fury oversees every team without being on one, so the board opens on the first.
+      const viewer = { teams: { nodes: [] } };
+      return { teams: { nodes }, viewer } satisfies TeamsQuery as TResult;
     }
     if (query === TeamMembersDocument.toString()) {
       return this.teamMembers(variables as TeamMembersQueryVariables) as TResult;

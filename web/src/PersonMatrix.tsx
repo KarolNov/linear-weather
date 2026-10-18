@@ -1,7 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Avatar, Card } from "ui";
-import { colors, fonts, motion, radii, space } from "ui/tokens.stylex";
+import { colors, fonts, media, motion, radii, space } from "ui/tokens.stylex";
 import { type CalendarDate, type PersonMatrix as Matrix, QUADRANTS, type Quadrant } from "./board";
 import { IssueCard } from "./IssueCard";
 import { entrance } from "./motion";
@@ -28,6 +28,11 @@ export function PersonMatrix({
   xstyle,
 }: PersonMatrixProps) {
   const [only, setOnly] = useState<Quadrant | null>(null);
+  const details = useRef<HTMLDetailsElement>(null);
+  // Hydration leaves `open` as the DOM has it, so catch up with a list opened before then.
+  useEffect(() => {
+    if (details.current?.open && !expanded) onExpandedChange(true);
+  }, []);
   const pick = (q: Quadrant) => {
     if (!expanded) {
       setOnly(q);
@@ -93,6 +98,7 @@ export function PersonMatrix({
       {total > 0 && (
         // <details> so the toggle works before the page hydrates; afterwards the board owns it.
         <details
+          ref={details}
           open={expanded}
           onToggle={(event) => {
             const open = event.currentTarget.open;
@@ -152,9 +158,6 @@ export function PersonMatrix({
   );
 }
 
-const HOVER = "@media (hover: hover) and (pointer: fine)";
-const TOUCH = "@media (pointer: coarse)";
-
 // Opening a list is frequent, so the stagger is tight and stops after a few cards: a long list
 // shouldn't keep the PM waiting for its tail.
 const CARD_STEP_MS = 20;
@@ -209,7 +212,7 @@ const styles = stylex.create({
     transitionDuration: "160ms",
     transitionTimingFunction: motion.easeOut,
     transform: { default: null, ":active": "scale(0.97)" },
-    opacity: { default: 1, [HOVER]: { default: 1, ":hover": 0.92 } },
+    opacity: { default: 1, [media.hover]: { default: 1, ":hover": 0.92 } },
   },
   // Kept in place but faded, so every person's grid reads the same at a glance.
   empty: { opacity: 0.45 },
@@ -229,7 +232,7 @@ const styles = stylex.create({
     gap: "6px",
     width: "fit-content",
     // A comfortable thumb target on touch screens, compact with a mouse.
-    minHeight: { default: null, [TOUCH]: "44px" },
+    minHeight: { default: null, [media.touch]: "44px" },
     paddingBlock: "4px",
     paddingInline: "8px",
     marginInlineStart: "-8px",
@@ -243,7 +246,7 @@ const styles = stylex.create({
     "::-webkit-details-marker": { display: "none" },
     backgroundColor: {
       default: "transparent",
-      [HOVER]: { default: "transparent", ":hover": "rgba(29, 26, 51, 0.06)" },
+      [media.hover]: { default: "transparent", ":hover": "rgba(29, 26, 51, 0.06)" },
     },
     outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
     transitionProperty: "transform, background-color",

@@ -12,6 +12,11 @@ export const rise = stylex.keyframes({
 
 export const fadeIn = stylex.keyframes({ from: { opacity: 0 } });
 
+const drop = stylex.keyframes({
+  from: { opacity: 0, transform: "translateY(-4px) scale(0.98)" },
+  to: { opacity: 1, transform: "none" },
+});
+
 export const entrance = stylex.create({
   /** The sign-in page: seen rarely, so slow and showy. */
   page: {
@@ -35,6 +40,12 @@ export const entrance = stylex.create({
     animationDuration: "220ms",
     animationTimingFunction: motion.easeOut,
     animationFillMode: "backwards",
+  },
+  /** A menu dropping open from its trigger. */
+  menu: {
+    animationName: { default: drop, "@media (prefers-reduced-motion: reduce)": fadeIn },
+    animationDuration: "160ms",
+    animationTimingFunction: motion.easeOut,
   },
   delay: (ms: number) => ({ animationDelay: `${ms}ms` }),
 });

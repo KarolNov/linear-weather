@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
-import { Badge } from "ui";
-import { colors, fonts, motion, radii, space } from "ui/tokens.stylex";
+import { Badge, VisuallyHidden } from "ui";
+import { colors, fonts, media, motion, radii, space } from "ui/tokens.stylex";
 import { type BoardIssue, type CalendarDate, describeDue } from "./board";
 import { quadrantEdge } from "./quadrants";
 
@@ -29,13 +29,13 @@ export function IssueCard({ issue, today, xstyle }: IssueCardProps) {
         {...stylex.props(styles.title)}
       >
         {issue.title}
-        <span {...stylex.props(styles.srOnly)}> (opens in Linear)</span>
+        <VisuallyHidden> (opens in Linear)</VisuallyHidden>
       </a>
       <div {...stylex.props(styles.tags)}>
         <Priority priority={issue.priority} />
         {due ? (
           <Badge tone={due.overdue || due.today ? "storm" : "neutral"}>
-            <span {...stylex.props(styles.srOnly)}>Due </span>
+            <VisuallyHidden>Due </VisuallyHidden>
             {due.text}
           </Badge>
         ) : (
@@ -105,8 +105,6 @@ function Priority({ priority }: { priority: number }) {
   );
 }
 
-const HOVER = "@media (hover: hover) and (pointer: fine)";
-
 const styles = stylex.create({
   card: {
     display: "flex",
@@ -123,10 +121,10 @@ const styles = stylex.create({
     transitionProperty: "transform, box-shadow",
     transitionDuration: "160ms",
     transitionTimingFunction: motion.easeOut,
-    transform: { default: null, [HOVER]: { default: null, ":hover": "translateY(-1px)" } },
+    transform: { default: null, [media.hover]: { default: null, ":hover": "translateY(-1px)" } },
     boxShadow: {
       default: null,
-      [HOVER]: { default: null, ":hover": "0 6px 16px -8px rgba(29, 26, 51, 0.35)" },
+      [media.hover]: { default: null, ":hover": "0 6px 16px -8px rgba(29, 26, 51, 0.35)" },
     },
   },
   meta: {
@@ -159,12 +157,4 @@ const styles = stylex.create({
     fontFamily: fonts.body,
   },
   urgent: { color: colors.accentStrong },
-  srOnly: {
-    position: "absolute",
-    width: "1px",
-    height: "1px",
-    overflow: "hidden",
-    clipPath: "inset(50%)",
-    whiteSpace: "nowrap",
-  },
 });

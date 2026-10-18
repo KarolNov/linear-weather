@@ -1,4 +1,5 @@
 import { BoardShell } from "./BoardShell";
+import type { Board, BoardError } from "./board";
 import { SignInPage } from "./SignInPage";
 
 export interface Viewer {
@@ -14,9 +15,14 @@ export interface AppProps {
   authError?: string;
   /** Showing the mocked Avengers workspace (`/?demo=true`). */
   demo?: boolean;
+  /** The signed-in viewer's board, or null when it couldn't load. */
+  board?: Board | null;
+  boardError?: BoardError;
 }
 
-export function App({ viewer, linearUnavailable, authError, demo }: AppProps) {
-  if (viewer) return <BoardShell viewer={viewer} demo={demo} />;
+export function App({ viewer, linearUnavailable, authError, demo, board, boardError }: AppProps) {
+  if (viewer) {
+    return <BoardShell viewer={viewer} board={board ?? null} boardError={boardError} demo={demo} />;
+  }
   return <SignInPage linearUnavailable={linearUnavailable} authError={authError} />;
 }

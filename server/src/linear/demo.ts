@@ -5,9 +5,14 @@
 import { addDays, type CalendarDate, type LinearPriority } from "../domain/quadrant";
 import type { LinearSource } from "./client";
 import {
+  TeamMembersDocument,
+  type TeamMembersQuery,
+  type TeamMembersQueryVariables,
   TeamOpenIssuesDocument,
   type TeamOpenIssuesQuery,
   type TeamOpenIssuesQueryVariables,
+  TeamsDocument,
+  type TeamsQuery,
   type TypedDocumentString,
   ViewerDocument,
   type ViewerQuery,
@@ -27,6 +32,9 @@ const bruce = member("bruce", "Bruce Banner");
 const thor = member("thor", "Thor Odinson");
 const clint = member("clint", "Clint Barton");
 const wanda = member("wanda", "Wanda Maximoff");
+const phil = member("phil", "Phil Coulson");
+const maria = member("maria", "Maria Hill");
+const melinda = member("melinda", "Melinda May");
 
 export const DEMO_VIEWER: ViewerQuery["viewer"] = {
   id: "demo-user-fury",
@@ -41,9 +49,17 @@ export const DEMO_TEAM = {
   key: "AVG",
   /**
    * Everyone on the team. Wanda has nothing assigned, so she never shows up in the issues:
-   * she's here for the empty plate, once the board lists members as well as issues.
+   * she's here for the board's empty plate.
    */
   members: [tony, steve, natasha, bruce, thor, clint, wanda],
+};
+
+/** A second, smaller team, so the board's team picker has somewhere to go. */
+export const DEMO_OPS_TEAM = {
+  id: "demo-team-ops",
+  name: "S.H.I.E.L.D. Ops",
+  key: "OPS",
+  members: [phil, maria, melinda, natasha],
 };
 
 type StateName = "Triage" | "Backlog" | "Todo" | "In Progress" | "In Review";
@@ -69,14 +85,14 @@ type DemoIssue = [
   state: StateName,
 ];
 
-// Matches the sign-in page's preview. With the default rules (urgent = due within 14 days or
+// The Avengers. Matches the sign-in page's preview. With the default rules (urgent = due within 14 days or
 // overdue; important = Medium priority or higher):
 // - Tony is overloaded: 11 urgent, 3 of them overdue, and one due today.
 // - Steve has 2 urgent, Natasha 4, Bruce 6 with more turning urgent next week, Clint 1.
 // - Thor's work has no due dates: fog.
 // - Every quadrant and every priority appears, some issues are unestimated, and a few are
 //   unassigned.
-const ISSUES: DemoIssue[] = [
+const AVENGERS_ISSUES: DemoIssue[] = [
   [tony, "Patch the arc reactor's memory leak", 1, -5, 5, "In Progress"],
   [tony, "Recall the Mark XLII suits that fly off on their own", 1, -2, 8, "In Progress"],
   [tony, "Answer the board about the Stark Expo budget", 3, -1, null, "Todo"],
@@ -132,12 +148,34 @@ const ISSUES: DemoIssue[] = [
   [null, "Rename the Quinjet", 0, null, 1, "Backlog"],
 ];
 
-/** The Avengers' open issues, with due dates counted from `today`. */
-export function demoIssues(today: CalendarDate): IssueCard[] {
-  return ISSUES.map(([assignee, title, priority, dueInDays, estimate, state], i) => ({
-    id: `demo-issue-${i + 1}`,
-    identifier: `${DEMO_TEAM.key}-${i + 1}`,
+// S.H.I.E.L.D. Ops: Natasha is on both teams, but her Ops work is separate.
+const OPS_ISSUES: DemoIssue[] = [
+  [phil, "Restore Lola's flight systems", 2, 3, 5, "In Progress"],
+  [phil, "Recruit for the new field team", 3, 15, 3, "Todo"],
+  [phil, "Sign the Avengers' trading cards", 4, null, 1, "Backlog"],
+  [maria, "Audit Helicarrier crew rosters", 1, -1, 3, "In Progress"],
+  [maria, "Schedule the quarterly fire drill", 3, 9, 1, "Todo"],
+  [melinda, "Run the cavalry refresher course", 2, 20, 5, "Todo"],
+  [natasha, "Hand over the Lagos safehouse", 3, 5, 2, "Todo"],
+  [null, "Find a new HQ after the Triskelion", 1, 30, 13, "Backlog"],
+];
+
+const TEAMS = [
+  { team: DEMO_TEAM, issues: AVENGERS_ISSUES },
+  { team: DEMO_OPS_TEAM, issues: OPS_ISSUES },
+];
+
+/** A team's open issues (the Avengers' by default), with due dates counted from `today`. */
+export function demoIssues(today: CalendarDate, teamId: string = DEMO_TEAM.id): IssueCard[] {
+  const demo = TEAMS.find(({ team }) => team.id === teamId);
+  if (!demo) return [];
+  const { key } = demo.team;
+  return demo.issues.map(([assignee, title, priority, dueInDays, estimate, state], i) => ({
+    id: `demo-issue-${key.toLowerCase()}-${i + 1}`,
+    identifier: `${key}-${i + 1}`,
     title,
+    // Shaped like Linear's links, though nothing is there: the workspace is made up.
+    url: `https://linear.app/${DEMO_VIEWER.organization.urlKey}/issue/${key}-${i + 1}`,
     dueDate: dueInDays === null ? null : addDays(today, dueInDays),
     priority,
     estimate,
@@ -153,8 +191,8 @@ export interface DemoLinearOptions {
 
 /** A `LinearSource` that answers from the mocked Avengers workspace instead of Linear. */
 export class DemoLinear implements LinearSource {
-  /** The issues for the last "today" asked about, so paging doesn't rebuild them. */
-  private issues: { today: CalendarDate; all: IssueCard[] } | undefined;
+  /** The issues for the last team and "today" asked about, so paging doesn't rebuild them. */
+  private issues: { teamId: string; today: CalendarDate; all: IssueCard[] } | undefined;
 
   constructor(private readonly options: DemoLinearOptions = {}) {}
 
@@ -166,17 +204,35 @@ export class DemoLinear implements LinearSource {
     if (query === ViewerDocument.toString()) {
       return { viewer: DEMO_VIEWER } satisfies ViewerQuery as TResult;
     }
+    if (query === TeamsDocument.toString()) {
+      const nodes = TEAMS.map(({ team: { id, name, key } }) => ({ id, name, key }));
+      // Fury oversees every team without being on one, so the board opens on the first.
+      const viewer = { teams: { nodes: [] } };
+      return { teams: { nodes }, viewer } satisfies TeamsQuery as TResult;
+    }
+    if (query === TeamMembersDocument.toString()) {
+      return this.teamMembers(variables as TeamMembersQueryVariables) as TResult;
+    }
     if (query === TeamOpenIssuesDocument.toString()) {
       return this.teamOpenIssues(variables as TeamOpenIssuesQueryVariables) as TResult;
     }
     throw new Error(`The demo workspace can't answer this query yet:\n${query}`);
   }
 
+  private teamMembers({ teamId }: TeamMembersQueryVariables) {
+    const demo = TEAMS.find(({ team }) => team.id === teamId);
+    // Linear answers an unknown team with an "Entity not found" error.
+    if (!demo) throw new Error(`Entity not found: Team ${teamId}`);
+    return { team: { members: { nodes: demo.team.members } } } satisfies TeamMembersQuery;
+  }
+
   /** Pages like Linear's `issues` connection; cursors are the index of the next issue. */
   private teamOpenIssues({ teamId, first, after }: TeamOpenIssuesQueryVariables) {
     const today = this.options.today ?? new Date().toISOString().slice(0, 10);
-    if (this.issues?.today !== today) this.issues = { today, all: demoIssues(today) };
-    const all = teamId === DEMO_TEAM.id ? this.issues.all : [];
+    if (this.issues?.today !== today || this.issues.teamId !== teamId) {
+      this.issues = { teamId, today, all: demoIssues(today, teamId) };
+    }
+    const { all } = this.issues;
     const start = after ? Number(after) : 0;
     if (!Number.isInteger(start) || start < 0) throw new Error(`Not a demo cursor: ${after}`);
     const nodes = all.slice(start, start + first);

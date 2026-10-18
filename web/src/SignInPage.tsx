@@ -1,6 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { Alert, Avatar, Card, LinkButton, Logo, Sky, type Weather, WeatherIcon } from "ui";
-import { colors, fonts, motion, radii, space } from "ui/tokens.stylex";
+import { colors, fonts, radii, space } from "ui/tokens.stylex";
+import { entrance } from "./motion";
 
 export interface SignInPageProps {
   linearUnavailable?: boolean;
@@ -142,20 +143,12 @@ function signInErrorMessage(code: string): string {
 }
 
 // The page settles in piece by piece, top to bottom, then the example forecast row by row.
-// People see this page rarely, so a little choreography is welcome. With reduced motion the
-// pieces only fade in.
-const rise = stylex.keyframes({
-  from: { opacity: 0, transform: "translateY(16px)" },
-  to: { opacity: 1, transform: "none" },
-});
-
-const fadeIn = stylex.keyframes({ from: { opacity: 0 } });
-
+// People see this page rarely, so a little choreography is welcome.
 // Milliseconds between one piece of the page starting to appear and the next.
 const STEP = 150;
 const ROW_STEP = 100;
 
-const enter = (delayMs: number) => [styles.enter, styles.delay(delayMs)];
+const enter = (delayMs: number) => [entrance.page, entrance.delay(delayMs)];
 
 const WIDE = "@media (min-width: 960px)";
 // Wide enough for the two sign-in buttons to sit side by side.
@@ -164,13 +157,6 @@ const ROOMY = "@media (min-width: 480px)";
 const TABLET = "@media (min-width: 640px) and (max-width: 959.98px)";
 
 const styles = stylex.create({
-  enter: {
-    animationName: { default: rise, "@media (prefers-reduced-motion: reduce)": fadeIn },
-    animationDuration: "800ms",
-    animationTimingFunction: motion.easeOut,
-    animationFillMode: "both",
-  },
-  delay: (ms: number) => ({ animationDelay: `${ms}ms` }),
   page: {
     display: "flex",
     flexDirection: "column",

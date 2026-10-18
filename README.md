@@ -111,6 +111,6 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 
 ## Status
 
-🌱 Scaffolding. Nothing useful to run yet.
+🌦️ Read-only board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop with the default rules. For now the web Worker renders it from the server's `GET /board` JSON route; it moves to our GraphQL schema in #8.
 # linear-weather
 Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

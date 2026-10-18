@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren, JSX } from "preact";
-import { colors, fonts, gradients, motion, radii, shadows, space } from "./tokens.stylex";
+import { colors, fonts, gradients, media, motion, radii, shadows, space } from "./tokens.stylex";
 
 type Variant = "primary" | "glass" | "quiet";
 type Size = "md" | "lg";
@@ -40,9 +40,6 @@ export function LinkButton({ variant = "primary", size = "md", xstyle, ...rest }
 const buttonStyles = (variant: Variant, size: Size) =>
   [styles.base, styles[variant], size === "lg" && styles.large] as const;
 
-// Touch screens fire :hover on tap and leave it stuck, so hover styles apply only with a mouse.
-const HOVER = "@media (hover: hover) and (pointer: fine)";
-
 // The quiet variant's resting background, shared with its disabled look.
 const QUIET_BACKGROUND = "rgba(255, 255, 255, 0.55)";
 
@@ -81,18 +78,21 @@ const styles = stylex.create({
     backgroundOrigin: "border-box",
     boxShadow: {
       default: shadows.button,
-      [HOVER]: { default: shadows.button, ":hover": "0 12px 26px -8px rgba(232, 93, 42, 0.85)" },
+      [media.hover]: {
+        default: shadows.button,
+        ":hover": "0 12px 26px -8px rgba(232, 93, 42, 0.85)",
+      },
     },
     filter: {
       default: null,
-      [HOVER]: { default: null, ":hover": "saturate(1.1) brightness(1.04)" },
+      [media.hover]: { default: null, ":hover": "saturate(1.1) brightness(1.04)" },
     },
   },
   glass: {
     color: colors.inkOnSky,
     backgroundColor: {
       default: colors.surfaceOnSky,
-      [HOVER]: { default: colors.surfaceOnSky, ":hover": "rgba(255, 255, 255, 0.24)" },
+      [media.hover]: { default: colors.surfaceOnSky, ":hover": "rgba(255, 255, 255, 0.24)" },
     },
     borderColor: colors.borderOnSky,
     backdropFilter: "blur(12px)",
@@ -101,7 +101,7 @@ const styles = stylex.create({
     color: colors.ink,
     backgroundColor: {
       default: QUIET_BACKGROUND,
-      [HOVER]: { default: QUIET_BACKGROUND, ":hover": colors.surfaceStrong },
+      [media.hover]: { default: QUIET_BACKGROUND, ":hover": colors.surfaceStrong },
     },
     borderColor: colors.border,
   },

@@ -10,6 +10,7 @@ function issue(n: number, assignee: IssueCard["assignee"]): IssueCard {
     id: `issue-${n}`,
     identifier: `ENG-${n}`,
     title: `Issue ${n}`,
+    url: `https://linear.app/acme/issue/ENG-${n}`,
     dueDate: null,
     priority: 3,
     estimate: null,

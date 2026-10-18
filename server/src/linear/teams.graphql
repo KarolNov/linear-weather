@@ -1,0 +1,35 @@
+# The teams a PM can pick on the board, and which of them they're on (the default). Workspaces
+# have a handful of teams, so one page is plenty.
+query Teams {
+  teams(first: 250) {
+    nodes {
+      ...TeamSummary
+    }
+  }
+  viewer {
+    teams(first: 250) {
+      nodes {
+        id
+      }
+    }
+  }
+}
+
+fragment TeamSummary on Team {
+  id
+  name
+  key
+}
+
+# Everyone on the team, so people with nothing assigned still get a (empty) matrix.
+query TeamMembers($teamId: String!) {
+  team(id: $teamId) {
+    members(first: 250) {
+      nodes {
+        id
+        name
+        avatarUrl
+      }
+    }
+  }
+}

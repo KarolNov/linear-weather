@@ -1,10 +1,65 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Board, BoardIssue } from "./board";
 import { app, type Bindings } from "./worker";
 
-function serverReturning(viewer: unknown) {
-  const fetch = vi.fn(async (_request: Request) => Response.json({ data: { viewer } }));
+const avengers = { id: "t-avg", name: "Avengers", key: "AVG" };
+const ops = { id: "t-ops", name: "S.H.I.E.L.D. Ops", key: "OPS" };
+const tony = { id: "u-tony", name: "Tony Stark", avatarUrl: null };
+
+function issue(fields: Partial<BoardIssue>): BoardIssue {
+  return {
+    id: "i-1",
+    identifier: "AVG-1",
+    title: "Patch the arc reactor",
+    url: "https://linear.app/shield/issue/AVG-1",
+    dueDate: "2026-10-13",
+    priority: 1,
+    estimate: 5,
+    state: { name: "In Progress", type: "started" },
+    quadrant: "do",
+    reason: "Urgent priority, overdue by 5 days",
+    ...fields,
+  };
+}
+
+const board: Board = {
+  today: "2026-10-18",
+  teams: [avengers, ops],
+  team: avengers,
+  people: [
+    {
+      assignee: tony,
+      counts: { do: 1, schedule: 0, delegate: 0, drop: 1 },
+      issues: [
+        issue({}),
+        issue({
+          id: "i-2",
+          identifier: "AVG-2",
+          title: "Tidy the workshop",
+          dueDate: null,
+          priority: 4,
+          estimate: null,
+          quadrant: "drop",
+        }),
+      ],
+    },
+    { assignee: null, counts: { do: 0, schedule: 0, delegate: 0, drop: 0 }, issues: [] },
+  ],
+};
+
+/** The server Worker's `/board`: signed out (401) without a viewer, else the viewer's board. */
+function serverReturning(
+  viewer: unknown,
+  boardResponse = () =>
+    viewer
+      ? Response.json({ viewer, board })
+      : Response.json({ error: "signed_out" }, { status: 401 }),
+) {
+  const fetch = vi.fn(async (_request: Request) => boardResponse());
   return { bindings: { SERVER: { fetch } } satisfies Bindings, fetch };
 }
+
+const fury = { name: "Nick Fury", avatarUrl: null, organization: { name: "S.H.I.E.L.D." } };
 
 describe("web worker", () => {
   it("server-renders the sign-in page when signed out", async () => {
@@ -48,6 +103,77 @@ describe("web worker", () => {
     expect(page).not.toContain('action="/auth/logout"');
   });
 
+  it("shows each person's matrix with their issues, linking to Linear", async () => {
+    const { bindings } = serverReturning(fury);
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain("Tony Stark");
+    expect(page).toContain("2 open issues");
+    expect(page).toContain("Unassigned");
+    expect(page).toContain('href="https://linear.app/shield/issue/AVG-1"');
+    expect(page).toContain("AVG-1");
+    expect(page).toContain("Urgent");
+    expect(page).toContain("Oct 13 · 5 days late");
+    expect(page).toContain("5 pts");
+    expect(page).toContain("No date");
+  });
+
+  it("asks for the picked team and keeps the demo in the picker", async () => {
+    const { bindings, fetch } = serverReturning(fury);
+    const page = await (await app.request("/?demo=true&team=t-ops", {}, bindings)).text();
+    const boardUrl = new URL(fetch.mock.calls[0]?.[0].url ?? "");
+    expect(boardUrl.pathname).toBe("/board");
+    expect(boardUrl.searchParams.get("team")).toBe("t-ops");
+    expect(boardUrl.searchParams.get("demo")).toBe("true");
+    expect(page).toContain('href="/?demo=true&amp;team=t-avg"');
+    expect(page).toContain('aria-current="page"');
+  });
+
+  it("says nobody has open issues when every member's matrix is empty", async () => {
+    const empty = { do: 0, schedule: 0, delegate: 0, drop: 0 };
+    const quiet: Board = { ...board, people: [{ assignee: tony, counts: empty, issues: [] }] };
+    const { bindings } = serverReturning(fury, () => Response.json({ viewer: fury, board: quiet }));
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain("Nobody on this team has open issues.");
+    expect(page).not.toContain("Expand all");
+  });
+
+  it("explains a spent rate limit instead of showing an empty board", async () => {
+    const { bindings } = serverReturning(fury, () =>
+      Response.json({
+        viewer: fury,
+        boardError: { kind: "rate_limited", resetAt: Date.UTC(2026, 9, 18, 16, 30) },
+      }),
+    );
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain("Couldn't load your team");
+    expect(page).toContain("after 16:30 UTC");
+  });
+
+  it("says Linear didn't answer when the board fails to load", async () => {
+    const { bindings } = serverReturning(fury, () =>
+      Response.json({ viewer: fury, boardError: { kind: "unavailable" } }),
+    );
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain("Fury");
+    expect(page).toContain("Linear didn't answer just now");
+  });
+
+  it("asks the server once per page, for the viewer and the board together", async () => {
+    const { bindings, fetch } = serverReturning(fury);
+    await app.request("/", {}, bindings);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(new URL(fetch.mock.calls[0]?.[0].url ?? "").pathname).toBe("/board");
+  });
+
+  it("shows the sign-in page when the server has just ended a rejected session", async () => {
+    const { bindings } = serverReturning(fury, () =>
+      Response.json({ error: "signed_out" }, { status: 401 }),
+    );
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain('href="/auth/login"');
+    expect(page).not.toContain("Linear didn't answer");
+  });
+
   it("doesn't ask for the demo without ?demo=true", async () => {
     const { bindings, fetch } = serverReturning(null);
     await app.request("/", {}, bindings);
@@ -56,7 +182,7 @@ describe("web worker", () => {
 
   it("says Linear is unreachable instead of showing signed out when the server fails", async () => {
     const errored = vi.fn(async (_request: Request) =>
-      Response.json({ data: { viewer: null }, errors: [{ message: "Unexpected error." }] }),
+      Response.json({ error: "unavailable" }, { status: 503 }),
     );
     const crashed = vi.fn(
       async (_request: Request) => new Response("Internal Server Error", { status: 500 }),

@@ -1,7 +1,8 @@
 import { type Context, Hono } from "hono";
 import { html, raw } from "hono/html";
 import { renderToString } from "preact-render-to-string";
-import { App, type AppProps, type Viewer } from "./App";
+import { App, type AppProps } from "./App";
+import type { BoardResponse } from "./board";
 
 export interface Bindings {
   /** Service binding to the server Worker (see wrangler.jsonc). */
@@ -33,12 +34,17 @@ export const app = new Hono<{ Bindings: Bindings }>()
   // Only known pages render; anything else 404s without asking Linear who is signed in.
   .get("/", async (c) => {
     const demo = c.req.query("demo") === "true";
-    const viewer = await fetchViewer(c, demo);
+    const loaded = await fetchBoard(c, demo, c.req.query("team"));
+    const signedIn = loaded !== null && loaded !== UNAVAILABLE;
     const props: AppProps = {
-      viewer: viewer === UNAVAILABLE ? null : viewer,
-      linearUnavailable: viewer === UNAVAILABLE || undefined,
+      viewer: signedIn ? loaded.viewer : null,
+      linearUnavailable: loaded === UNAVAILABLE || undefined,
       authError: c.req.query("auth_error"),
       demo: demo || undefined,
+      ...(signedIn &&
+        ("board" in loaded
+          ? { board: loaded.board }
+          : { board: null, boardError: loaded.boardError })),
     };
     // Escape "<" so the JSON can't close the <script> tag early.
     const propsJson = JSON.stringify(props).replaceAll("<", "\\u003c");
@@ -66,40 +72,28 @@ export const app = new Hono<{ Bindings: Bindings }>()
 const UNAVAILABLE = Symbol("unavailable");
 
 /**
- * Asks our GraphQL server who is signed in, forwarding the browser's session cookie, or who
- * the mocked Avengers workspace signs you in as when `demo` is set. Null means signed out;
- * UNAVAILABLE means we couldn't tell (server or Linear failed).
+ * Who is signed in and their board for `teamId` (or their team), from the server's temporary
+ * `/board` route, forwarding the browser's session cookie; or the mocked Avengers workspace
+ * when `demo` is set. Null means signed out; UNAVAILABLE means we couldn't tell (server or
+ * Linear failed).
  */
-async function fetchViewer(
+async function fetchBoard(
   c: Context<{ Bindings: Bindings }>,
   demo: boolean,
-): Promise<Viewer | null | typeof UNAVAILABLE> {
+  teamId: string | undefined,
+): Promise<BoardResponse | null | typeof UNAVAILABLE> {
   try {
-    const url = new URL("/graphql", c.req.url);
+    const url = new URL("/board", c.req.url);
     if (demo) url.searchParams.set("demo", "true");
+    if (teamId) url.searchParams.set("team", teamId);
     const res = await c.env.SERVER.fetch(
-      new Request(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          cookie: c.req.header("cookie") ?? "",
-        },
-        body: JSON.stringify({
-          query: "{ viewer { name avatarUrl organization { name } } }",
-        }),
-      }),
+      new Request(url, { headers: { cookie: c.req.header("cookie") ?? "" } }),
     );
+    if (res.status === 401) return null;
     if (!res.ok) throw new Error(`server responded ${res.status}`);
-    const body = (await res.json()) as {
-      data?: { viewer: Viewer | null };
-      errors?: { message: string }[];
-    };
-    if (body.errors?.length || !body.data) {
-      throw new Error(body.errors?.map((e) => e.message).join("; ") ?? "no data");
-    }
-    return body.data.viewer;
+    return (await res.json()) as BoardResponse;
   } catch (error) {
-    console.error(`Couldn't load the viewer: ${error}`);
+    console.error(`Couldn't load the board: ${error}`);
     return UNAVAILABLE;
   }
 }

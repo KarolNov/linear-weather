@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { addDays, becomesUrgentOn, classify, DEFAULT_RULES } from "../domain/quadrant";
 import { DEMO_TEAM, DEMO_VIEWER, DemoLinear, demoIssues } from "./demo";
 import { TeamOpenIssuesDocument, type TeamOpenIssuesQuery, ViewerDocument } from "./generated";
@@ -105,7 +105,19 @@ describe("DemoLinear", () => {
   });
 
   it("defaults to the current date", async () => {
-    const today = new Date().toISOString().slice(0, 10);
-    expect(await fetchTeamOpenIssues(new DemoLinear(), DEMO_TEAM.id)).toEqual(demoIssues(today));
+    vi.useFakeTimers({ now: new Date("2026-10-19T23:59:59Z") });
+    try {
+      expect(await fetchTeamOpenIssues(new DemoLinear(), DEMO_TEAM.id)).toEqual(
+        demoIssues("2026-10-19"),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects cursors it didn't issue", async () => {
+    await expect(
+      demo.request(TeamOpenIssuesDocument, { teamId: DEMO_TEAM.id, first: 20, after: "abc" }),
+    ).rejects.toThrow("Not a demo cursor");
   });
 });

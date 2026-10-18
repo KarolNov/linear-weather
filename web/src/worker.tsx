@@ -67,8 +67,8 @@ const UNAVAILABLE = Symbol("unavailable");
 
 /**
  * Asks our GraphQL server who is signed in, forwarding the browser's session cookie, or who
- * the mocked Avengers workspace signs you in as when `demo` is set. Null means signed out; UNAVAILABLE means we
- * couldn't tell (server or Linear failed).
+ * the mocked Avengers workspace signs you in as when `demo` is set. Null means signed out;
+ * UNAVAILABLE means we couldn't tell (server or Linear failed).
  */
 async function fetchViewer(
   c: Context<{ Bindings: Bindings }>,

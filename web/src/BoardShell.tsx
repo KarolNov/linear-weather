@@ -4,7 +4,6 @@ import {
   Badge,
   Button,
   Card,
-  LinkButton,
   Logo,
   Sky,
   type Weather,
@@ -22,12 +21,6 @@ export interface BoardShellProps {
 
 /** The signed-in frame the matrix will live in (#7). */
 export function BoardShell({ viewer, demo }: BoardShellProps) {
-  const who = (
-    <>
-      <Avatar name={viewer.name} src={viewer.avatarUrl} size={30} />
-      <span {...stylex.props(styles.viewerName)}>{viewer.name}</span>
-    </>
-  );
   return (
     <Sky time="dawn">
       <header {...stylex.props(styles.header)}>
@@ -36,26 +29,19 @@ export function BoardShell({ viewer, demo }: BoardShellProps) {
           <Badge>{viewer.organization.name}</Badge>
         </div>
         {/* The name is hidden on phones, so the label says who is signed in there too. */}
-        {demo ? (
-          <div {...stylex.props(styles.account)}>
-            {who}
-            <LinkButton href="/" variant="quiet">
-              Exit demo
-            </LinkButton>
-          </div>
-        ) : (
-          <form
-            method="post"
-            action="/auth/logout"
-            aria-label={`Signed in as ${viewer.name}`}
-            {...stylex.props(styles.account)}
-          >
-            {who}
-            <Button type="submit" variant="quiet">
-              Sign out
-            </Button>
-          </form>
-        )}
+        {/* The demo has no session to end, so its button just leaves for the real sign-in. */}
+        <form
+          method={demo ? "get" : "post"}
+          action={demo ? "/" : "/auth/logout"}
+          aria-label={`Signed in as ${viewer.name}`}
+          {...stylex.props(styles.account)}
+        >
+          <Avatar name={viewer.name} src={viewer.avatarUrl} size={30} />
+          <span {...stylex.props(styles.viewerName)}>{viewer.name}</span>
+          <Button type="submit" variant="quiet">
+            {demo ? "Exit demo" : "Sign out"}
+          </Button>
+        </form>
       </header>
 
       <main {...stylex.props(styles.main)}>

@@ -153,6 +153,9 @@ export interface DemoLinearOptions {
 
 /** A `LinearSource` that answers from the mocked Avengers workspace instead of Linear. */
 export class DemoLinear implements LinearSource {
+  /** The issues for the last "today" asked about, so paging doesn't rebuild them. */
+  private issues: { today: CalendarDate; all: IssueCard[] } | undefined;
+
   constructor(private readonly options: DemoLinearOptions = {}) {}
 
   async request<TResult, TVariables>(
@@ -172,8 +175,10 @@ export class DemoLinear implements LinearSource {
   /** Pages like Linear's `issues` connection; cursors are the index of the next issue. */
   private teamOpenIssues({ teamId, first, after }: TeamOpenIssuesQueryVariables) {
     const today = this.options.today ?? new Date().toISOString().slice(0, 10);
-    const all = teamId === DEMO_TEAM.id ? demoIssues(today) : [];
+    if (this.issues?.today !== today) this.issues = { today, all: demoIssues(today) };
+    const all = teamId === DEMO_TEAM.id ? this.issues.all : [];
     const start = after ? Number(after) : 0;
+    if (!Number.isInteger(start) || start < 0) throw new Error(`Not a demo cursor: ${after}`);
     const nodes = all.slice(start, start + first);
     const end = start + nodes.length;
     return {

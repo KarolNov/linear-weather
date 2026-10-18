@@ -212,6 +212,7 @@ const styles = stylex.create({
   option: {
     display: "flex",
     alignItems: "center",
+    minHeight: { default: null, "@media (pointer: coarse)": "44px" },
     gap: space.xs,
     paddingBlock: space.xs,
     paddingInline: space.xs,

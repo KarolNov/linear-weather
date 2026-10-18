@@ -153,6 +153,7 @@ export function PersonMatrix({
 }
 
 const HOVER = "@media (hover: hover) and (pointer: fine)";
+const TOUCH = "@media (pointer: coarse)";
 
 // Opening a list is frequent, so the stagger is tight and stops after a few cards: a long list
 // shouldn't keep the PM waiting for its tail.
@@ -227,6 +228,8 @@ const styles = stylex.create({
     alignItems: "center",
     gap: "6px",
     width: "fit-content",
+    // A comfortable thumb target on touch screens, compact with a mouse.
+    minHeight: { default: null, [TOUCH]: "44px" },
     paddingBlock: "4px",
     paddingInline: "8px",
     marginInlineStart: "-8px",

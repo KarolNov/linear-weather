@@ -39,8 +39,11 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
     <Sky time="dawn">
       <header {...stylex.props(styles.header)}>
         <div {...stylex.props(styles.brand)}>
-          <Logo />
-          <Badge>{viewer.organization.name}</Badge>
+          <Logo compactOnPhones />
+          {/* Phones keep the header to one row; the workspace is the least needed there. */}
+          <span {...stylex.props(styles.workspace)}>
+            <Badge>{viewer.organization.name}</Badge>
+          </span>
         </div>
         {/* The name is hidden on phones, so the label says who is signed in there too. */}
         {/* The demo has no session to end, so its button just leaves for the real sign-in. */}
@@ -206,7 +209,6 @@ const styles = stylex.create({
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    flexWrap: "wrap",
     gap: space.sm,
     paddingBlock: space.sm,
     paddingInline: { default: space.md, "@media (min-width: 768px)": space.xl },
@@ -214,8 +216,8 @@ const styles = stylex.create({
     backdropFilter: "blur(16px) saturate(1.4)",
     borderBottom: `1px solid ${colors.border}`,
   },
-  // Wraps so the org badge drops below the logo on phones instead of running off the edge.
-  brand: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: space.sm, minWidth: 0 },
+  brand: { display: "flex", alignItems: "center", gap: space.sm, minWidth: 0 },
+  workspace: { display: { default: "none", "@media (min-width: 640px)": "inline-flex" } },
   account: { display: "flex", alignItems: "center", gap: space.sm, margin: 0 },
   viewerName: {
     fontWeight: 600,
@@ -257,7 +259,7 @@ const styles = stylex.create({
   // Side by side, as many as fit; each card only as tall as its own list.
   people: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))",
+    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))",
     alignItems: "start",
     gap: space.md,
   },

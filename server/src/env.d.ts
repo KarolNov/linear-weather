@@ -2,10 +2,13 @@
 interface Env {
   /** Dev shortcut: personal Linear API key, honored only on localhost. */
   LINEAR_API_KEY?: string;
+  /** Dev shortcut: "true" serves the mocked Avengers workspace, honored only on localhost. */
+  LINEAR_DEMO?: string;
 }
 
 declare namespace Cloudflare {
   interface Env {
     LINEAR_API_KEY?: string;
+    LINEAR_DEMO?: string;
   }
 }

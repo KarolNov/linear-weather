@@ -6,6 +6,6 @@
   "observability": { "enabled": true },
   // Login sessions (Linear OAuth tokens). Wrangler provisions the namespace on first deploy.
   "kv_namespaces": [{ "binding": "SESSIONS" }],
-  // LINEAR_API_KEY is an optional dev shortcut, typed in src/env.d.ts.
+  // LINEAR_API_KEY and LINEAR_DEMO are optional dev shortcuts, typed in src/env.d.ts.
   "secrets": { "required": ["LINEAR_CLIENT_ID", "LINEAR_CLIENT_SECRET", "LINEAR_WEBHOOK_SECRET"] }
 }

@@ -1,9 +1,10 @@
 import { createYoga } from "graphql-yoga";
 import { Hono } from "hono";
 import { auth } from "./auth";
-import { LinearClient } from "./linear/client";
+import { LinearClient, type LinearSource } from "./linear/client";
+import { DemoLinear } from "./linear/demo";
 import { type GraphQLContext, schema } from "./schema";
-import { discardSession, linearAuthorization } from "./session";
+import { type AppContext, discardSession, isLocalhost, linearAuthorization } from "./session";
 
 const yoga = createYoga<GraphQLContext>({
   schema,
@@ -18,14 +19,24 @@ export const app = new Hono<{ Bindings: Env }>()
   .route("/auth", auth)
   .on(["GET", "POST"], "/graphql", (c) => {
     // Resolved on first use, so queries that don't touch Linear skip the session lookup.
-    let linear: Promise<LinearClient | null> | undefined;
+    let linear: Promise<LinearSource | null> | undefined;
     return yoga.fetch(c.req.raw, {
-      linear: () =>
-        (linear ??= linearAuthorization(c).then((a) => (a ? new LinearClient(a) : null))),
+      linear: () => (linear ??= linearSource(c)),
       discardSession: async () => {
         await discardSession(c);
       },
     });
   });
+
+/**
+ * Linear as the signed-in user sees it. With nobody signed in, the dev shortcuts: the personal
+ * API key, else the demo workspace when `LINEAR_DEMO=true`, both on localhost only.
+ */
+async function linearSource(c: AppContext): Promise<LinearSource | null> {
+  const authorization = await linearAuthorization(c);
+  if (authorization) return new LinearClient(authorization);
+  if (c.env.LINEAR_DEMO === "true" && isLocalhost(c)) return new DemoLinear();
+  return null;
+}
 
 export default app;

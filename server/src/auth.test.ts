@@ -296,6 +296,34 @@ describe("viewer", () => {
     expect(await res.json()).toEqual({ data: { viewer: null } });
     expect(linear.calls).toHaveLength(0);
   });
+
+  it("serves the demo workspace on localhost when LINEAR_DEMO is on", async () => {
+    expect(await viewer(undefined, { ...env, LINEAR_DEMO: "true" })).toEqual({
+      name: "Nick Fury",
+      organization: { name: "S.H.I.E.L.D." },
+    });
+    expect(linear.calls).toHaveLength(0);
+  });
+
+  it("prefers a signed-in user over the demo", async () => {
+    const cookie = await signIn();
+    expect(await viewer(cookie, { ...env, LINEAR_DEMO: "true" })).toMatchObject({
+      name: VIEWER.name,
+    });
+  });
+
+  it("ignores LINEAR_DEMO anywhere but localhost", async () => {
+    const res = await app.request(
+      "https://weather.example.com/graphql",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: "{ viewer { name } }" }),
+      },
+      { ...env, LINEAR_DEMO: "true" },
+    );
+    expect(await res.json()).toEqual({ data: { viewer: null } });
+  });
 });
 
 describe("/auth/logout", () => {

@@ -165,7 +165,27 @@ describe("becomesUrgentOn", () => {
     expect(on(LATER, { ...DEFAULT_RULES, urgencyWindowDays: 30 })).toBe("2026-11-01");
   });
 
-  it("counts calendar days across month, year and DST boundaries", () => {
+  it("is the day after the due date with a zero-day window (urgent only once overdue)", () => {
+    const rules = { ...DEFAULT_RULES, urgencyWindowDays: 0 };
+    expect(on(LATER, rules)).toBe("2026-12-01");
+    expect(classify({ priority: 2, dueDate: LATER }, rules, LATER).quadrant).toBe("schedule");
+    expect(classify({ priority: 2, dueDate: LATER }, rules, "2026-12-01").quadrant).toBe("do");
+  });
+
+  it("rounds a fractional window the same way classify() does", () => {
+    const rules = { ...DEFAULT_RULES, urgencyWindowDays: 7.5 };
+    expect(on(LATER, rules)).toBe("2026-11-23");
+    expect(classify({ priority: 2, dueDate: LATER }, rules, "2026-11-23").quadrant).toBe("do");
+    expect(classify({ priority: 2, dueDate: LATER }, rules, "2026-11-22").quadrant).toBe(
+      "schedule",
+    );
+  });
+
+  it("is null, not a throw, when the window is NaN (classify() never calls it urgent)", () => {
+    expect(on(LATER, { ...DEFAULT_RULES, urgencyWindowDays: Number.NaN })).toBeNull();
+  });
+
+  it("counts calendar days across month and year boundaries", () => {
     expect(on("2027-01-05")).toBe("2026-12-23");
     expect(becomesUrgentOn({ dueDate: "2026-11-08" }, DEFAULT_RULES, "2026-10-20")).toBe(
       "2026-10-26",
@@ -176,6 +196,22 @@ describe("becomesUrgentOn", () => {
     expect(() => on("2026-11-30T00:00:00Z")).toThrow(RangeError);
     expect(() => becomesUrgentOn({ dueDate: LATER }, DEFAULT_RULES, "18/10/2026")).toThrow(
       RangeError,
+    );
+    const urgentUndated = { ...DEFAULT_RULES, noDueDate: "urgent" as const };
+    expect(() => becomesUrgentOn({ dueDate: null }, urgentUndated, "18/10/2026")).toThrow(
+      RangeError,
+    );
+  });
+
+  it("rejects a date that doesn't exist instead of rolling it over", () => {
+    expect(() => on("2026-02-31")).toThrow(RangeError);
+    expect(() => on("2026-13-01")).toThrow(RangeError);
+    expect(() => on("2026-00-10")).toThrow(RangeError);
+  });
+
+  it("keeps years below 100 as written", () => {
+    expect(becomesUrgentOn({ dueDate: "0050-06-14" }, DEFAULT_RULES, "0050-01-01")).toBe(
+      "0050-06-01",
     );
   });
 });

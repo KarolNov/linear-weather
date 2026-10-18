@@ -50,10 +50,10 @@ After changing a `wrangler.jsonc`, run `pnpm --filter server cf-typegen` to rege
 
 ## Querying Linear
 
-Queries to Linear live next to the code that uses them, written with `graphql(...)` from `server/src/linear/generated`. [GraphQL Code Generator](https://the-guild.dev/graphql/codegen) checks them against Linear's schema (`server/src/linear/schema.graphql`) and generates their result and variable types.
+Queries to Linear live next to the code that uses them, written with `graphql(...)` from `server/src/linear/generated`. [GraphQL Code Generator](https://the-guild.dev/graphql/codegen) checks them against [Linear's schema](https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql) and generates their result and variable types.
 
 - After adding or changing a query, run `pnpm --filter server codegen` and commit what it generates.
-- `pnpm --filter server codegen:schema` refreshes the schema from [Linear's SDK repo](https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql).
+- The schema is fetched from Linear's SDK repo at a pinned commit (`LINEAR_SCHEMA_COMMIT` in `server/codegen.ts`). To pick up schema changes, bump the commit and rerun codegen.
 
 Linear limits each user to 5,000 requests and 2,000,000 [complexity points](https://linear.app/developers/rate-limiting) an hour, and rejects any single query over 10,000 points. These limits shaped the team-issues query:
 

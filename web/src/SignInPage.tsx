@@ -1,0 +1,248 @@
+import * as stylex from "@stylexjs/stylex";
+import {
+  Alert,
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  LinkButton,
+  Logo,
+  Sky,
+  type Weather,
+  WeatherIcon,
+} from "ui";
+import { colors, fonts, radii, space } from "ui/tokens.stylex";
+
+export interface SignInPageProps {
+  linearUnavailable?: boolean;
+  authError?: string;
+}
+
+export function SignInPage({ linearUnavailable, authError }: SignInPageProps) {
+  return (
+    <Sky time="sunset">
+      <div {...stylex.props(styles.page)}>
+        <header>
+          <Logo onSky />
+        </header>
+
+        <main {...stylex.props(styles.hero)}>
+          <section {...stylex.props(styles.pitch)}>
+            <h1 {...stylex.props(styles.title)}>See the storm before it hits your team.</h1>
+            <p {...stylex.props(styles.lead)}>
+              See who on your team is overloaded now, and who is about to be. We sort everyone's
+              issues into Do, Schedule, Delegate and Drop, and turn them into a forecast.
+            </p>
+
+            {linearUnavailable ? (
+              <Alert onSky>Couldn't reach Linear just now. Please reload in a minute.</Alert>
+            ) : (
+              <div {...stylex.props(styles.actions)}>
+                {authError && (
+                  <Alert weather="rain" onSky>
+                    {signInErrorMessage(authError)}
+                  </Alert>
+                )}
+                <div {...stylex.props(styles.ctas)}>
+                  <LinkButton href="/auth/login" size="lg">
+                    Sign in with Linear
+                    <span aria-hidden="true">→</span>
+                  </LinkButton>
+                  {/* Will sign in to a mocked team and project, for trying the board without
+                      a Linear workspace. */}
+                  <Button variant="glass" size="lg" disabled>
+                    Explore the demo
+                    <Badge tone="onSky">Soon</Badge>
+                  </Button>
+                </div>
+                <p {...stylex.props(styles.fineprint)}>
+                  You'll see exactly the teams and issues you can see in Linear.
+                </p>
+              </div>
+            )}
+          </section>
+
+          <ForecastPreview />
+        </main>
+      </div>
+    </Sky>
+  );
+}
+
+const sampleTeam: { name: string; weather: Weather; summary: string; week: Weather[] }[] = [
+  {
+    name: "Ada Lovelace",
+    weather: "sun",
+    summary: "2 urgent",
+    week: ["sun", "sun", "partly", "sun"],
+  },
+  {
+    name: "Grace Hopper",
+    weather: "partly",
+    summary: "4 urgent",
+    week: ["partly", "rain", "partly", "sun"],
+  },
+  {
+    name: "Alan Turing",
+    weather: "storm",
+    summary: "9 urgent",
+    week: ["storm", "rain", "rain", "partly"],
+  },
+  {
+    name: "Katherine Johnson",
+    weather: "fog",
+    summary: "6 undated",
+    week: ["fog", "fog", "partly", "partly"],
+  },
+];
+
+/** A made-up team, to show what the board will tell you once you're signed in. */
+function ForecastPreview() {
+  return (
+    <Card variant="glass" as="section" xstyle={styles.preview}>
+      <div {...stylex.props(styles.previewHeader)}>
+        <h2 {...stylex.props(styles.previewTitle)}>Team forecast</h2>
+        <span {...stylex.props(styles.weeks)} aria-hidden="true">
+          <span>Now</span>
+          <span>W2</span>
+          <span>W3</span>
+          <span>W4</span>
+        </span>
+      </div>
+      <ul {...stylex.props(styles.rows)} aria-label="Example forecast">
+        {sampleTeam.map((person) => (
+          <li key={person.name} {...stylex.props(styles.row)}>
+            <Avatar name={person.name} size={36} />
+            <span {...stylex.props(styles.person)}>
+              <span {...stylex.props(styles.personName)}>{person.name}</span>
+              <span {...stylex.props(styles.personSummary)}>{person.summary}</span>
+            </span>
+            <span {...stylex.props(styles.week)}>
+              {person.week.map((weather, i) => (
+                <span key={i} {...stylex.props(styles.day, i === 0 && styles.today)}>
+                  <WeatherIcon weather={weather} size={i === 0 ? 30 : 22} />
+                </span>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p {...stylex.props(styles.previewNote)}>Example team. Yours appears after you sign in.</p>
+    </Card>
+  );
+}
+
+function signInErrorMessage(code: string): string {
+  if (code === "access_denied") return "Sign-in was cancelled.";
+  return "Signing in with Linear failed. Please try again.";
+}
+
+const WIDE = "@media (min-width: 960px)";
+
+const styles = stylex.create({
+  page: {
+    display: "flex",
+    flexDirection: "column",
+    gap: { default: space.xl, [WIDE]: space.xxl },
+    maxWidth: "1120px",
+    minHeight: "100dvh",
+    marginInline: "auto",
+    paddingBlock: space.lg,
+    paddingInline: { default: space.md, [WIDE]: space.xl },
+  },
+  hero: {
+    display: "grid",
+    gridTemplateColumns: { default: "minmax(0, 1fr)", [WIDE]: "minmax(0, 1.1fr) minmax(0, 1fr)" },
+    alignItems: "center",
+    gap: { default: space.xl, [WIDE]: space.xxl },
+    flexGrow: 1,
+    paddingBottom: "18vmin",
+  },
+  pitch: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: space.lg,
+  },
+  title: {
+    fontFamily: fonts.display,
+    fontSize: "clamp(2.25rem, 5.5vw, 3.75rem)",
+    fontWeight: 800,
+    lineHeight: 1.04,
+    letterSpacing: "-0.025em",
+    textWrap: "balance",
+    textShadow: "0 2px 24px rgba(31, 23, 71, 0.35)",
+  },
+  lead: {
+    maxWidth: "34rem",
+    fontSize: "1.125rem",
+    lineHeight: 1.55,
+    color: colors.inkOnSkyMuted,
+  },
+  actions: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: space.sm },
+  ctas: { display: "flex", flexWrap: "wrap", gap: space.sm, marginTop: space.xs },
+  fineprint: {
+    fontSize: "0.875rem",
+    color: colors.inkOnSkyMuted,
+    textShadow: "0 1px 8px rgba(31, 23, 71, 0.4)",
+  },
+
+  preview: { width: "100%", maxWidth: "460px", justifySelf: { default: "stretch", [WIDE]: "end" } },
+  previewHeader: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginBottom: space.md,
+  },
+  previewTitle: { fontFamily: fonts.display, fontSize: "1.125rem", fontWeight: 700 },
+  weeks: {
+    display: "grid",
+    gridTemplateColumns: "38px repeat(3, 30px)",
+    gap: space.xxs,
+    textAlign: "center",
+    fontSize: "0.75rem",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: colors.inkOnSkyMuted,
+  },
+  rows: {
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: space.xs,
+  },
+  row: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    padding: space.xs,
+    borderRadius: radii.md,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  person: { display: "flex", flexDirection: "column", flexGrow: 1, minWidth: 0 },
+  personName: {
+    fontWeight: 600,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  personSummary: { fontSize: "0.8125rem", color: colors.inkOnSkyMuted },
+  week: {
+    display: "grid",
+    gridTemplateColumns: "38px repeat(3, 30px)",
+    alignItems: "center",
+    justifyItems: "center",
+    gap: space.xxs,
+  },
+  day: { display: "inline-flex", opacity: 0.85 },
+  today: {
+    opacity: 1,
+    padding: "3px",
+    borderRadius: radii.sm,
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+  },
+  previewNote: { marginTop: space.md, fontSize: "0.8125rem", color: colors.inkOnSkyMuted },
+});

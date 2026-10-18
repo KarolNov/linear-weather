@@ -12,8 +12,9 @@ describe("web worker", () => {
     const res = await app.request("/", {}, bindings);
     expect(res.headers.get("content-type")).toContain("text/html");
     const page = await res.text();
-    expect(page).toContain("<h1>Linear Weather</h1>");
+    expect(page).toContain("See the storm before it hits your team.");
     expect(page).toContain('href="/auth/login"');
+    expect(page).toContain('<link rel="stylesheet"');
   });
 
   it("shows who is signed in, asking the server with the browser's cookie", async () => {

@@ -6,7 +6,9 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "cf-typegen": "wrangler types",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "codegen": "graphql-codegen",
+    "codegen:check": "graphql-codegen --check"
   },
   "dependencies": {
     "@pothos/core": "^4.15.1",
@@ -16,6 +18,10 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.4",
+    "@graphql-codegen/cli": "^7.4.6",
+    "@graphql-codegen/typed-document-node": "^7.2.0",
+    "@graphql-codegen/typescript-operations": "^6.1.10",
+    "@graphql-typed-document-node/core": "^3.2.0",
     "vitest": "^5.0.5",
     "wrangler": "^4.151.1"
   }

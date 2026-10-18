@@ -8,6 +8,7 @@
     "dev:web": "pnpm --filter web dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
+    "codegen:check": "pnpm --filter server codegen:check",
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "vitest run",

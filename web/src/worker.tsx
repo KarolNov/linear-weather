@@ -112,13 +112,14 @@ async function fetchBoard(
     if (!data || viewerFailed) {
       throw new Error(errors.map((e) => e.message).join("; ") || "no data");
     }
-    // Without a viewer the rest failed too, as "sign in first".
-    if (!data.viewer) return null;
+    // Without a viewer the rest failed too, as "sign in first". Linear can also reject the
+    // token partway through, after the viewer loaded; the server has forgotten it by then.
+    if (!data.viewer || errors.some((e) => e.extensions?.code === "UNAUTHENTICATED")) return null;
 
     if (errors.length > 0 || !data.teams) {
-      // Errors are about the board alone, so the page still shows who is signed in.
+      // Errors are about the board alone, so the page still shows who is signed in. The server
+      // logged anything unexpected; here it's only "Unexpected error.".
       const limited = errors.find((e) => e.extensions?.code === "RATE_LIMITED");
-      if (!limited) console.error(`Couldn't load the board: ${errors.map((e) => e.message)}`);
       const boardError: BoardError = limited
         ? { kind: "rate_limited", resetAt: (limited.extensions?.resetAt as number) ?? null }
         : { kind: "unavailable" };

@@ -38,7 +38,10 @@ export function place<I extends MatrixIssue>(
     quadrant,
     quadrantSource: "rule",
     placementReason: reason,
-    becomesUrgentOn: becomesUrgentOn(issue, rules, today),
+    // Few clients ask for it, so work it out only when read.
+    get becomesUrgentOn() {
+      return becomesUrgentOn(issue, rules, today);
+    },
   };
 }
 

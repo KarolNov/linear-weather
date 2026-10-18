@@ -23,12 +23,16 @@ export interface TeamWork {
   /** Team members by name, then anyone else holding the team's issues, e.g. after moving teams. */
   people: Assignee[];
   issues: TeamIssue[];
+  /** The same issues by assignee id; null holds the unassigned ones. */
+  byAssignee: Map<string | null, TeamIssue[]>;
 }
 
 export class Workspace {
   private viewerLoad: Promise<Viewer> | undefined;
   private teamsLoad: Promise<{ all: Team[]; theirs: Set<string> }> | undefined;
   private readonly work = new Map<string, Promise<TeamWork>>();
+  /** Teams fetched ahead that turned out not to be the viewer's: stop asking Linear about them. */
+  private readonly abandoned = new Set<string>();
 
   constructor(private readonly linear: LinearSource) {}
 
@@ -51,7 +55,9 @@ export class Workspace {
     // rather than after it. If it turns out not to be one of theirs, it goes unused.
     if (id) this.teamWork(id).catch(() => {});
     const { all, theirs } = await this.loadTeams();
-    return all.find((t) => t.id === id) ?? all.find((t) => theirs.has(t.id)) ?? all[0] ?? null;
+    const asked = all.find((t) => t.id === id);
+    if (id && !asked) this.abandoned.add(id);
+    return asked ?? all.find((t) => theirs.has(t.id)) ?? all[0] ?? null;
   }
 
   teamWork(teamId: string): Promise<TeamWork> {
@@ -73,20 +79,34 @@ export class Workspace {
   }
 
   private async loadTeamWork(teamId: string): Promise<TeamWork> {
+    // Checked before each request, so an abandoned prefetch stops paging.
+    const linear: LinearSource = {
+      request: (document, ...variables) =>
+        this.abandoned.has(teamId)
+          ? Promise.reject(new Error(`Team ${teamId} is no longer wanted`))
+          : this.linear.request(document, ...variables),
+    };
     const [{ team }, issues] = await Promise.all([
-      this.linear.request(TeamMembersDocument, { teamId }),
-      fetchTeamOpenIssues(this.linear, teamId),
+      linear.request(TeamMembersDocument, { teamId }),
+      fetchTeamOpenIssues(linear, teamId),
     ]);
     const byName = (a: Assignee, b: Assignee) => a.name.localeCompare(b.name);
     const members = team.members.nodes.toSorted(byName);
     const memberIds = new Set(members.map((m) => m.id));
     const outsiders = new Map<string, Assignee>();
-    for (const { assignee } of issues) {
+    const byAssignee = new Map<string | null, TeamIssue[]>();
+    for (const issue of issues as TeamIssue[]) {
+      const { assignee } = issue;
       if (assignee && !memberIds.has(assignee.id)) outsiders.set(assignee.id, assignee);
+      const key = assignee?.id ?? null;
+      const theirs = byAssignee.get(key);
+      if (theirs) theirs.push(issue);
+      else byAssignee.set(key, [issue]);
     }
     return {
       people: [...members, ...[...outsiders.values()].toSorted(byName)],
       issues: issues as TeamIssue[],
+      byAssignee,
     };
   }
 }

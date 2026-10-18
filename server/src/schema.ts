@@ -163,7 +163,7 @@ const IssueRef = builder.objectRef<IssueModel>("Issue").implement({
       type: "Date",
       nullable: true,
       description:
-        "The first day the rules call it urgent: today if it already is, null if it never will be (no due date).",
+        "The first day the rules call it urgent: today if it already is (including undated issues when the team counts those as urgent), null if it never will be (undated, and the team doesn't).",
     }),
   }),
 });
@@ -205,9 +205,8 @@ UserRef.implement({
       resolve: async (user, args, context) => {
         const teamId = args.teamId == null ? user.teamId : String(args.teamId);
         if (!teamId) throw new GraphQLError("Which team? Pass teamId.");
-        const { issues } = await (await signedIn(context)).teamWork(teamId);
-        const theirs = issues.filter((issue) => issue.assignee?.id === user.id);
-        return buildMatrix(theirs, rulesFor(teamId), context.today);
+        const { byAssignee } = await (await signedIn(context)).teamWork(teamId);
+        return buildMatrix(byAssignee.get(user.id) ?? [], rulesFor(teamId), context.today);
       },
     }),
   }),
@@ -233,9 +232,8 @@ TeamRef.implement({
       type: MatrixRef,
       description: "The team's open issues nobody is assigned to.",
       resolve: async (team, _args, context) => {
-        const { issues } = await (await signedIn(context)).teamWork(team.id);
-        const nobodys = issues.filter((issue) => !issue.assignee);
-        return buildMatrix(nobodys, rulesFor(team.id), context.today);
+        const { byAssignee } = await (await signedIn(context)).teamWork(team.id);
+        return buildMatrix(byAssignee.get(null) ?? [], rulesFor(team.id), context.today);
       },
     }),
   }),

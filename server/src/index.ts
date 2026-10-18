@@ -1,5 +1,5 @@
 import { GraphQLError } from "graphql";
-import { createYoga, maskError } from "graphql-yoga";
+import { createLogger, createYoga, maskError, type YogaLogger } from "graphql-yoga";
 import { Hono } from "hono";
 import { auth } from "./auth";
 import {
@@ -20,6 +20,7 @@ const yoga = createYoga<GraphQLContext>({
   // its Node polyfill, whose Response can't cross the web Worker's service binding.
   fetchAPI: globalThis,
   maskedErrors: { maskError: explainLinearErrors },
+  logging: quietAboutLinear(createLogger()),
 });
 
 export const app = new Hono<{ Bindings: Env }>()
@@ -59,6 +60,22 @@ function explainLinearErrors(error: unknown, message: string, isDev?: boolean): 
 }
 
 /**
+ * Yoga logs every error it masks or rewrites. A spent rate limit or a revoked token is expected
+ * and reaches the client with a code, so only log what's actually unexpected.
+ */
+function quietAboutLinear(logger: YogaLogger): YogaLogger {
+  return {
+    ...logger,
+    error: (...args: unknown[]) => {
+      const [error] = args;
+      const cause = error instanceof GraphQLError ? error.originalError : error;
+      if (cause instanceof LinearRateLimitError || cause instanceof LinearAuthError) return;
+      logger.error(...args);
+    },
+  };
+}
+
+/**
  * Linear as the signed-in user sees it, or the mocked Avengers workspace for `?demo=true`, so
  * anyone can try the board without a Linear account.
  */
@@ -67,11 +84,16 @@ async function linearSource(c: AppContext): Promise<LinearSource | null> {
   const authorization = await linearAuthorization(c);
   if (!authorization) return null;
   const client = new LinearClient(authorization);
+  // Concurrent requests fail together on a revoked token; forget the session once.
+  let discarded: Promise<unknown> | undefined;
   return {
     // A revoked token means signed out: forget it, so the next page shows the sign-in.
     request: (document, ...variables) =>
       client.request(document, ...variables).catch(async (error: unknown) => {
-        if (error instanceof LinearAuthError) await discardSession(c);
+        if (error instanceof LinearAuthError) {
+          discarded ??= discardSession(c);
+          await discarded;
+        }
         throw error;
       }),
   };

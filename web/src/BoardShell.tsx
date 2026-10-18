@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   Card,
+  LinkButton,
   Logo,
   Sky,
   type Weather,
@@ -15,10 +16,18 @@ import type { Viewer } from "./App";
 
 export interface BoardShellProps {
   viewer: Viewer;
+  /** Showing the mocked Avengers workspace: offer a way out instead of signing out. */
+  demo?: boolean;
 }
 
 /** The signed-in frame the matrix will live in (#7). */
-export function BoardShell({ viewer }: BoardShellProps) {
+export function BoardShell({ viewer, demo }: BoardShellProps) {
+  const who = (
+    <>
+      <Avatar name={viewer.name} src={viewer.avatarUrl} size={30} />
+      <span {...stylex.props(styles.viewerName)}>{viewer.name}</span>
+    </>
+  );
   return (
     <Sky time="dawn">
       <header {...stylex.props(styles.header)}>
@@ -27,18 +36,26 @@ export function BoardShell({ viewer }: BoardShellProps) {
           <Badge>{viewer.organization.name}</Badge>
         </div>
         {/* The name is hidden on phones, so the label says who is signed in there too. */}
-        <form
-          method="post"
-          action="/auth/logout"
-          aria-label={`Signed in as ${viewer.name}`}
-          {...stylex.props(styles.account)}
-        >
-          <Avatar name={viewer.name} src={viewer.avatarUrl} size={30} />
-          <span {...stylex.props(styles.viewerName)}>{viewer.name}</span>
-          <Button type="submit" variant="quiet">
-            Sign out
-          </Button>
-        </form>
+        {demo ? (
+          <div {...stylex.props(styles.account)}>
+            {who}
+            <LinkButton href="/" variant="quiet">
+              Exit demo
+            </LinkButton>
+          </div>
+        ) : (
+          <form
+            method="post"
+            action="/auth/logout"
+            aria-label={`Signed in as ${viewer.name}`}
+            {...stylex.props(styles.account)}
+          >
+            {who}
+            <Button type="submit" variant="quiet">
+              Sign out
+            </Button>
+          </form>
+        )}
       </header>
 
       <main {...stylex.props(styles.main)}>

@@ -32,11 +32,13 @@ export const app = new Hono<{ Bindings: Bindings }>()
   .all("/graphql", toServer)
   // Only known pages render; anything else 404s without asking Linear who is signed in.
   .get("/", async (c) => {
-    const viewer = await fetchViewer(c);
+    const demo = c.req.query("demo") === "true";
+    const viewer = await fetchViewer(c, demo);
     const props: AppProps = {
       viewer: viewer === UNAVAILABLE ? null : viewer,
       linearUnavailable: viewer === UNAVAILABLE || undefined,
       authError: c.req.query("auth_error"),
+      demo: demo || undefined,
     };
     // Escape "<" so the JSON can't close the <script> tag early.
     const propsJson = JSON.stringify(props).replaceAll("<", "\\u003c");
@@ -64,16 +66,17 @@ export const app = new Hono<{ Bindings: Bindings }>()
 const UNAVAILABLE = Symbol("unavailable");
 
 /**
- * Asks our GraphQL server who is signed in, forwarding the browser's session cookie, and
- * `?demo=true` for the mocked Avengers workspace. Null means signed out; UNAVAILABLE means we
+ * Asks our GraphQL server who is signed in, forwarding the browser's session cookie, or who
+ * the mocked Avengers workspace signs you in as when `demo` is set. Null means signed out; UNAVAILABLE means we
  * couldn't tell (server or Linear failed).
  */
 async function fetchViewer(
   c: Context<{ Bindings: Bindings }>,
+  demo: boolean,
 ): Promise<Viewer | null | typeof UNAVAILABLE> {
   try {
     const url = new URL("/graphql", c.req.url);
-    if (c.req.query("demo") === "true") url.searchParams.set("demo", "true");
+    if (demo) url.searchParams.set("demo", "true");
     const res = await c.env.SERVER.fetch(
       new Request(url, {
         method: "POST",

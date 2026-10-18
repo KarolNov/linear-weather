@@ -32,12 +32,25 @@ describe("web worker", () => {
     expect(fetch.mock.calls[0]?.[0].headers.get("cookie")).toBe("lw_session=abc");
   });
 
-  it("asks the server for the demo workspace on ?demo=true", async () => {
-    const { bindings, fetch } = serverReturning(null);
-    await app.request("/?demo=true", {}, bindings);
-    await app.request("/", {}, bindings);
+  it("shows the demo workspace on ?demo=true, with a way out instead of signing out", async () => {
+    const { bindings, fetch } = serverReturning({
+      name: "Nick Fury",
+      avatarUrl: null,
+      organization: { name: "S.H.I.E.L.D." },
+    });
+
+    const page = await (await app.request("/?demo=true", {}, bindings)).text();
+
     expect(new URL(fetch.mock.calls[0]?.[0].url ?? "").search).toBe("?demo=true");
-    expect(new URL(fetch.mock.calls[1]?.[0].url ?? "").search).toBe("");
+    expect(page).toContain("Nick Fury");
+    expect(page).toContain("Exit demo");
+    expect(page).not.toContain('action="/auth/logout"');
+  });
+
+  it("doesn't ask for the demo without ?demo=true", async () => {
+    const { bindings, fetch } = serverReturning(null);
+    await app.request("/", {}, bindings);
+    expect(new URL(fetch.mock.calls[0]?.[0].url ?? "").search).toBe("");
   });
 
   it("says Linear is unreachable instead of showing signed out when the server fails", async () => {

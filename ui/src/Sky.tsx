@@ -95,7 +95,9 @@ const styles = stylex.create({
   sky: {
     position: "relative",
     minHeight: "100dvh",
-    overflow: "hidden",
+    // "clip", not "hidden": clouds drift past the edges, and a hidden-overflow box can still be
+    // scrolled sideways by focus or find-in-page, shifting the whole page.
+    overflow: "clip",
     isolation: "isolate",
     fontFamily: fonts.body,
     WebkitFontSmoothing: "antialiased",
@@ -121,7 +123,8 @@ const styles = stylex.create({
       "radial-gradient(1.5px 1.5px at 94% 38%, #fff 50%, transparent 51%)",
     ].join(", "),
     maskImage: "linear-gradient(to bottom, #000 30%, transparent)",
-    animationName: { default: twinkle, [REDUCED_MOTION]: "none" },
+    // Only opacity changes, nothing moves, so the twinkle stays on for reduced motion too.
+    animationName: twinkle,
     animationDuration: "6s",
     animationIterationCount: "infinite",
     animationTimingFunction: "ease-in-out",

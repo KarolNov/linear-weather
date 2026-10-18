@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren, JSX } from "preact";
-import { colors, fonts, gradients, radii, shadows, space } from "./tokens.stylex";
+import { colors, fonts, gradients, motion, radii, shadows, space } from "./tokens.stylex";
 
 type Variant = "primary" | "glass" | "quiet";
 type Size = "md" | "lg";
@@ -16,8 +16,14 @@ export type ButtonProps = StyleProps &
   Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "className" | "class" | "style" | "size">;
 
 export function Button({ variant = "primary", size = "md", xstyle, ...rest }: ButtonProps) {
+  // A disabled button drops its hover and press responses, which would suggest it works.
+  const disabled = Boolean(rest.disabled) && [styles.disabled, disabledStyles[variant]];
   return (
-    <button type="button" {...rest} {...stylex.props(...buttonStyles(variant, size), xstyle)} />
+    <button
+      type="button"
+      {...rest}
+      {...stylex.props(...buttonStyles(variant, size), disabled, xstyle)}
+    />
   );
 }
 
@@ -31,6 +37,9 @@ export function LinkButton({ variant = "primary", size = "md", xstyle, ...rest }
 
 const buttonStyles = (variant: Variant, size: Size) =>
   [styles.base, styles[variant], size === "lg" && styles.large] as const;
+
+// Touch screens fire :hover on tap and leave it stuck, so hover styles apply only with a mouse.
+const HOVER = "@media (hover: hover) and (pointer: fine)";
 
 const styles = stylex.create({
   base: {
@@ -50,12 +59,12 @@ const styles = stylex.create({
     lineHeight: 1.2,
     textDecoration: "none",
     whiteSpace: "nowrap",
-    cursor: { default: "pointer", ":disabled": "not-allowed" },
-    opacity: { default: null, ":disabled": 0.7 },
+    cursor: "pointer",
+    // The press responds with a strong ease-out; hover colour changes with a plain ease.
     transitionProperty: "transform, box-shadow, background-color, filter",
-    transitionDuration: "160ms",
-    transitionTimingFunction: "ease-out",
-    transform: { default: null, ":active": "translateY(1px) scale(0.99)" },
+    transitionDuration: "160ms, 200ms, 200ms, 200ms",
+    transitionTimingFunction: `${motion.easeOut}, ease, ease, ease`,
+    transform: { default: null, ":active": "scale(0.97)" },
     outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
     outlineOffset: "2px",
   },
@@ -65,19 +74,39 @@ const styles = stylex.create({
     // Paint the gradient under the transparent border too; by default it starts inside the
     // border and repeats beneath it, leaving a sliver of the start colour on the far edge.
     backgroundOrigin: "border-box",
-    boxShadow: { default: shadows.button, ":hover": "0 12px 26px -8px rgba(232, 93, 42, 0.85)" },
-    filter: { default: null, ":hover": "saturate(1.1) brightness(1.04)" },
+    boxShadow: {
+      default: shadows.button,
+      [HOVER]: { default: shadows.button, ":hover": "0 12px 26px -8px rgba(232, 93, 42, 0.85)" },
+    },
+    filter: {
+      default: null,
+      [HOVER]: { default: null, ":hover": "saturate(1.1) brightness(1.04)" },
+    },
   },
   glass: {
     color: colors.inkOnSky,
-    backgroundColor: { default: colors.surfaceOnSky, ":hover": "rgba(255, 255, 255, 0.24)" },
+    backgroundColor: {
+      default: colors.surfaceOnSky,
+      [HOVER]: { default: colors.surfaceOnSky, ":hover": "rgba(255, 255, 255, 0.24)" },
+    },
     borderColor: colors.borderOnSky,
     backdropFilter: "blur(12px)",
   },
   quiet: {
     color: colors.ink,
-    backgroundColor: { default: "rgba(255, 255, 255, 0.55)", ":hover": colors.surfaceStrong },
+    backgroundColor: {
+      default: "rgba(255, 255, 255, 0.55)",
+      [HOVER]: { default: "rgba(255, 255, 255, 0.55)", ":hover": colors.surfaceStrong },
+    },
     borderColor: colors.border,
   },
   large: { paddingBlock: "14px", paddingInline: space.lg, fontSize: "1.0625rem" },
+  disabled: { cursor: "not-allowed", opacity: 0.7, transform: null },
+});
+
+// Same values as each variant's resting state, without the hover condition.
+const disabledStyles = stylex.create({
+  primary: { boxShadow: shadows.button, filter: null },
+  glass: { backgroundColor: colors.surfaceOnSky },
+  quiet: { backgroundColor: "rgba(255, 255, 255, 0.55)" },
 });

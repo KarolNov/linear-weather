@@ -11,7 +11,7 @@ import {
   type Weather,
   WeatherIcon,
 } from "ui";
-import { colors, fonts, radii, space } from "ui/tokens.stylex";
+import { colors, fonts, motion, radii, space } from "ui/tokens.stylex";
 
 export interface SignInPageProps {
   linearUnavailable?: boolean;
@@ -22,44 +22,48 @@ export function SignInPage({ linearUnavailable, authError }: SignInPageProps) {
   return (
     <Sky time="sunset">
       <div {...stylex.props(styles.page)}>
-        <header>
+        <header {...enter(0)}>
           <Logo onSky />
         </header>
 
         <main {...stylex.props(styles.hero)}>
           <section {...stylex.props(styles.pitch)}>
-            <h1 {...stylex.props(styles.title)}>See the storm before it hits your team.</h1>
-            <p {...stylex.props(styles.lead)}>
+            <h1 {...stylex.props(styles.title, styles.enter, styles.delay(STEP))}>
+              See the storm before it hits your team.
+            </h1>
+            <p {...stylex.props(styles.lead, styles.enter, styles.delay(STEP * 2))}>
               See who on your team is overloaded now, and who is about to be. We sort everyone's
               issues into Do, Schedule, Delegate and Drop, and turn them into a forecast.
             </p>
 
-            {linearUnavailable ? (
-              <Alert onSky>Couldn't reach Linear just now. Please reload in a minute.</Alert>
-            ) : (
-              <div {...stylex.props(styles.actions)}>
-                {authError && (
-                  <Alert weather="rain" onSky>
-                    {signInErrorMessage(authError)}
-                  </Alert>
-                )}
-                <div {...stylex.props(styles.ctas)}>
-                  <LinkButton href="/auth/login" size="lg">
-                    Sign in with Linear
-                    <span aria-hidden="true">→</span>
-                  </LinkButton>
-                  {/* Will sign in to a mocked team and project, for trying the board without
+            <div {...enter(STEP * 3)}>
+              {linearUnavailable ? (
+                <Alert onSky>Couldn't reach Linear just now. Please reload in a minute.</Alert>
+              ) : (
+                <div {...stylex.props(styles.actions)}>
+                  {authError && (
+                    <Alert weather="rain" onSky>
+                      {signInErrorMessage(authError)}
+                    </Alert>
+                  )}
+                  <div {...stylex.props(styles.ctas)}>
+                    <LinkButton href="/auth/login" size="lg">
+                      Sign in with Linear
+                      <span aria-hidden="true">→</span>
+                    </LinkButton>
+                    {/* Will sign in to a mocked team and project, for trying the board without
                       a Linear workspace. */}
-                  <Button variant="glass" size="lg" disabled>
-                    Explore the demo
-                    <Badge tone="onSky">Soon</Badge>
-                  </Button>
+                    <Button variant="glass" size="lg" disabled>
+                      Explore the demo
+                      <Badge tone="onSky">Soon</Badge>
+                    </Button>
+                  </div>
+                  <p {...stylex.props(styles.fineprint)}>
+                    You'll see exactly the teams and issues you can see in Linear.
+                  </p>
                 </div>
-                <p {...stylex.props(styles.fineprint)}>
-                  You'll see exactly the teams and issues you can see in Linear.
-                </p>
-              </div>
-            )}
+              )}
+            </div>
           </section>
 
           <ForecastPreview />
@@ -99,7 +103,11 @@ const sampleTeam: { name: string; weather: Weather; summary: string; week: Weath
 /** A made-up team, to show what the board will tell you once you're signed in. */
 function ForecastPreview() {
   return (
-    <Card variant="glass" as="section" xstyle={styles.preview}>
+    <Card
+      variant="glass"
+      as="section"
+      xstyle={[styles.preview, styles.enter, styles.delay(STEP * 4)]}
+    >
       <div {...stylex.props(styles.previewHeader)}>
         <h2 {...stylex.props(styles.previewTitle)}>Team forecast</h2>
         <span {...stylex.props(styles.weeks)} aria-hidden="true">
@@ -110,8 +118,11 @@ function ForecastPreview() {
         </span>
       </div>
       <ul {...stylex.props(styles.rows)} aria-label="Example forecast">
-        {sampleTeam.map((person) => (
-          <li key={person.name} {...stylex.props(styles.row)}>
+        {sampleTeam.map((person, row) => (
+          <li
+            key={person.name}
+            {...stylex.props(styles.row, styles.enter, styles.delay(STEP * 5 + row * ROW_STEP))}
+          >
             <Avatar name={person.name} size={36} />
             <span {...stylex.props(styles.person)}>
               <span {...stylex.props(styles.personName)}>{person.name}</span>
@@ -137,9 +148,32 @@ function signInErrorMessage(code: string): string {
   return "Signing in with Linear failed. Please try again.";
 }
 
+// The page settles in piece by piece, top to bottom, then the example forecast row by row.
+// People see this page rarely, so a little choreography is welcome. With reduced motion the
+// pieces only fade in.
+const rise = stylex.keyframes({
+  from: { opacity: 0, transform: "translateY(16px)" },
+  to: { opacity: 1, transform: "none" },
+});
+
+const fadeIn = stylex.keyframes({ from: { opacity: 0 } });
+
+// Milliseconds between one piece of the page starting to appear and the next.
+const STEP = 150;
+const ROW_STEP = 100;
+
+const enter = (delayMs: number) => stylex.props(styles.enter, styles.delay(delayMs));
+
 const WIDE = "@media (min-width: 960px)";
 
 const styles = stylex.create({
+  enter: {
+    animationName: { default: rise, "@media (prefers-reduced-motion: reduce)": fadeIn },
+    animationDuration: "800ms",
+    animationTimingFunction: motion.easeOut,
+    animationFillMode: "both",
+  },
+  delay: (ms: number) => ({ animationDelay: `${ms}ms` }),
   page: {
     display: "flex",
     flexDirection: "column",

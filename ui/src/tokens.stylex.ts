@@ -64,3 +64,8 @@ export const shadows = stylex.defineVars({
   floating: "0 24px 60px -20px rgba(20, 10, 50, 0.55)",
   button: "0 8px 20px -8px rgba(232, 93, 42, 0.7)",
 });
+
+export const motion = stylex.defineVars({
+  // Strong ease-out: moves at once, so a response feels immediate. The built-in curves are weak.
+  easeOut: "cubic-bezier(0.23, 1, 0.32, 1)",
+});

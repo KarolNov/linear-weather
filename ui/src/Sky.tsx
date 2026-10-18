@@ -25,7 +25,7 @@ export function Sky({ time = "sunset", children }: SkyProps) {
   const sunset = time === "sunset";
   return (
     <div {...stylex.props(styles.sky, sunset ? styles.sunset : styles.dawn)}>
-      <div aria-hidden="true" {...stylex.props(styles.scenery)}>
+      <div aria-hidden="true" {...stylex.props(styles.scenery, !sunset && styles.pinned)}>
         <CloudFilter />
         {sunset && <div {...stylex.props(styles.stars)} />}
         {clouds.map((cloud) => (
@@ -105,6 +105,9 @@ const styles = stylex.create({
   sunset: { backgroundImage: gradients.sunset, color: colors.inkOnSky },
   dawn: { backgroundImage: gradients.dawn, backgroundAttachment: "fixed", color: colors.ink },
   scenery: { position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none" },
+  // The board's height changes as issue lists open and shut. Pinned to the viewport like the
+  // gradient behind it, the clouds stay put instead of sliding with the page.
+  pinned: { position: "fixed" },
   content: { position: "relative" },
 
   stars: {

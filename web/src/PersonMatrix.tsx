@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Avatar, Card } from "ui";
 import { colors, fonts, media, motion, radii, space } from "ui/tokens.stylex";
 import { type CalendarDate, type PersonMatrix as Matrix, QUADRANTS, type Quadrant } from "./board";
@@ -29,9 +29,56 @@ export function PersonMatrix({
 }: PersonMatrixProps) {
   const [only, setOnly] = useState<Quadrant | null>(null);
   const details = useRef<HTMLDetailsElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  // The <details> stays open while its list slides shut, so `open` lags `expanded` on the way down.
+  const [open, setOpen] = useState(expanded);
+  const sliding = useRef<Animation | null>(null);
+  // Set when there is nothing to slide: the first render, or a list the browser already opened.
+  const still = useRef(true);
+  useLayoutEffect(() => {
+    if (expanded && !open) {
+      setOpen(true); // Runs again once the list is in the DOM, to slide it open.
+      return;
+    }
+    const el = body.current;
+    if (still.current || !el || !open) {
+      still.current = false;
+      return;
+    }
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      if (!expanded) setOpen(false);
+      return;
+    }
+    // From wherever it is now: a list reopened mid-slide turns around instead of jumping.
+    const midway = sliding.current?.playState === "running";
+    const fromHeight = midway ? el.getBoundingClientRect().height : null;
+    const fromOpacity = midway ? Number(getComputedStyle(el).opacity) : 1;
+    sliding.current?.cancel();
+    // The layout height, not scrollHeight, which counts the cards still rising into place.
+    const full = el.getBoundingClientRect().height;
+    // Opening, the cards fade in on their own; closing, the list fades as it shuts, so the cards
+    // aren't sliced off by the bottom edge. Shutting is quicker than opening.
+    const animation = el.animate(
+      {
+        height: [`${fromHeight ?? (expanded ? 0 : full)}px`, `${expanded ? full : 0}px`],
+        opacity: [fromOpacity, expanded ? 1 : 0],
+        overflow: ["hidden", "hidden"],
+      },
+      { duration: expanded ? OPEN_MS : CLOSE_MS, easing: SLIDE_EASING },
+    );
+    sliding.current = animation;
+    animation.onfinish = () => {
+      sliding.current = null;
+      if (!expanded) setOpen(false);
+    };
+  }, [expanded, open]);
   // Hydration leaves `open` as the DOM has it, so catch up with a list opened before then.
   useEffect(() => {
-    if (details.current?.open && !expanded) onExpandedChange(true);
+    if (details.current?.open && !expanded) {
+      still.current = true;
+      setOpen(true);
+      onExpandedChange(true);
+    }
   }, []);
   const pick = (q: Quadrant) => {
     if (!expanded) {
@@ -104,14 +151,20 @@ export function PersonMatrix({
         // <details> so the toggle works before the page hydrates; afterwards the board owns it.
         <details
           ref={details}
-          open={expanded}
+          open={open}
           onToggle={(event) => {
-            const open = event.currentTarget.open;
-            if (open !== expanded) onExpandedChange(open);
-            if (!open) setOnly(null);
+            if (!event.currentTarget.open) setOnly(null);
           }}
         >
-          <summary {...stylex.props(styles.toggle)}>
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: <summary> is the native toggle. */}
+          <summary
+            // Before hydration the browser toggles the list; after, the board does, so it can slide.
+            onClick={(event) => {
+              event.preventDefault();
+              onExpandedChange(!expanded);
+            }}
+            {...stylex.props(styles.toggle)}
+          >
             <svg
               width="12"
               height="12"
@@ -131,31 +184,34 @@ export function PersonMatrix({
             {expanded ? "Hide issues" : `Show ${total === 1 ? "issue" : `${total} issues`}`}
           </summary>
           {/* Keyed by what's shown, so opening the list or picking a quadrant replays the
-              reveal: the cards drop in one after another, the first few at least. */}
-          <div key={`${expanded}-${only}`} {...stylex.props(styles.groups)}>
-            {shown.map((q) => (
-              <section key={q} aria-label={`${name}: ${quadrantInfo[q].name}`}>
-                <h3 {...stylex.props(styles.groupHeading)}>
-                  {quadrantInfo[q].name}
-                  <span {...stylex.props(styles.groupCount)}>{matrix.counts[q]}</span>
-                </h3>
-                <ul {...stylex.props(styles.list)}>
-                  {matrix.issues
-                    .filter((issue) => issue.quadrant === q)
-                    .map((issue) => (
-                      <IssueCard
-                        key={issue.id}
-                        issue={issue}
-                        today={today}
-                        xstyle={[
-                          entrance.reveal,
-                          entrance.delay(Math.min(revealed++, MAX_STAGGERED) * CARD_STEP_MS),
-                        ]}
-                      />
-                    ))}
-                </ul>
-              </section>
-            ))}
+              reveal: the cards drop in one after another, the first few at least. Not keyed by
+              `expanded`, so the cards hold still while the list slides shut. */}
+          <div ref={body} {...stylex.props(styles.slide)}>
+            <div key={`${open}-${only}`} {...stylex.props(styles.groups)}>
+              {shown.map((q) => (
+                <section key={q} aria-label={`${name}: ${quadrantInfo[q].name}`}>
+                  <h3 {...stylex.props(styles.groupHeading)}>
+                    {quadrantInfo[q].name}
+                    <span {...stylex.props(styles.groupCount)}>{matrix.counts[q]}</span>
+                  </h3>
+                  <ul {...stylex.props(styles.list)}>
+                    {matrix.issues
+                      .filter((issue) => issue.quadrant === q)
+                      .map((issue) => (
+                        <IssueCard
+                          key={issue.id}
+                          issue={issue}
+                          today={today}
+                          xstyle={[
+                            entrance.reveal,
+                            entrance.delay(Math.min(revealed++, MAX_STAGGERED) * CARD_STEP_MS),
+                          ]}
+                        />
+                      ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
           </div>
         </details>
       )}
@@ -167,6 +223,12 @@ export function PersonMatrix({
 // shouldn't keep the PM waiting for its tail.
 const CARD_STEP_MS = 20;
 const MAX_STAGGERED = 6;
+
+// The list's height slides open, and a little faster shut. WAAPI wants the curve itself, not the CSS variable,
+// so this is `motion.easeOut` spelled out.
+const OPEN_MS = 260;
+const CLOSE_MS = 200;
+const SLIDE_EASING = "cubic-bezier(0.23, 1, 0.32, 1)";
 
 const styles = stylex.create({
   card: {
@@ -266,6 +328,9 @@ const styles = stylex.create({
   },
   chevronOpen: { transform: "rotate(90deg)" },
   placeholder: { visibility: "hidden" },
+  // Keeps the list's top margin inside, as it is mid-slide with overflow hidden: otherwise the
+  // margin collapses out once the slide ends and the card grows by it in one jump.
+  slide: { display: "flow-root" },
   groups: {
     display: "flex",
     flexDirection: "column",

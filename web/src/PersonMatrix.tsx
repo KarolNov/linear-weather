@@ -4,6 +4,7 @@ import { Avatar, Card } from "ui";
 import { colors, fonts, motion, radii, space } from "ui/tokens.stylex";
 import { type CalendarDate, type PersonMatrix as Matrix, QUADRANTS, type Quadrant } from "./board";
 import { IssueCard } from "./IssueCard";
+import { entrance } from "./motion";
 import { quadrantFill, quadrantInfo } from "./quadrants";
 
 export interface PersonMatrixProps {
@@ -12,13 +13,20 @@ export interface PersonMatrixProps {
   /** Whether the issue list under the matrix is open. The board starts with every list shut. */
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
+  xstyle?: stylex.StyleXStyles;
 }
 
 /**
  * One person's mini Eisenhower matrix: a 2×2 of counts, then their issues by quadrant.
  * Picking a quadrant opens the list narrowed to it; picking it again shows every quadrant.
  */
-export function PersonMatrix({ matrix, today, expanded, onExpandedChange }: PersonMatrixProps) {
+export function PersonMatrix({
+  matrix,
+  today,
+  expanded,
+  onExpandedChange,
+  xstyle,
+}: PersonMatrixProps) {
   const [only, setOnly] = useState<Quadrant | null>(null);
   const pick = (q: Quadrant) => {
     if (!expanded) {
@@ -31,9 +39,11 @@ export function PersonMatrix({ matrix, today, expanded, onExpandedChange }: Pers
   const name = matrix.assignee?.name ?? "Unassigned";
   const total = matrix.issues.length;
   const shown = QUADRANTS.filter((q) => (only ? q === only : matrix.counts[q] > 0));
+  // Counts cards as they render, across quadrants, for the reveal's stagger.
+  let revealed = 0;
 
   return (
-    <Card as="article" xstyle={styles.card}>
+    <Card as="article" xstyle={[styles.card, xstyle]}>
       <header {...stylex.props(styles.header)}>
         {matrix.assignee ? (
           <Avatar name={name} src={matrix.assignee.avatarUrl} size={36} />
@@ -109,7 +119,9 @@ export function PersonMatrix({ matrix, today, expanded, onExpandedChange }: Pers
             </svg>
             {expanded ? "Hide issues" : `Show ${total === 1 ? "issue" : `${total} issues`}`}
           </summary>
-          <div {...stylex.props(styles.groups)}>
+          {/* Keyed by what's shown, so opening the list or picking a quadrant replays the
+              reveal: the cards drop in one after another, the first few at least. */}
+          <div key={`${expanded}-${only}`} {...stylex.props(styles.groups)}>
             {shown.map((q) => (
               <section key={q} aria-label={`${name}: ${quadrantInfo[q].name}`}>
                 <h3 {...stylex.props(styles.groupHeading)}>
@@ -120,7 +132,15 @@ export function PersonMatrix({ matrix, today, expanded, onExpandedChange }: Pers
                   {matrix.issues
                     .filter((issue) => issue.quadrant === q)
                     .map((issue) => (
-                      <IssueCard key={issue.id} issue={issue} today={today} />
+                      <IssueCard
+                        key={issue.id}
+                        issue={issue}
+                        today={today}
+                        xstyle={[
+                          entrance.reveal,
+                          entrance.delay(Math.min(revealed++, MAX_STAGGERED) * CARD_STEP_MS),
+                        ]}
+                      />
                     ))}
                 </ul>
               </section>
@@ -133,6 +153,11 @@ export function PersonMatrix({ matrix, today, expanded, onExpandedChange }: Pers
 }
 
 const HOVER = "@media (hover: hover) and (pointer: fine)";
+
+// Opening a list is frequent, so the stagger is tight and stops after a few cards: a long list
+// shouldn't keep the PM waiting for its tail.
+const CARD_STEP_MS = 20;
+const MAX_STAGGERED = 6;
 
 const styles = stylex.create({
   card: {
@@ -177,8 +202,9 @@ const styles = stylex.create({
     font: "inherit",
     textAlign: "start",
     cursor: { default: "pointer", ":disabled": "default" },
+    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
     outlineOffset: "2px",
-    transitionProperty: "opacity, transform",
+    transitionProperty: "opacity, transform, box-shadow",
     transitionDuration: "160ms",
     transitionTimingFunction: motion.easeOut,
     transform: { default: null, ":active": "scale(0.97)" },
@@ -217,6 +243,10 @@ const styles = stylex.create({
       [HOVER]: { default: "transparent", ":hover": "rgba(29, 26, 51, 0.06)" },
     },
     outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+    transitionProperty: "transform, background-color",
+    transitionDuration: "160ms, 200ms",
+    transitionTimingFunction: `${motion.easeOut}, ease`,
+    transform: { default: null, ":active": "scale(0.97)" },
   },
   chevron: {
     transitionProperty: "transform",

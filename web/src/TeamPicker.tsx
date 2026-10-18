@@ -123,6 +123,8 @@ const menuIn = stylex.keyframes({
   to: { opacity: 1, transform: "none" },
 });
 
+const fadeIn = stylex.keyframes({ from: { opacity: 0 } });
+
 const styles = stylex.create({
   picker: { position: "relative" },
   trigger: {
@@ -193,7 +195,7 @@ const styles = stylex.create({
     backdropFilter: "blur(16px)",
     boxShadow: shadows.card,
     transformOrigin: "top right",
-    animationName: menuIn,
+    animationName: { default: menuIn, "@media (prefers-reduced-motion: reduce)": fadeIn },
     animationDuration: "160ms",
     animationTimingFunction: motion.easeOut,
   },

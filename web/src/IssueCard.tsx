@@ -7,13 +7,14 @@ import { quadrantEdge } from "./quadrants";
 export interface IssueCardProps {
   issue: BoardIssue;
   today: CalendarDate;
+  xstyle?: stylex.StyleXStyles;
 }
 
 /** One issue on the board, linking to it in Linear. */
-export function IssueCard({ issue, today }: IssueCardProps) {
+export function IssueCard({ issue, today, xstyle }: IssueCardProps) {
   const due = issue.dueDate ? describeDue(issue.dueDate, today) : null;
   return (
-    <li {...stylex.props(styles.card, quadrantEdge[issue.quadrant])}>
+    <li {...stylex.props(styles.card, quadrantEdge[issue.quadrant], xstyle)}>
       <div {...stylex.props(styles.meta)}>
         <span {...stylex.props(styles.identifier)}>{issue.identifier}</span>
         <span aria-hidden="true">·</span>

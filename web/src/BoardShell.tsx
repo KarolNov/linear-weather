@@ -19,6 +19,7 @@ import {
   type PersonMatrix as PersonMatrixData,
   QUADRANTS,
 } from "./board";
+import { entrance } from "./motion";
 import { PersonMatrix } from "./PersonMatrix";
 import { quadrantFill, quadrantInfo } from "./quadrants";
 import { TeamPicker } from "./TeamPicker";
@@ -60,7 +61,7 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
       <main {...stylex.props(styles.main)}>
         {board ? <TeamBoard board={board} demo={demo} /> : <BoardUnavailable error={boardError} />}
 
-        <div {...stylex.props(styles.legends)}>
+        <div {...stylex.props(styles.legends, entrance.board, entrance.delay(LEGEND_DELAY_MS))}>
           <Card as="section">
             <h2 {...stylex.props(styles.heading)}>How we sort issues</h2>
             <div {...stylex.props(styles.matrix)}>
@@ -121,7 +122,7 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
   }
   return (
     <section aria-labelledby="team-name" {...stylex.props(styles.board)}>
-      <div {...stylex.props(styles.boardHeader)}>
+      <div {...stylex.props(styles.boardHeader, entrance.board)}>
         <div>
           <h1 id="team-name" {...stylex.props(styles.title)}>
             {team.name}
@@ -147,13 +148,17 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
         </div>
       </div>
       <div {...stylex.props(styles.people)}>
-        {people.map((matrix) => (
+        {people.map((matrix, i) => (
           <PersonMatrix
             key={keyOf(matrix)}
             matrix={matrix}
             today={today}
             expanded={expanded.has(keyOf(matrix))}
             onExpandedChange={(open) => setOne(keyOf(matrix), open)}
+            xstyle={[
+              entrance.board,
+              entrance.delay(PERSON_DELAY_MS + Math.min(i, MAX_STAGGERED) * PERSON_STEP_MS),
+            ]}
           />
         ))}
       </div>
@@ -177,6 +182,13 @@ function BoardUnavailable({ error }: { error?: BoardError }) {
     </Card>
   );
 }
+
+// The board settles in like the sign-in page, but quicker, since a PM opens it often: the
+// team's name, then each person's matrix in reading order, then the legend.
+const PERSON_DELAY_MS = 80;
+const PERSON_STEP_MS = 50;
+const MAX_STAGGERED = 8;
+const LEGEND_DELAY_MS = PERSON_DELAY_MS + (MAX_STAGGERED + 1) * PERSON_STEP_MS;
 
 const weatherLegend: [Weather, string][] = [
   ["sun", "lighter urgent load than the team average"],

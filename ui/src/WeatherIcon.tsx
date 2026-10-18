@@ -57,14 +57,17 @@ export function WeatherIcon({
       )}
       {weather === "storm" && (
         <>
-          <Cloud y={-2} dark />
+          {/* Drawn first, so the cloud covers its top and it strikes from underneath. */}
           <path d="M26 32l-6 8h5l-3 7 8-10h-5l3-5z" {...stylex.props(styles.bolt, styles.flash)} />
+          <Cloud y={-2} dark />
         </>
       )}
       {weather === "fog" && (
         <g {...stylex.props(styles.fog)}>
-          <path d="M8 18h26M6 32h30" {...stylex.props(styles.fogBand)} />
-          <path d="M14 25h28M14 39h22" {...stylex.props(styles.fogBand, styles.fogBandBack)} />
+          <path d="M8 14h26" {...stylex.props(styles.wisp)} />
+          <path d="M14 21h28" {...stylex.props(styles.wisp, styles.wisp2)} />
+          <path d="M6 28h30" {...stylex.props(styles.wisp, styles.wisp3)} />
+          <path d="M14 35h22" {...stylex.props(styles.wisp, styles.wisp4)} />
         </g>
       )}
     </svg>
@@ -122,9 +125,11 @@ const flash = stylex.keyframes({
   "9%": { opacity: 0.9 },
 });
 
-const slide = stylex.keyframes({
-  "0%, 100%": { transform: "translateX(-2px)" },
-  "50%": { transform: "translateX(3px)" },
+// A band of mist drifting out, thinning, and coming back.
+const wisp = stylex.keyframes({
+  "0%, 100%": { transform: "translateX(0) scaleX(1)", opacity: 1 },
+  "30%": { transform: "translateX(5px) scaleX(0.85)", opacity: 0.45 },
+  "65%": { transform: "translateX(-3px) scaleX(1.08)", opacity: 0.8 },
 });
 
 // Animate only for a mouse hovering the icon: a tap on a touch screen would start a loop with
@@ -133,9 +138,9 @@ const HOVER_MOTION =
   "@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)";
 
 // Hover animations are short-lived, so the loops are quick enough to read within a second or
-// so. Shapes that look fine in any pose (sun, cloud, fog) freeze where they are when the
-// pointer leaves. Rain and lightning would freeze half-faded, so they play only while hovered
-// and snap back to rest. (The compiler needs the hover condition written out inside
+// so. Shapes that look fine in any pose (sun, cloud) freeze where they are when the
+// pointer leaves. Rain, lightning and fog would freeze half-faded or out of line, so they play
+// only while hovered and snap back to rest. (The compiler needs the hover condition written out inside
 // stylex.create, so each animated style repeats it.)
 const styles = stylex.create({
   icon: { display: "block", flexShrink: 0, overflow: "visible" },
@@ -203,15 +208,19 @@ const styles = stylex.create({
     animationTimingFunction: "steps(1, end)",
     animationIterationCount: "infinite",
   },
-  fogBand: {
-    animationName: slide,
-    animationDuration: "3s",
+  // Each band drifts at its own pace and some the other way, so the mist never moves as one.
+  wisp: {
+    animationName: {
+      default: "none",
+      [HOVER_MOTION]: { default: "none", [stylex.when.ancestor(":hover")]: wisp },
+    },
+    animationDuration: "2.6s",
     animationTimingFunction: "ease-in-out",
     animationIterationCount: "infinite",
-    animationPlayState: {
-      default: "paused",
-      [HOVER_MOTION]: { default: "paused", [stylex.when.ancestor(":hover")]: "running" },
-    },
+    transformBox: "fill-box",
+    transformOrigin: "center",
   },
-  fogBandBack: { animationDirection: "reverse" },
+  wisp2: { animationDuration: "3.4s", animationDirection: "reverse", animationDelay: "-0.8s" },
+  wisp3: { animationDuration: "2.9s", animationDelay: "-1.6s" },
+  wisp4: { animationDuration: "3.8s", animationDirection: "reverse", animationDelay: "-0.4s" },
 });

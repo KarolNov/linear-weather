@@ -51,8 +51,8 @@ export function SignInPage({ linearUnavailable, authError }: SignInPageProps) {
                       Sign in with Linear
                       <span aria-hidden="true">→</span>
                     </LinkButton>
-                    {/* Will sign in to a mocked team and project, for trying the board without
-                      a Linear workspace. */}
+                    {/* Will sign in as Nick Fury, PM of a mocked Avengers team, for trying the
+                        board without a Linear workspace. */}
                     <Button variant="glass" size="lg" disabled>
                       Explore the demo
                       <Badge tone="onSky">Soon</Badge>
@@ -73,34 +73,47 @@ export function SignInPage({ linearUnavailable, authError }: SignInPageProps) {
   );
 }
 
+// The original Avengers, as their PM sees them. The demo will sign you in as Nick Fury.
 const sampleTeam: { name: string; weather: Weather; summary: string; week: Weather[] }[] = [
   {
-    name: "Ada Lovelace",
+    name: "Tony Stark",
+    weather: "storm",
+    summary: "11 urgent, 3 overdue",
+    week: ["storm", "storm", "rain", "partly"],
+  },
+  {
+    name: "Steve Rogers",
     weather: "sun",
     summary: "2 urgent",
     week: ["sun", "sun", "partly", "sun"],
   },
   {
-    name: "Grace Hopper",
+    name: "Natasha Romanoff",
     weather: "partly",
     summary: "4 urgent",
     week: ["partly", "rain", "partly", "sun"],
   },
   {
-    name: "Alan Turing",
-    weather: "storm",
-    summary: "9 urgent",
-    week: ["storm", "rain", "rain", "partly"],
+    name: "Bruce Banner",
+    weather: "rain",
+    summary: "6 urgent",
+    week: ["rain", "storm", "rain", "partly"],
   },
   {
-    name: "Katherine Johnson",
+    name: "Thor Odinson",
     weather: "fog",
-    summary: "6 undated",
-    week: ["fog", "fog", "partly", "partly"],
+    summary: "7 with no due date",
+    week: ["fog", "fog", "partly", "sun"],
+  },
+  {
+    name: "Clint Barton",
+    weather: "sun",
+    summary: "1 urgent",
+    week: ["sun", "partly", "sun", "sun"],
   },
 ];
 
-/** A made-up team, to show what the board will tell you once you're signed in. */
+/** A sample team, to show what the board will tell you once you're signed in. */
 function ForecastPreview() {
   return (
     <Card
@@ -117,7 +130,7 @@ function ForecastPreview() {
           <span>W4</span>
         </span>
       </div>
-      <ul {...stylex.props(styles.rows)} aria-label="Example forecast">
+      <ul {...stylex.props(styles.rows)} aria-label="Example forecast for the Avengers">
         {sampleTeam.map((person, row) => (
           <li
             key={person.name}
@@ -138,7 +151,6 @@ function ForecastPreview() {
           </li>
         ))}
       </ul>
-      <p {...stylex.props(styles.previewNote)}>Example team. Yours appears after you sign in.</p>
     </Card>
   );
 }
@@ -278,5 +290,4 @@ const styles = stylex.create({
     borderRadius: radii.sm,
     backgroundColor: "rgba(255, 255, 255, 0.16)",
   },
-  previewNote: { marginTop: space.md, fontSize: "0.8125rem", color: colors.inkOnSkyMuted },
 });

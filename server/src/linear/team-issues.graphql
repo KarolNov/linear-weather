@@ -1,0 +1,37 @@
+# Everything the matrix needs to place and show an issue, and nothing more: each field costs
+# 0.1 complexity points and each nested object 1, multiplied by the page size.
+fragment IssueCard on Issue {
+  id
+  identifier
+  title
+  dueDate
+  priority
+  estimate
+  assignee {
+    id
+    name
+    avatarUrl
+  }
+  state {
+    name
+    type
+  }
+}
+
+# `nodes` rather than `edges { node cursor }`: one object fewer per issue, and pageInfo has the
+# only cursor we need. Completed and canceled issues aren't anyone's load.
+query TeamOpenIssues($teamId: ID!, $first: Int!, $after: String) {
+  issues(
+    first: $first
+    after: $after
+    filter: { team: { id: { eq: $teamId } }, state: { type: { nin: ["completed", "canceled"] } } }
+  ) {
+    nodes {
+      ...IssueCard
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

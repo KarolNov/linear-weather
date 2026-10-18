@@ -4,6 +4,7 @@ fragment IssueCard on Issue {
   id
   identifier
   title
+  url
   dueDate
   priority
   estimate

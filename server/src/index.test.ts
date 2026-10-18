@@ -16,3 +16,18 @@ describe("server worker", () => {
     expect(await res.json()).toEqual({ data: { hello: "☀️" } });
   });
 });
+
+describe("GET /board", () => {
+  it("answers from the demo workspace on ?demo=true", async () => {
+    const res = await exports.default.fetch("http://localhost/board?demo=true&team=demo-team-ops");
+    const board = (await res.json()) as { team: { name: string }; people: unknown[] };
+    expect(board.team.name).toBe("S.H.I.E.L.D. Ops");
+    expect(board.people.length).toBeGreaterThan(0);
+  });
+
+  it("is 401 when nobody is signed in", async () => {
+    const res = await exports.default.fetch("http://example.com/board");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "signed_out" });
+  });
+});

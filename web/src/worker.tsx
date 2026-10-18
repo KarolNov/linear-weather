@@ -2,6 +2,7 @@ import { type Context, Hono } from "hono";
 import { html, raw } from "hono/html";
 import { renderToString } from "preact-render-to-string";
 import { App, type AppProps, type Viewer } from "./App";
+import type { Board, BoardError } from "./board";
 
 export interface Bindings {
   /** Service binding to the server Worker (see wrangler.jsonc). */
@@ -34,11 +35,14 @@ export const app = new Hono<{ Bindings: Bindings }>()
   .get("/", async (c) => {
     const demo = c.req.query("demo") === "true";
     const viewer = await fetchViewer(c, demo);
+    const signedIn = viewer !== null && viewer !== UNAVAILABLE;
+    const board = signedIn ? await fetchBoard(c, demo, c.req.query("team")) : null;
     const props: AppProps = {
       viewer: viewer === UNAVAILABLE ? null : viewer,
       linearUnavailable: viewer === UNAVAILABLE || undefined,
       authError: c.req.query("auth_error"),
       demo: demo || undefined,
+      ...(board && ("error" in board ? { board: null, boardError: board.error } : { board })),
     };
     // Escape "<" so the JSON can't close the <script> tag early.
     const propsJson = JSON.stringify(props).replaceAll("<", "\\u003c");
@@ -101,6 +105,34 @@ async function fetchViewer(
   } catch (error) {
     console.error(`Couldn't load the viewer: ${error}`);
     return UNAVAILABLE;
+  }
+}
+
+/**
+ * The board for `teamId` (or the first team), from the server's temporary `/board` route,
+ * forwarding the browser's session cookie like `fetchViewer`.
+ */
+async function fetchBoard(
+  c: Context<{ Bindings: Bindings }>,
+  demo: boolean,
+  teamId: string | undefined,
+): Promise<Board | { error: BoardError }> {
+  try {
+    const url = new URL("/board", c.req.url);
+    if (demo) url.searchParams.set("demo", "true");
+    if (teamId) url.searchParams.set("team", teamId);
+    const res = await c.env.SERVER.fetch(
+      new Request(url, { headers: { cookie: c.req.header("cookie") ?? "" } }),
+    );
+    if (res.status === 503) {
+      const { resetAt } = (await res.json()) as { resetAt: number | null };
+      return { error: { kind: "rate_limited", resetAt } };
+    }
+    if (!res.ok) throw new Error(`server responded ${res.status}`);
+    return (await res.json()) as Board;
+  } catch (error) {
+    console.error(`Couldn't load the board: ${error}`);
+    return { error: { kind: "unavailable" } };
   }
 }
 

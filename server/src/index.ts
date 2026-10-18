@@ -1,7 +1,14 @@
 import { createYoga } from "graphql-yoga";
 import { Hono } from "hono";
 import { auth } from "./auth";
-import { LinearClient, type LinearSource } from "./linear/client";
+import { loadBoard } from "./board";
+import { DEFAULT_RULES } from "./domain/quadrant";
+import {
+  LinearAuthError,
+  LinearClient,
+  LinearRateLimitError,
+  type LinearSource,
+} from "./linear/client";
 import { DemoLinear } from "./linear/demo";
 import { type GraphQLContext, schema } from "./schema";
 import { type AppContext, discardSession, linearAuthorization } from "./session";
@@ -26,6 +33,30 @@ export const app = new Hono<{ Bindings: Env }>()
         await discardSession(c);
       },
     });
+  })
+  // Temporary, until the board moves to GraphQL (#8): the web Worker renders this JSON.
+  .get("/board", async (c) => {
+    const linear = await linearSource(c);
+    if (!linear) return c.json({ error: "signed_out" }, 401);
+    try {
+      const board = await loadBoard(linear, {
+        teamId: c.req.query("team"),
+        // Rules are per team once they're stored (#10); until then everyone gets the defaults.
+        rules: DEFAULT_RULES,
+        // UTC, so near midnight a PM elsewhere may be a day off. Fine for a read-only board.
+        today: new Date().toISOString().slice(0, 10),
+      });
+      return c.json(board);
+    } catch (error) {
+      if (error instanceof LinearAuthError) {
+        await discardSession(c);
+        return c.json({ error: "signed_out" }, 401);
+      }
+      if (error instanceof LinearRateLimitError) {
+        return c.json({ error: "rate_limited", resetAt: error.resetAt }, 503);
+      }
+      throw error;
+    }
   });
 
 /**

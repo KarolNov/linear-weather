@@ -95,7 +95,12 @@ export function PersonMatrix({
         })}
       </div>
 
-      {total > 0 && (
+      {total === 0 ? (
+        // Holds the toggle's row, so an empty card lines up with its neighbours.
+        <div aria-hidden="true" {...stylex.props(styles.toggle, styles.placeholder)}>
+          Show issues
+        </div>
+      ) : (
         // <details> so the toggle works before the page hydrates; afterwards the board owns it.
         <details
           ref={details}
@@ -260,6 +265,7 @@ const styles = stylex.create({
     transitionTimingFunction: motion.easeOut,
   },
   chevronOpen: { transform: "rotate(90deg)" },
+  placeholder: { visibility: "hidden" },
   groups: {
     display: "flex",
     flexDirection: "column",

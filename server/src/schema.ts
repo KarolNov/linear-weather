@@ -1,6 +1,6 @@
 import SchemaBuilder from "@pothos/core";
 import { LinearAuthError, type LinearClient } from "./linear/client";
-import { ViewerDocument } from "./linear/generated";
+import { ViewerDocument, type ViewerQuery } from "./linear/generated";
 
 export interface GraphQLContext {
   /** Resolves to null when nobody is signed in. */
@@ -11,17 +11,8 @@ export interface GraphQLContext {
 
 const builder = new SchemaBuilder<{ Context: GraphQLContext }>({});
 
-interface Organization {
-  name: string;
-  urlKey: string;
-}
-
-interface User {
-  id: string;
-  name: string;
-  avatarUrl: string | null;
-  organization: Organization;
-}
+type User = ViewerQuery["viewer"];
+type Organization = User["organization"];
 
 const OrganizationRef = builder.objectRef<Organization>("Organization").implement({
   description: "A Linear workspace.",

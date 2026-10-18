@@ -79,6 +79,69 @@ describe("LinearClient", () => {
     expect(error.resetAt).toBe(RESET);
   });
 
+  it("waits for the budget to refill enough for a query it has seen cost more", async () => {
+    const short = () =>
+      Response.json(
+        { data: { viewer: { id: "u1" } } },
+        {
+          headers: {
+            ...RATE_HEADERS,
+            "x-complexity": "1000",
+            "x-ratelimit-complexity-remaining": "500",
+          },
+        },
+      );
+    const fetchMock = mockFetch(short, ok);
+    const sleep = vi.fn(async () => {});
+    const client = new LinearClient("Bearer token", { sleep });
+
+    await client.request(Hello);
+    await client.request(Hello);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // 500 points short at 2,000,000 an hour.
+    expect(sleep.mock.calls).toEqual([[900]]);
+  });
+
+  it("waits for a request when the request budget is spent", async () => {
+    const spent = () =>
+      Response.json(
+        { data: { viewer: { id: "u1" } } },
+        { headers: { ...RATE_HEADERS, "x-ratelimit-requests-remaining": "0" } },
+      );
+    mockFetch(spent, ok);
+    const sleep = vi.fn(async () => {});
+    const client = new LinearClient("Bearer token", { sleep });
+
+    await client.request(Hello);
+    await client.request(Hello);
+
+    // One request at 5,000 an hour.
+    expect(sleep.mock.calls).toEqual([[720]]);
+  });
+
+  it("gives up without sending when the budget is far from covering the query", async () => {
+    const fetchMock = mockFetch(() =>
+      Response.json(
+        { data: { viewer: { id: "u1" } } },
+        {
+          headers: {
+            ...RATE_HEADERS,
+            "x-complexity": "9000",
+            "x-ratelimit-complexity-remaining": "0",
+          },
+        },
+      ),
+    );
+    const client = new LinearClient("Bearer token", { sleep: async () => {} });
+    await client.request(Hello);
+
+    const error = await client.request(Hello).catch((e) => e);
+    expect(error).toBeInstanceOf(LinearRateLimitError);
+    expect(error.resetAt).toBe(RESET);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("reports rejected credentials as an auth error", async () => {
     mockFetch(() =>
       Response.json({
@@ -95,5 +158,11 @@ describe("LinearClient", () => {
     mockFetch(() => Response.json({ errors: [{ message: "Entity not found" }] }));
     const client = new LinearClient("Bearer token");
     await expect(client.request(Hello)).rejects.toThrow("Linear API error: Entity not found");
+  });
+
+  it("reports a non-JSON response by its status", async () => {
+    mockFetch(() => new Response("<html>Service Unavailable</html>", { status: 503 }));
+    const client = new LinearClient("Bearer token");
+    await expect(client.request(Hello)).rejects.toThrow("Linear API error: HTTP 503");
   });
 });

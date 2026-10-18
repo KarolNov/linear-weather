@@ -3,11 +3,16 @@ import type { TypedDocumentString } from "./generated";
 
 const LINEAR_API = "https://api.linear.app/graphql";
 
-// Linear's rate limiter is a leaky bucket that refills continuously, so a short wait frees up
-// some budget. Back off briefly (0.25s, 0.5s, 1s) when it says we're over; after that it's the
-// caller's problem, since a Worker request shouldn't hang for minutes.
+// Linear's rate limiter is a leaky bucket that refills continuously (5,000 requests and 2,000,000
+// complexity points an hour), so a short wait frees up some budget. Before a request, wait for
+// the last-known budget to cover what the query cost last time; when Linear still says we're
+// over, back off (at least 0.25s, 0.5s, 1s). A wait longer than a few seconds is the caller's
+// problem, since a Worker request shouldn't hang for minutes.
 const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 250;
+const MAX_WAIT_MS = 5_000;
+const REQUESTS_PER_MS = 5_000 / 3_600_000;
+const COMPLEXITY_PER_MS = 2_000_000 / 3_600_000;
 
 /** Linear rejected our credentials: the token was revoked or the API key deleted. */
 export class LinearAuthError extends Error {}
@@ -37,6 +42,8 @@ export interface LinearClientOptions {
 export class LinearClient {
   /** Updated after every request; null until the first one. */
   rateLimit: RateLimit | null = null;
+  /** What each query string cost last time, so concurrent queries don't read each other's. */
+  private readonly costs = new Map<string, number>();
   private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(
@@ -51,14 +58,31 @@ export class LinearClient {
     // Operations without variables can omit them.
     ...[variables]: TVariables extends Record<string, never> ? [] : [TVariables]
   ): Promise<TResult> {
+    const query = document.toString();
     for (let attempt = 0; ; attempt++) {
+      await this.waitForBudget(query, attempt === 0 ? 0 : BASE_BACKOFF_MS * 2 ** (attempt - 1));
       try {
-        return await this.send<TResult>(document.toString(), variables);
+        return await this.send<TResult>(query, variables);
       } catch (error) {
         if (!(error instanceof LinearRateLimitError) || attempt >= MAX_RETRIES) throw error;
-        await this.sleep(BASE_BACKOFF_MS * 2 ** attempt);
       }
     }
+  }
+
+  /**
+   * Waits at least `minMs`, and until the budget has refilled enough for one more request
+   * costing what `query` cost last time. Throws instead if that would take too long.
+   */
+  private async waitForBudget(query: string, minMs: number): Promise<void> {
+    const { requestsRemaining, complexityRemaining, resetAt } = this.rateLimit ?? {};
+    const cost = this.costs.get(query) ?? 0;
+    const refill = Math.max(
+      requestsRemaining == null ? 0 : (1 - requestsRemaining) / REQUESTS_PER_MS,
+      complexityRemaining == null ? 0 : (cost - complexityRemaining) / COMPLEXITY_PER_MS,
+    );
+    if (refill > MAX_WAIT_MS) throw new LinearRateLimitError(resetAt ?? null);
+    const wait = Math.ceil(Math.max(minMs, refill));
+    if (wait > 0) await this.sleep(wait);
   }
 
   private async send<T>(query: string, variables: unknown): Promise<T> {
@@ -68,9 +92,15 @@ export class LinearClient {
       body: JSON.stringify({ query, variables }),
     });
     this.rateLimit = readRateLimit(res.headers);
+    if (this.rateLimit.complexity !== null) this.costs.set(query, this.rateLimit.complexity);
     if (res.status === 401) throw new LinearAuthError("Linear rejected the access token");
 
-    const body = (await res.json()) as { data?: T; errors?: LinearError[] };
+    // Outages can come back as HTML error pages.
+    const body = (await res.json().catch(() => null)) as {
+      data?: T;
+      errors?: LinearError[];
+    } | null;
+    if (!body) throw new Error(`Linear API error: HTTP ${res.status} with no JSON body`);
     const codes = new Set(body.errors?.map((e) => e.extensions?.code));
     // Linear usually reports bad credentials as a GraphQL error, not a 401.
     if (codes.has("AUTHENTICATION_ERROR")) {

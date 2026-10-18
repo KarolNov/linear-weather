@@ -1,4 +1,4 @@
-import { type LinearClient, LinearRateLimitError } from "./client";
+import type { LinearClient } from "./client";
 import {
   type IssueCardFragment,
   TeamOpenIssuesDocument,
@@ -12,7 +12,10 @@ export type Assignee = NonNullable<IssueCard["assignee"]>;
 // cap on a single query, and big pages mean fewer requests against the hourly request limit.
 export const PAGE_SIZE = 250;
 
-/** Every open issue in the team, following Linear's cursor pagination to the end. */
+/**
+ * Every open issue in the team, following Linear's cursor pagination to the end. The client
+ * paces the pages to Linear's rate limit.
+ */
 export async function fetchTeamOpenIssues(
   linear: LinearClient,
   teamId: string,
@@ -27,15 +30,9 @@ export async function fetchTeamOpenIssues(
     });
     issues.push(...page.issues.nodes);
     const { hasNextPage, endCursor } = page.issues.pageInfo;
-    if (!hasNextPage || !endCursor) return issues;
+    if (!hasNextPage) return issues;
+    if (!endCursor) throw new Error("Linear reported more issues but no cursor to fetch them");
     after = endCursor;
-
-    // Don't send a page Linear will reject: if what's left can't cover what the last one
-    // cost, stop now rather than burn requests on rate-limit errors.
-    const { complexity, complexityRemaining, resetAt } = linear.rateLimit ?? {};
-    if (complexity != null && complexityRemaining != null && complexityRemaining < complexity) {
-      throw new LinearRateLimitError(resetAt ?? null);
-    }
   }
 }
 

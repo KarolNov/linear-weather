@@ -7,7 +7,8 @@
     "deploy": "wrangler deploy",
     "cf-typegen": "wrangler types",
     "typecheck": "tsc -p .",
-    "codegen": "graphql-codegen"
+    "codegen": "graphql-codegen",
+    "codegen:check": "graphql-codegen --check"
   },
   "dependencies": {
     "@pothos/core": "^4.15.1",

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LinearClient, LinearRateLimitError } from "./client";
+import { LinearClient } from "./client";
 import { fetchTeamOpenIssues, groupByAssignee, type IssueCard, PAGE_SIZE } from "./team-issues";
 
 const ada = { id: "u-ada", name: "Ada", avatarUrl: null };
@@ -70,23 +70,18 @@ describe("fetchTeamOpenIssues", () => {
     expect(await sentVariables(fetchMock, 2)).toMatchObject({ after: "cursor-2" });
   });
 
-  it("stops before a page the remaining complexity budget can't cover", async () => {
-    const fetchMock = mockPages([
-      {
-        nodes: [issue(1, ada)],
-        headers: {
-          "x-complexity": "1026",
-          "x-ratelimit-complexity-remaining": "900",
-          "x-ratelimit-complexity-reset": "1800000000000",
+  it("fails rather than return a partial list when Linear gives no cursor", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(async () =>
+      Response.json({
+        data: {
+          issues: { nodes: [issue(1, ada)], pageInfo: { hasNextPage: true, endCursor: null } },
         },
-      },
-      { nodes: [issue(2, ada)] },
-    ]);
+      }),
+    );
 
-    const error = await fetchTeamOpenIssues(new LinearClient("Bearer t"), "team-1").catch((e) => e);
-    expect(error).toBeInstanceOf(LinearRateLimitError);
-    expect(error.resetAt).toBe(1_800_000_000_000);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(fetchTeamOpenIssues(new LinearClient("Bearer t"), "team-1")).rejects.toThrow(
+      "no cursor",
+    );
   });
 });
 

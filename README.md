@@ -44,7 +44,7 @@ pnpm dev:web      # http://localhost:5173, runs the server Worker alongside
 
 `pnpm dev:server` runs the server alone on http://localhost:8787 (GraphiQL at `/graphql`).
 
-Checks (same as CI): `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`. `pnpm format` fixes formatting.
+Checks (same as CI): `pnpm typecheck`, `pnpm codegen:check`, `pnpm lint`, `pnpm test`, `pnpm build`. `pnpm format` fixes formatting.
 
 After changing a `wrangler.jsonc`, run `pnpm --filter server cf-typegen` to regenerate `worker-configuration.d.ts`.
 
@@ -54,7 +54,7 @@ Queries to Linear live in `.graphql` files under `server/src/` (e.g. `server/src
 
 Linear also publishes a ready-made, typed SDK ([`@linear/sdk`](https://github.com/linear/linear/tree/master/packages/sdk)), generated from that same schema. We don't use it, because writing the queries and running codegen ourselves is part of what this project is for. It's also a fair trade on cost: our own queries fetch exactly the fields we need, and Linear's rate-limiting guide recommends custom queries over the SDK for fetching many issues.
 
-- After adding or changing a query, run `pnpm --filter server codegen` and commit what it generates.
+- After adding or changing a query, run `pnpm --filter server codegen` and commit what it generates. `pnpm codegen:check` fails if the committed output is stale.
 - The schema is fetched from Linear's SDK repo at a pinned commit (`LINEAR_SCHEMA_COMMIT` in `server/codegen.ts`). To pick up schema changes, bump the commit and rerun codegen.
 
 Linear limits each user to 5,000 requests and 2,000,000 [complexity points](https://linear.app/developers/rate-limiting) an hour, and rejects any single query over 10,000 points. These limits shaped the team-issues query:
@@ -64,7 +64,7 @@ Linear limits each user to 5,000 requests and 2,000,000 [complexity points](http
 - **Pages of 250**, Linear's maximum. A page costs about 1,000 points, which leaves plenty of room under the cap and keeps the request count low.
 - **Filtering on the server**: only the team's issues that aren't completed or canceled.
 
-The client reads Linear's rate-limit headers after each request. When Linear answers `RATELIMITED`, it backs off for 0.25s, 0.5s, then 1s. If that isn't enough, it gives up with the time the budget resets. It won't request the next page if the remaining budget can't cover what the last page cost.
+The client reads Linear's rate-limit headers after each request and remembers what each query cost. Linear's budget refills continuously, so before sending a query the client waits until the remaining budget covers one more request at that cost. When Linear still answers `RATELIMITED`, it retries up to 3 times, waiting at least 0.25s, 0.5s, then 1s. If the budget would take more than 5s to refill, or the retries run out, it gives up with the time the budget resets.
 
 ## Signing in with Linear
 

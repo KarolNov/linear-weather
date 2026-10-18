@@ -67,6 +67,27 @@ export function classify(
   };
 }
 
+/**
+ * The first day `classify()` will call this issue urgent, so the Forecast can
+ * say when it moves. Urgency ignores priority, so only the due date matters.
+ *
+ * - Already urgent (due inside the window, or overdue) → `today`. Never a past
+ *   date: the Forecast looks forward, and "urgent since" isn't its question.
+ * - No due date → `null` (fog), unless the rules make undated issues urgent,
+ *   in which case it's urgent now → `today`.
+ */
+export function becomesUrgentOn(
+  issue: Pick<ClassifiableIssue, "dueDate">,
+  rules: QuadrantRules,
+  today: CalendarDate,
+): CalendarDate | null {
+  if (issue.dueDate === null) return rules.noDueDate === "urgent" ? today : null;
+  if (daysBetween(today, issue.dueDate) < rules.urgencyWindowDays) return today;
+  // Urgent means `days < window`, so the first urgent day is `window - 1` days
+  // before the due date, not `window` days.
+  return addDays(issue.dueDate, -(rules.urgencyWindowDays - 1));
+}
+
 function describeDue(days: number): string {
   if (days === 0) return "due today";
   if (days < 0) return `overdue by ${plural(-days, "day")}`;
@@ -82,6 +103,10 @@ const MS_PER_DAY = 86_400_000;
 /** Whole calendar days from `from` to `to`; negative when `to` is earlier. */
 function daysBetween(from: CalendarDate, to: CalendarDate): number {
   return (parseDate(to) - parseDate(from)) / MS_PER_DAY;
+}
+
+function addDays(date: CalendarDate, days: number): CalendarDate {
+  return new Date(parseDate(date) + days * MS_PER_DAY).toISOString().slice(0, 10);
 }
 
 function parseDate(date: CalendarDate): number {

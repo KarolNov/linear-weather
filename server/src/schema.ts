@@ -2,8 +2,10 @@ import SchemaBuilder from "@pothos/core";
 import { LinearAuthError, type LinearClient } from "./linear";
 
 export interface GraphQLContext {
-  /** Null when nobody is signed in. */
-  linear: LinearClient | null;
+  /** Resolves to null when nobody is signed in. */
+  linear: () => Promise<LinearClient | null>;
+  /** Forgets the session's tokens, e.g. after Linear rejected them. */
+  discardSession: () => Promise<void>;
 }
 
 const builder = new SchemaBuilder<{ Context: GraphQLContext }>({});
@@ -45,7 +47,8 @@ builder.queryType({
       type: UserRef,
       nullable: true,
       description: "The signed-in Linear user, or null when signed out.",
-      resolve: async (_root, _args, { linear }) => {
+      resolve: async (_root, _args, context) => {
+        const linear = await context.linear();
         if (!linear) return null;
         try {
           const { viewer } = await linear.request<{ viewer: User }>(
@@ -54,7 +57,10 @@ builder.queryType({
           return viewer;
         } catch (error) {
           // A revoked token means signed out, not a server error.
-          if (error instanceof LinearAuthError) return null;
+          if (error instanceof LinearAuthError) {
+            await context.discardSession();
+            return null;
+          }
           throw error;
         }
       },

@@ -31,6 +31,27 @@ describe("web worker", () => {
     expect(fetch.mock.calls[0]?.[0].headers.get("cookie")).toBe("lw_session=abc");
   });
 
+  it("says Linear is unreachable instead of showing signed out when the server fails", async () => {
+    const errored = vi.fn(async (_request: Request) =>
+      Response.json({ data: { viewer: null }, errors: [{ message: "Unexpected error." }] }),
+    );
+    const crashed = vi.fn(
+      async (_request: Request) => new Response("Internal Server Error", { status: 500 }),
+    );
+    for (const fetch of [errored, crashed]) {
+      const page = await (await app.request("/", {}, { SERVER: { fetch } })).text();
+      expect(page).toContain("Couldn't reach Linear");
+      expect(page).not.toContain('href="/auth/login"');
+    }
+  });
+
+  it("404s unknown paths without asking the server", async () => {
+    const { bindings, fetch } = serverReturning(null);
+    const res = await app.request("/favicon.ico", {}, bindings);
+    expect(res.status).toBe(404);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("explains a cancelled sign-in", async () => {
     const { bindings } = serverReturning(null);
     const res = await app.request("/?auth_error=access_denied", {}, bindings);

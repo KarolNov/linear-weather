@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { auth } from "./auth";
 import { LinearClient } from "./linear";
 import { type GraphQLContext, schema } from "./schema";
-import { linearAuthorization } from "./session";
+import { discardSession, linearAuthorization } from "./session";
 
 const yoga = createYoga<GraphQLContext>({
   schema,
@@ -16,10 +16,16 @@ const yoga = createYoga<GraphQLContext>({
 export const app = new Hono<{ Bindings: Env }>()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/auth", auth)
-  .on(["GET", "POST"], "/graphql", async (c) => {
-    const authorization = await linearAuthorization(c);
-    const linear = authorization ? new LinearClient(authorization) : null;
-    return yoga.fetch(c.req.raw, { linear });
+  .on(["GET", "POST"], "/graphql", (c) => {
+    // Resolved on first use, so queries that don't touch Linear skip the session lookup.
+    let linear: Promise<LinearClient | null> | undefined;
+    return yoga.fetch(c.req.raw, {
+      linear: () =>
+        (linear ??= linearAuthorization(c).then((a) => (a ? new LinearClient(a) : null))),
+      discardSession: async () => {
+        await discardSession(c);
+      },
+    });
   });
 
 export default app;

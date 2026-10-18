@@ -29,8 +29,14 @@ export async function startSession(c: AppContext, tokens: TokenSet): Promise<voi
 
 /** Ends the session and returns its tokens so the caller can revoke them. */
 export async function endSession(c: AppContext): Promise<TokenSet | null> {
-  const id = getCookie(c, COOKIE);
+  const tokens = await discardSession(c);
   deleteCookie(c, COOKIE, { path: "/", secure: isHttps(c) });
+  return tokens;
+}
+
+/** Forgets the session's tokens but leaves the cookie alone, returning them for revocation. */
+export async function discardSession(c: AppContext): Promise<TokenSet | null> {
+  const id = getCookie(c, COOKIE);
   if (!id) return null;
   const key = await kvKey(id);
   const tokens = await c.env.SESSIONS.get<TokenSet>(key, "json");
@@ -65,8 +71,10 @@ async function loadFresh(env: Env, id: string): Promise<TokenSet | null> {
       { clientId: env.LINEAR_CLIENT_ID, clientSecret: env.LINEAR_CLIENT_SECRET },
       tokens.refreshToken,
     );
-    await save(env, id, refreshed);
-    return refreshed;
+    // A refresh response may omit refresh_token, meaning the old one stays valid.
+    const next = { ...refreshed, refreshToken: refreshed.refreshToken ?? tokens.refreshToken };
+    await save(env, id, next);
+    return next;
   } catch (error) {
     // Linear rejected the refresh token (revoked, or the app was uninstalled): sign out.
     // Anything else (network, 5xx) may be transient, so keep the session for a retry.
@@ -85,8 +93,12 @@ async function save(env: Env, id: string, tokens: TokenSet): Promise<void> {
 }
 
 async function kvKey(id: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(id));
-  return `session:${base64url(new Uint8Array(digest))}`;
+  return `session:${await sha256Base64url(id)}`;
+}
+
+export async function sha256Base64url(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return base64url(new Uint8Array(digest));
 }
 
 export function randomToken(): string {

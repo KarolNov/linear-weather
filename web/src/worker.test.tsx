@@ -122,8 +122,8 @@ describe("web worker", () => {
     expect(boardUrl.pathname).toBe("/board");
     expect(boardUrl.searchParams.get("team")).toBe("t-ops");
     expect(boardUrl.searchParams.get("demo")).toBe("true");
-    expect(page).toContain('name="team"');
-    expect(page).toContain('<input type="hidden" name="demo" value="true"/>');
+    expect(page).toContain('href="/?demo=true&amp;team=t-avg"');
+    expect(page).toContain('aria-current="page"');
   });
 
   it("explains a spent rate limit instead of showing an empty board", async () => {

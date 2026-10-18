@@ -1,4 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
+import { useState } from "preact/hooks";
 import {
   Avatar,
   Badge,
@@ -12,9 +13,15 @@ import {
 } from "ui";
 import { colors, fonts, radii, space } from "ui/tokens.stylex";
 import type { Viewer } from "./App";
-import { type Board, type BoardError, QUADRANTS } from "./board";
+import {
+  type Board,
+  type BoardError,
+  type PersonMatrix as PersonMatrixData,
+  QUADRANTS,
+} from "./board";
 import { PersonMatrix } from "./PersonMatrix";
 import { quadrantFill, quadrantInfo } from "./quadrants";
+import { TeamPicker } from "./TeamPicker";
 
 export interface BoardShellProps {
   viewer: Viewer;
@@ -88,6 +95,19 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
 
 function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
   const { team, teams, people, today } = board;
+  // Lists start shut so the matrices are what you see first. Keyed by assignee id.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const keyOf = (matrix: PersonMatrixData) => matrix.assignee?.id ?? "unassigned";
+  const withIssues = people.filter((p) => p.issues.length > 0).map(keyOf);
+  const allExpanded = withIssues.length > 0 && withIssues.every((key) => expanded.has(key));
+  const setOne = (key: string, open: boolean) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (open) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+
   if (!team) {
     return (
       <Card as="section" xstyle={styles.notice}>
@@ -112,54 +132,32 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
               : "Open issues by person, soonest due first."}
           </p>
         </div>
-        {teams.length > 1 && <TeamPicker teams={teams} selected={team.id} demo={demo} />}
+        <div {...stylex.props(styles.controls)}>
+          {withIssues.length > 0 && (
+            <Button
+              variant="quiet"
+              aria-pressed={allExpanded}
+              onClick={() => setExpanded(new Set(allExpanded ? [] : withIssues))}
+              xstyle={styles.expandAll}
+            >
+              {allExpanded ? "Collapse all" : "Expand all"}
+            </Button>
+          )}
+          {teams.length > 1 && <TeamPicker teams={teams} selected={team} demo={demo} />}
+        </div>
       </div>
       <div {...stylex.props(styles.people)}>
         {people.map((matrix) => (
-          <PersonMatrix key={matrix.assignee?.id ?? "unassigned"} matrix={matrix} today={today} />
+          <PersonMatrix
+            key={keyOf(matrix)}
+            matrix={matrix}
+            today={today}
+            expanded={expanded.has(keyOf(matrix))}
+            onExpandedChange={(open) => setOne(keyOf(matrix), open)}
+          />
         ))}
       </div>
     </section>
-  );
-}
-
-/**
- * A plain GET form, so picking a team is a link the PM can share or bookmark, and it works
- * before the page hydrates. Once it has, choosing a team submits straight away.
- */
-function TeamPicker({
-  teams,
-  selected,
-  demo,
-}: {
-  teams: Board["teams"];
-  selected: string;
-  demo?: boolean;
-}) {
-  return (
-    <form method="get" action="/" {...stylex.props(styles.picker)}>
-      {demo && <input type="hidden" name="demo" value="true" />}
-      <label for="team" {...stylex.props(styles.pickerLabel)}>
-        Team
-      </label>
-      <select
-        id="team"
-        name="team"
-        onChange={(event) => event.currentTarget.form?.requestSubmit()}
-        {...stylex.props(styles.select)}
-      >
-        {teams.map((t) => (
-          <option key={t.id} value={t.id} selected={t.id === selected}>
-            {t.name} ({t.key})
-          </option>
-        ))}
-      </select>
-      <noscript>
-        <Button type="submit" variant="quiet">
-          Show
-        </Button>
-      </noscript>
-    </form>
   );
 }
 
@@ -251,24 +249,8 @@ const styles = stylex.create({
     alignItems: "start",
     gap: space.md,
   },
-  picker: { display: "flex", alignItems: "center", gap: space.xs, margin: 0 },
-  pickerLabel: { fontSize: "0.875rem", fontWeight: 600, color: colors.inkMuted },
-  select: {
-    font: "inherit",
-    fontSize: "0.9375rem",
-    fontWeight: 600,
-    color: colors.ink,
-    paddingBlock: space.xs,
-    paddingInlineStart: space.sm,
-    paddingInlineEnd: space.lg,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceStrong,
-    maxWidth: "100%",
-    cursor: "pointer",
-  },
+  controls: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: space.xs },
+  expandAll: { paddingBlock: "8px", fontSize: "0.875rem" },
   legends: {
     display: "grid",
     gridTemplateColumns: { default: "1fr", "@media (min-width: 860px)": "1fr 1fr" },

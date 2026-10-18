@@ -9,14 +9,25 @@ import { quadrantFill, quadrantInfo } from "./quadrants";
 export interface PersonMatrixProps {
   matrix: Matrix;
   today: CalendarDate;
+  /** Whether the issue list under the matrix is open. The board starts with every list shut. */
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
 }
 
 /**
  * One person's mini Eisenhower matrix: a 2×2 of counts, then their issues by quadrant.
- * Picking a quadrant narrows the list to it.
+ * Picking a quadrant opens the list narrowed to it; picking it again shows every quadrant.
  */
-export function PersonMatrix({ matrix, today }: PersonMatrixProps) {
+export function PersonMatrix({ matrix, today, expanded, onExpandedChange }: PersonMatrixProps) {
   const [only, setOnly] = useState<Quadrant | null>(null);
+  const pick = (q: Quadrant) => {
+    if (!expanded) {
+      setOnly(q);
+      onExpandedChange(true);
+    } else {
+      setOnly(only === q ? null : q);
+    }
+  };
   const name = matrix.assignee?.name ?? "Unassigned";
   const total = matrix.issues.length;
   const shown = QUADRANTS.filter((q) => (only ? q === only : matrix.counts[q] > 0));
@@ -46,16 +57,20 @@ export function PersonMatrix({ matrix, today }: PersonMatrixProps) {
             <button
               key={q}
               type="button"
-              aria-pressed={only === q}
+              aria-pressed={expanded && only === q}
               disabled={count === 0}
-              onClick={() => setOnly(only === q ? null : q)}
-              title={only === q ? "Show all quadrants" : `Show only ${quadrantInfo[q].name}`}
+              onClick={() => pick(q)}
+              title={
+                expanded && only === q
+                  ? "Show all quadrants"
+                  : `Show ${name}'s ${quadrantInfo[q].name} issues`
+              }
               {...stylex.props(
                 styles.cell,
                 quadrantFill[q],
                 count === 0 && styles.empty,
-                only !== null && only !== q && styles.dimmed,
-                only === q && styles.picked,
+                expanded && only !== null && only !== q && styles.dimmed,
+                expanded && only === q && styles.picked,
               )}
             >
               <span {...stylex.props(styles.cellName)}>{quadrantInfo[q].name}</span>
@@ -65,22 +80,54 @@ export function PersonMatrix({ matrix, today }: PersonMatrixProps) {
         })}
       </div>
 
-      {total > 0 &&
-        shown.map((q) => (
-          <section key={q} aria-label={`${name}: ${quadrantInfo[q].name}`}>
-            <h3 {...stylex.props(styles.groupHeading)}>
-              {quadrantInfo[q].name}
-              <span {...stylex.props(styles.groupCount)}>{matrix.counts[q]}</span>
-            </h3>
-            <ul {...stylex.props(styles.list)}>
-              {matrix.issues
-                .filter((issue) => issue.quadrant === q)
-                .map((issue) => (
-                  <IssueCard key={issue.id} issue={issue} today={today} />
-                ))}
-            </ul>
-          </section>
-        ))}
+      {total > 0 && (
+        // <details> so the toggle works before the page hydrates; afterwards the board owns it.
+        <details
+          open={expanded}
+          onToggle={(event) => {
+            const open = event.currentTarget.open;
+            if (open !== expanded) onExpandedChange(open);
+            if (!open) setOnly(null);
+          }}
+        >
+          <summary {...stylex.props(styles.toggle)}>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              aria-hidden="true"
+              {...stylex.props(styles.chevron, expanded && styles.chevronOpen)}
+            >
+              <path
+                d="M4.5 3 7.5 6 4.5 9"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            {expanded ? "Hide issues" : `Show ${total === 1 ? "issue" : `${total} issues`}`}
+          </summary>
+          <div {...stylex.props(styles.groups)}>
+            {shown.map((q) => (
+              <section key={q} aria-label={`${name}: ${quadrantInfo[q].name}`}>
+                <h3 {...stylex.props(styles.groupHeading)}>
+                  {quadrantInfo[q].name}
+                  <span {...stylex.props(styles.groupCount)}>{matrix.counts[q]}</span>
+                </h3>
+                <ul {...stylex.props(styles.list)}>
+                  {matrix.issues
+                    .filter((issue) => issue.quadrant === q)
+                    .map((issue) => (
+                      <IssueCard key={issue.id} issue={issue} today={today} />
+                    ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </details>
+      )}
     </Card>
   );
 }
@@ -148,6 +195,40 @@ const styles = stylex.create({
     fontWeight: 800,
     lineHeight: 1.1,
     fontVariantNumeric: "tabular-nums",
+  },
+  toggle: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    width: "fit-content",
+    paddingBlock: "4px",
+    paddingInline: "8px",
+    marginInlineStart: "-8px",
+    borderRadius: radii.pill,
+    fontSize: "0.8125rem",
+    fontWeight: 600,
+    color: colors.inkMuted,
+    cursor: "pointer",
+    userSelect: "none",
+    listStyle: "none",
+    "::-webkit-details-marker": { display: "none" },
+    backgroundColor: {
+      default: "transparent",
+      [HOVER]: { default: "transparent", ":hover": "rgba(29, 26, 51, 0.06)" },
+    },
+    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+  },
+  chevron: {
+    transitionProperty: "transform",
+    transitionDuration: "200ms",
+    transitionTimingFunction: motion.easeOut,
+  },
+  chevronOpen: { transform: "rotate(90deg)" },
+  groups: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.md,
+    marginTop: space.sm,
   },
   groupHeading: {
     display: "flex",

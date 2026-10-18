@@ -1,11 +1,25 @@
 import { createYoga } from "graphql-yoga";
 import { Hono } from "hono";
-import { schema } from "./schema";
+import { auth } from "./auth";
+import { LinearClient } from "./linear";
+import { type GraphQLContext, schema } from "./schema";
+import { linearAuthorization } from "./session";
 
-const yoga = createYoga<Env>({ schema, graphqlEndpoint: "/graphql" });
+const yoga = createYoga<GraphQLContext>({
+  schema,
+  graphqlEndpoint: "/graphql",
+  // Use the runtime's own Request/Response. Under the Vite dev server Yoga otherwise resolves
+  // its Node polyfill, whose Response can't cross the web Worker's service binding.
+  fetchAPI: globalThis,
+});
 
-const app = new Hono<{ Bindings: Env }>()
+export const app = new Hono<{ Bindings: Env }>()
   .get("/health", (c) => c.json({ ok: true }))
-  .on(["GET", "POST"], "/graphql", (c) => yoga.fetch(c.req.raw, c.env));
+  .route("/auth", auth)
+  .on(["GET", "POST"], "/graphql", async (c) => {
+    const authorization = await linearAuthorization(c);
+    const linear = authorization ? new LinearClient(authorization) : null;
+    return yoga.fetch(c.req.raw, { linear });
+  });
 
 export default app;

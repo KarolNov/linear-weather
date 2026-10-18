@@ -1,7 +1,9 @@
 import { hydrate } from "preact";
-import { App } from "./App";
+import { App, type AppProps } from "./App";
 
 const root = document.getElementById("app");
-if (!root) throw new Error("#app element missing");
+const propsScript = document.getElementById("app-props");
+if (!root || !propsScript) throw new Error("#app or #app-props element missing");
 
-hydrate(<App />, root);
+const props = JSON.parse(propsScript.textContent ?? "{}") as AppProps;
+hydrate(<App {...props} />, root);

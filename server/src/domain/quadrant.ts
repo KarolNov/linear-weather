@@ -115,7 +115,8 @@ function daysBetween(from: CalendarDate, to: CalendarDate): number {
   return (parseDate(to) - parseDate(from)) / MS_PER_DAY;
 }
 
-function addDays(date: CalendarDate, days: number): CalendarDate {
+/** The calendar date `days` after `date` (before, when negative). */
+export function addDays(date: CalendarDate, days: number): CalendarDate {
   return new Date(parseDate(date) + days * MS_PER_DAY).toISOString().slice(0, 10);
 }
 

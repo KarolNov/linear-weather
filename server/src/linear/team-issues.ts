@@ -1,4 +1,4 @@
-import type { LinearClient } from "./client";
+import type { LinearSource } from "./client";
 import {
   type IssueCardFragment,
   TeamOpenIssuesDocument,
@@ -13,11 +13,11 @@ export type Assignee = NonNullable<IssueCard["assignee"]>;
 export const PAGE_SIZE = 250;
 
 /**
- * Every open issue in the team, following Linear's cursor pagination to the end. The client
- * paces the pages to Linear's rate limit.
+ * Every open issue in the team, following Linear's cursor pagination to the end. The real
+ * client paces the pages to Linear's rate limit.
  */
 export async function fetchTeamOpenIssues(
-  linear: LinearClient,
+  linear: LinearSource,
   teamId: string,
 ): Promise<IssueCard[]> {
   const issues: IssueCard[] = [];

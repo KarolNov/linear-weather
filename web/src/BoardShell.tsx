@@ -15,10 +15,12 @@ import type { Viewer } from "./App";
 
 export interface BoardShellProps {
   viewer: Viewer;
+  /** Showing the mocked Avengers workspace: offer a way out instead of signing out. */
+  demo?: boolean;
 }
 
 /** The signed-in frame the matrix will live in (#7). */
-export function BoardShell({ viewer }: BoardShellProps) {
+export function BoardShell({ viewer, demo }: BoardShellProps) {
   return (
     <Sky time="dawn">
       <header {...stylex.props(styles.header)}>
@@ -27,16 +29,17 @@ export function BoardShell({ viewer }: BoardShellProps) {
           <Badge>{viewer.organization.name}</Badge>
         </div>
         {/* The name is hidden on phones, so the label says who is signed in there too. */}
+        {/* The demo has no session to end, so its button just leaves for the real sign-in. */}
         <form
-          method="post"
-          action="/auth/logout"
+          method={demo ? "get" : "post"}
+          action={demo ? "/" : "/auth/logout"}
           aria-label={`Signed in as ${viewer.name}`}
           {...stylex.props(styles.account)}
         >
           <Avatar name={viewer.name} src={viewer.avatarUrl} size={30} />
           <span {...stylex.props(styles.viewerName)}>{viewer.name}</span>
           <Button type="submit" variant="quiet">
-            Sign out
+            {demo ? "Exit demo" : "Sign out"}
           </Button>
         </form>
       </header>

@@ -1,9 +1,10 @@
 import { createYoga } from "graphql-yoga";
 import { Hono } from "hono";
 import { auth } from "./auth";
-import { LinearClient } from "./linear/client";
+import { LinearClient, type LinearSource } from "./linear/client";
+import { DemoLinear } from "./linear/demo";
 import { type GraphQLContext, schema } from "./schema";
-import { discardSession, linearAuthorization } from "./session";
+import { type AppContext, discardSession, linearAuthorization } from "./session";
 
 const yoga = createYoga<GraphQLContext>({
   schema,
@@ -18,14 +19,23 @@ export const app = new Hono<{ Bindings: Env }>()
   .route("/auth", auth)
   .on(["GET", "POST"], "/graphql", (c) => {
     // Resolved on first use, so queries that don't touch Linear skip the session lookup.
-    let linear: Promise<LinearClient | null> | undefined;
+    let linear: Promise<LinearSource | null> | undefined;
     return yoga.fetch(c.req.raw, {
-      linear: () =>
-        (linear ??= linearAuthorization(c).then((a) => (a ? new LinearClient(a) : null))),
+      linear: () => (linear ??= linearSource(c)),
       discardSession: async () => {
         await discardSession(c);
       },
     });
   });
+
+/**
+ * Linear as the signed-in user sees it, or the mocked Avengers workspace for `?demo=true`, so
+ * anyone can try the board without a Linear account.
+ */
+async function linearSource(c: AppContext): Promise<LinearSource | null> {
+  if (c.req.query("demo") === "true") return new DemoLinear();
+  const authorization = await linearAuthorization(c);
+  return authorization ? new LinearClient(authorization) : null;
+}
 
 export default app;

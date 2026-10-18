@@ -39,7 +39,20 @@ export interface LinearClientOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
-export class LinearClient {
+/**
+ * Where Linear data comes from: send one of our typed queries, get its result. `LinearClient`
+ * asks Linear's API; `DemoLinear` answers from a mocked workspace. Code that reads Linear takes
+ * this, so it can't tell the two apart.
+ */
+export interface LinearSource {
+  request<TResult, TVariables>(
+    document: TypedDocumentString<TResult, TVariables>,
+    // Operations without variables can omit them.
+    ...[variables]: TVariables extends Record<string, never> ? [] : [TVariables]
+  ): Promise<TResult>;
+}
+
+export class LinearClient implements LinearSource {
   /** Updated after every request; null until the first one. */
   rateLimit: RateLimit | null = null;
   /** What each query string cost last time, so concurrent queries don't read each other's. */

@@ -1,10 +1,10 @@
 import SchemaBuilder from "@pothos/core";
-import { LinearAuthError, type LinearClient } from "./linear/client";
+import { LinearAuthError, type LinearSource } from "./linear/client";
 import { ViewerDocument, type ViewerQuery } from "./linear/generated";
 
 export interface GraphQLContext {
   /** Resolves to null when nobody is signed in. */
-  linear: () => Promise<LinearClient | null>;
+  linear: () => Promise<LinearSource | null>;
   /** Forgets the session's tokens, e.g. after Linear rejected them. */
   discardSession: () => Promise<void>;
 }

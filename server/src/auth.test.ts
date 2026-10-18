@@ -296,6 +296,25 @@ describe("viewer", () => {
     expect(await res.json()).toEqual({ data: { viewer: null } });
     expect(linear.calls).toHaveLength(0);
   });
+
+  it("serves the demo workspace for ?demo=true, signed in or not", async () => {
+    const cookie = await signIn();
+    for (const session of [undefined, cookie]) {
+      const res = await app.request(
+        `${ORIGIN}/graphql?demo=true`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(session ? { cookie: session } : {}) },
+          body: JSON.stringify({ query: "{ viewer { name organization { name } } }" }),
+        },
+        env,
+      );
+      expect(await res.json()).toEqual({
+        data: { viewer: { name: "Nick Fury", organization: { name: "S.H.I.E.L.D." } } },
+      });
+    }
+    expect(linear.calls.filter((c) => c.url.endsWith("/graphql"))).toHaveLength(0);
+  });
 });
 
 describe("/auth/logout", () => {

@@ -52,6 +52,8 @@ After changing a `wrangler.jsonc`, run `pnpm --filter server cf-typegen` to rege
 
 Queries to Linear live next to the code that uses them, written with `graphql(...)` from `server/src/linear/generated`. [GraphQL Code Generator](https://the-guild.dev/graphql/codegen) checks them against [Linear's schema](https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql) and generates their result and variable types.
 
+Linear also publishes a ready-made, typed SDK ([`@linear/sdk`](https://github.com/linear/linear/tree/master/packages/sdk)), generated from that same schema. We don't use it, because writing the queries and running codegen ourselves is part of what this project is for. It's also a fair trade on cost: our own queries fetch exactly the fields we need, and Linear's rate-limiting guide recommends custom queries over the SDK for fetching many issues.
+
 - After adding or changing a query, run `pnpm --filter server codegen` and commit what it generates.
 - The schema is fetched from Linear's SDK repo at a pinned commit (`LINEAR_SCHEMA_COMMIT` in `server/codegen.ts`). To pick up schema changes, bump the commit and rerun codegen.
 

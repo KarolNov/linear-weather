@@ -20,11 +20,9 @@ export function Avatar({ name, src, size = 32 }: AvatarProps) {
 
 function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
-  const letters = words.length > 1 ? [words[0], words.at(-1)] : [words[0]?.slice(0, 2)];
-  return letters
-    .map((w) => w?.[0] ?? "")
-    .join("")
-    .toUpperCase();
+  const letters =
+    words.length > 1 ? `${words[0]?.[0]}${words.at(-1)?.[0]}` : (words[0]?.slice(0, 2) ?? "");
+  return letters.toUpperCase();
 }
 
 const styles = stylex.create({

@@ -1,7 +1,26 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import preact from "@preact/preset-vite";
 import stylex from "@stylexjs/unplugin";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+
+// worker.tsx links /assets/stylex.css by name. StyleX writes that file only while the client
+// bundle has no other CSS; otherwise it appends its rules to that CSS file instead. Fail the build
+// then, rather than ship a page whose stylesheet 404s.
+function requireStylexCss(): Plugin {
+  return {
+    name: "require-stylex-css",
+    apply: "build",
+    applyToEnvironment: (environment) => environment.name === "client",
+    closeBundle() {
+      const { root, build } = this.environment.config;
+      if (!existsSync(resolve(root, build.outDir, "assets/stylex.css"))) {
+        throw new Error("The client build has no assets/stylex.css; update worker.tsx's link.");
+      }
+    },
+  };
+}
 
 export default defineConfig({
   plugins: [
@@ -10,6 +29,7 @@ export default defineConfig({
     // rules to assets/stylex.css. devPersistToDisk lets the dev CSS endpoint see the rules the
     // SSR environment collected.
     stylex.vite({ devMode: "css-only", devPersistToDisk: true }),
+    requireStylexCss(),
     preact(),
     cloudflare({
       viteEnvironment: { name: "ssr" },

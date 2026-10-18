@@ -22,21 +22,21 @@ export function SignInPage({ linearUnavailable, authError }: SignInPageProps) {
   return (
     <Sky time="sunset">
       <div {...stylex.props(styles.page)}>
-        <header {...enter(0)}>
+        <header {...stylex.props(enter(0))}>
           <Logo onSky />
         </header>
 
         <main {...stylex.props(styles.hero)}>
           <section {...stylex.props(styles.pitch)}>
-            <h1 {...stylex.props(styles.title, styles.enter, styles.delay(STEP))}>
+            <h1 {...stylex.props(styles.title, enter(STEP))}>
               See the storm before it hits your team.
             </h1>
-            <p {...stylex.props(styles.lead, styles.enter, styles.delay(STEP * 2))}>
+            <p {...stylex.props(styles.lead, enter(STEP * 2))}>
               See who on your team is overloaded now, and who is about to be. We sort everyone's
               issues into Do, Schedule, Delegate and Drop, and turn them into a forecast.
             </p>
 
-            <div {...enter(STEP * 3)}>
+            <div {...stylex.props(enter(STEP * 3))}>
               {linearUnavailable ? (
                 <Alert onSky>Couldn't reach Linear just now. Please reload in a minute.</Alert>
               ) : (
@@ -116,11 +116,7 @@ const sampleTeam: { name: string; weather: Weather; summary: string; week: Weath
 /** A sample team, to show what the board will tell you once you're signed in. */
 function ForecastPreview() {
   return (
-    <Card
-      variant="glass"
-      as="section"
-      xstyle={[styles.preview, styles.enter, styles.delay(STEP * 4)]}
-    >
+    <Card variant="glass" as="section" xstyle={[styles.preview, enter(STEP * 4)]}>
       <div {...stylex.props(styles.previewHeader)}>
         <h2 {...stylex.props(styles.previewTitle)}>Team forecast</h2>
         <span {...stylex.props(styles.weeks)} aria-hidden="true">
@@ -132,10 +128,7 @@ function ForecastPreview() {
       </div>
       <ul {...stylex.props(styles.rows)} aria-label="Example forecast for the Avengers">
         {sampleTeam.map((person, row) => (
-          <li
-            key={person.name}
-            {...stylex.props(styles.row, styles.enter, styles.delay(STEP * 5 + row * ROW_STEP))}
-          >
+          <li key={person.name} {...stylex.props(styles.row, enter(STEP * 5 + row * ROW_STEP))}>
             <Avatar name={person.name} size={36} />
             <span {...stylex.props(styles.person)}>
               <span {...stylex.props(styles.personName)}>{person.name}</span>
@@ -174,9 +167,13 @@ const fadeIn = stylex.keyframes({ from: { opacity: 0 } });
 const STEP = 150;
 const ROW_STEP = 100;
 
-const enter = (delayMs: number) => stylex.props(styles.enter, styles.delay(delayMs));
+const enter = (delayMs: number) => [styles.enter, styles.delay(delayMs)];
 
 const WIDE = "@media (min-width: 960px)";
+// Wide enough for the two sign-in buttons to sit side by side.
+const ROOMY = "@media (min-width: 480px)";
+// One column, but too wide for left-aligned content not to leave an empty half: centre it all.
+const TABLET = "@media (min-width: 640px) and (max-width: 959.98px)";
 
 const styles = stylex.create({
   enter: {
@@ -207,8 +204,9 @@ const styles = stylex.create({
   pitch: {
     display: "flex",
     flexDirection: "column",
-    alignItems: "flex-start",
+    alignItems: { default: "stretch", [TABLET]: "center" },
     gap: space.lg,
+    textAlign: { default: "start", [TABLET]: "center" },
   },
   title: {
     fontFamily: fonts.display,
@@ -225,15 +223,33 @@ const styles = stylex.create({
     lineHeight: 1.55,
     color: colors.inkOnSkyMuted,
   },
-  actions: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: space.sm },
-  ctas: { display: "flex", flexWrap: "wrap", gap: space.sm, marginTop: space.xs },
+  // On a phone the buttons stack at full width; side by side they'd wrap into a ragged pair.
+  actions: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: { default: "stretch", [ROOMY]: "flex-start" },
+    gap: space.sm,
+  },
+  ctas: {
+    display: "flex",
+    flexDirection: { default: "column", [ROOMY]: "row" },
+    gap: space.sm,
+    marginTop: space.xs,
+  },
   fineprint: {
     fontSize: "0.875rem",
     color: colors.inkOnSkyMuted,
     textShadow: "0 1px 8px rgba(31, 23, 71, 0.4)",
   },
 
-  preview: { width: "100%", maxWidth: "460px", justifySelf: { default: "stretch", [WIDE]: "end" } },
+  preview: {
+    width: "100%",
+    maxWidth: "460px",
+    justifySelf: { default: "stretch", [TABLET]: "center", [WIDE]: "end" },
+    // Tinted with the sky's dusk rather than light glass, so the white text stays readable even
+    // where the card sits over the bright orange and gold end of the sunset.
+    backgroundColor: "rgba(31, 23, 71, 0.42)",
+  },
   previewHeader: {
     display: "flex",
     alignItems: "baseline",

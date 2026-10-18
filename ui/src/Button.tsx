@@ -17,7 +17,9 @@ export type ButtonProps = StyleProps &
 
 export function Button({ variant = "primary", size = "md", xstyle, ...rest }: ButtonProps) {
   // A disabled button drops its hover and press responses, which would suggest it works.
-  const disabled = Boolean(rest.disabled) && [styles.disabled, disabledStyles[variant]];
+  // Preact accepts a signal here, and a signal object is truthy even when its value is false.
+  const isDisabled = typeof rest.disabled === "object" ? rest.disabled?.value : rest.disabled;
+  const disabled = Boolean(isDisabled) && [styles.disabled, disabledStyles[variant]];
   return (
     <button
       type="button"
@@ -40,6 +42,9 @@ const buttonStyles = (variant: Variant, size: Size) =>
 
 // Touch screens fire :hover on tap and leave it stuck, so hover styles apply only with a mouse.
 const HOVER = "@media (hover: hover) and (pointer: fine)";
+
+// The quiet variant's resting background, shared with its disabled look.
+const QUIET_BACKGROUND = "rgba(255, 255, 255, 0.55)";
 
 const styles = stylex.create({
   base: {
@@ -95,8 +100,8 @@ const styles = stylex.create({
   quiet: {
     color: colors.ink,
     backgroundColor: {
-      default: "rgba(255, 255, 255, 0.55)",
-      [HOVER]: { default: "rgba(255, 255, 255, 0.55)", ":hover": colors.surfaceStrong },
+      default: QUIET_BACKGROUND,
+      [HOVER]: { default: QUIET_BACKGROUND, ":hover": colors.surfaceStrong },
     },
     borderColor: colors.border,
   },
@@ -108,5 +113,5 @@ const styles = stylex.create({
 const disabledStyles = stylex.create({
   primary: { boxShadow: shadows.button, filter: null },
   glass: { backgroundColor: colors.surfaceOnSky },
-  quiet: { backgroundColor: "rgba(255, 255, 255, 0.55)" },
+  quiet: { backgroundColor: QUIET_BACKGROUND },
 });

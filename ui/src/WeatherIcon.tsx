@@ -74,15 +74,28 @@ export function WeatherIcon({
   );
 }
 
+// Each sun's rays, worked out once per shape and rounded to keep the markup short.
+const rayPaths = new Map<string, string>();
+const round = (n: number) => Math.round(n * 100) / 100;
+
+function sunRays(cx: number, cy: number, r: number): string {
+  const key = `${cx} ${cy} ${r}`;
+  let d = rayPaths.get(key);
+  if (!d) {
+    d = Array.from({ length: 8 }, (_, i) => {
+      const a = (i * Math.PI) / 4;
+      const [inner, outer] = [r + 3, r + 7];
+      return `M${round(cx + Math.cos(a) * inner)} ${round(cy + Math.sin(a) * inner)}L${round(cx + Math.cos(a) * outer)} ${round(cy + Math.sin(a) * outer)}`;
+    }).join("");
+    rayPaths.set(key, d);
+  }
+  return d;
+}
+
 function Sun({ cx, cy, r }: { cx: number; cy: number; r: number }) {
-  const rays = Array.from({ length: 8 }, (_, i) => {
-    const a = (i * Math.PI) / 4;
-    const [inner, outer] = [r + 3, r + 7];
-    return `M${cx + Math.cos(a) * inner} ${cy + Math.sin(a) * inner}L${cx + Math.cos(a) * outer} ${cy + Math.sin(a) * outer}`;
-  });
   return (
     <g>
-      <path d={rays.join("")} {...stylex.props(styles.rays, styles.spin)} />
+      <path d={sunRays(cx, cy, r)} {...stylex.props(styles.rays, styles.spin)} />
       <circle cx={cx} cy={cy} r={r} {...stylex.props(styles.sun, styles.pulse)} />
     </g>
   );

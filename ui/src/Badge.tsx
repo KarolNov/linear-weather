@@ -27,10 +27,16 @@ const styles = stylex.create({
     whiteSpace: "nowrap",
   },
   neutral: { color: colors.inkMuted, backgroundColor: "rgba(29, 26, 51, 0.07)" },
-  sun: { color: "#8a5a00", backgroundColor: "rgba(255, 193, 69, 0.25)" },
-  rain: { color: "#1f4fa8", backgroundColor: "rgba(79, 134, 232, 0.16)" },
-  storm: { color: "#5428a8", backgroundColor: "rgba(123, 79, 214, 0.16)" },
-  fog: { color: "#555b70", backgroundColor: "rgba(154, 160, 180, 0.22)" },
+  sun: { color: "#8a5a00", backgroundColor: `color-mix(in srgb, ${colors.sun} 25%, transparent)` },
+  rain: {
+    color: "#1f4fa8",
+    backgroundColor: `color-mix(in srgb, ${colors.rain} 16%, transparent)`,
+  },
+  storm: {
+    color: "#5428a8",
+    backgroundColor: `color-mix(in srgb, ${colors.storm} 16%, transparent)`,
+  },
+  fog: { color: "#555b70", backgroundColor: `color-mix(in srgb, ${colors.fog} 22%, transparent)` },
   onSky: {
     color: colors.inkOnSky,
     backgroundColor: colors.surfaceOnSky,

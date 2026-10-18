@@ -31,7 +31,7 @@ const styles = stylex.create({
     backgroundColor: colors.dangerSoft,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: "rgba(216, 67, 75, 0.25)",
+    borderColor: `color-mix(in srgb, ${colors.danger} 25%, transparent)`,
     fontSize: "0.9375rem",
     lineHeight: 1.4,
   },

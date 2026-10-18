@@ -26,7 +26,13 @@ export function BoardShell({ viewer }: BoardShellProps) {
           <Logo />
           <Badge>{viewer.organization.name}</Badge>
         </div>
-        <form method="post" action="/auth/logout" {...stylex.props(styles.account)}>
+        {/* The name is hidden on phones, so the label says who is signed in there too. */}
+        <form
+          method="post"
+          action="/auth/logout"
+          aria-label={`Signed in as ${viewer.name}`}
+          {...stylex.props(styles.account)}
+        >
           <Avatar name={viewer.name} src={viewer.avatarUrl} size={30} />
           <span {...stylex.props(styles.viewerName)}>{viewer.name}</span>
           <Button type="submit" variant="quiet">
@@ -102,7 +108,8 @@ const styles = stylex.create({
     backdropFilter: "blur(16px) saturate(1.4)",
     borderBottom: `1px solid ${colors.border}`,
   },
-  brand: { display: "flex", alignItems: "center", gap: space.sm, minWidth: 0 },
+  // Wraps so the org badge drops below the logo on phones instead of running off the edge.
+  brand: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: space.sm, minWidth: 0 },
   account: { display: "flex", alignItems: "center", gap: space.sm, margin: 0 },
   viewerName: {
     fontWeight: 600,
@@ -157,17 +164,20 @@ const styles = stylex.create({
   quadrantRule: { fontSize: "0.8125rem", lineHeight: 1.4, opacity: 0.85 },
   doQ: {
     color: "#fff",
-    backgroundImage: "linear-gradient(135deg, #7b4fd6, #e8507a)",
+    backgroundImage: `linear-gradient(135deg, ${colors.storm}, #e8507a)`,
   },
   scheduleQ: {
     color: "#fff",
-    backgroundImage: "linear-gradient(135deg, #4f86e8, #7fb2ff)",
+    backgroundImage: `linear-gradient(135deg, ${colors.rain}, #7fb2ff)`,
   },
   delegateQ: {
     color: "#6b4300",
-    backgroundImage: "linear-gradient(135deg, #ffd36e, #ffb35c)",
+    backgroundImage: `linear-gradient(135deg, ${colors.focus}, #ffb35c)`,
   },
-  dropQ: { color: "#4a5066", backgroundColor: "rgba(154, 160, 180, 0.25)" },
+  dropQ: {
+    color: "#4a5066",
+    backgroundColor: `color-mix(in srgb, ${colors.fog} 25%, transparent)`,
+  },
   weatherList: {
     listStyle: "none",
     margin: 0,

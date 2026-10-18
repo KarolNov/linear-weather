@@ -16,8 +16,14 @@ const stylesheet = import.meta.env.DEV ? "/virtual:stylex.css" : "/assets/stylex
 // Element defaults StyleX can't express, inlined because they're tiny.
 const globalCss = `*,*::before,*::after{box-sizing:border-box}
 html{color-scheme:light;-webkit-text-size-adjust:100%}
-body{margin:0;background:#1f1747}
+body{margin:0}
 h1,h2,h3,p{margin:0}`;
+
+// Browser chrome and overscroll match the page's sky: the sunset sign-in page or the dawn board.
+const skyColors = {
+  sunset: { theme: "#46246b", body: "#1f1747" },
+  dawn: { theme: "#cfe2ff", body: "#cfe2ff" },
+};
 
 const toServer = (c: Context<{ Bindings: Bindings }>) => c.env.SERVER.fetch(c.req.raw);
 
@@ -34,15 +40,16 @@ export const app = new Hono<{ Bindings: Bindings }>()
     };
     // Escape "<" so the JSON can't close the <script> tag early.
     const propsJson = JSON.stringify(props).replaceAll("<", "\\u003c");
+    const sky = props.viewer ? skyColors.dawn : skyColors.sunset;
 
     return c.html(html`<!doctype html>
       <html lang="en">
         <head>
           <meta charset="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <meta name="theme-color" content="#46246b" />
+          <meta name="theme-color" content="${sky.theme}" />
           <title>Weather Forecast for Linear</title>
-          <style>${raw(globalCss)}</style>
+          <style>${raw(`${globalCss}\nbody{background:${sky.body}}`)}</style>
           <link rel="stylesheet" href="${stylesheet}" />
           ${import.meta.env.DEV ? html`<script type="module" src="/@vite/client"></script>` : ""}
           <script type="module" src="${clientScript}"></script>

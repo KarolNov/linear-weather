@@ -48,6 +48,22 @@ Checks (same as CI): `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`. `
 
 After changing a `wrangler.jsonc`, run `pnpm --filter server cf-typegen` to regenerate `worker-configuration.d.ts`.
 
+## Querying Linear
+
+Queries to Linear live next to the code that uses them, written with `graphql(...)` from `server/src/linear/generated`. [GraphQL Code Generator](https://the-guild.dev/graphql/codegen) checks them against Linear's schema (`server/src/linear/schema.graphql`) and generates their result and variable types.
+
+- After adding or changing a query, run `pnpm --filter server codegen` and commit what it generates.
+- `pnpm --filter server codegen:schema` refreshes the schema from [Linear's SDK repo](https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql).
+
+Linear limits each user to 5,000 requests and 2,000,000 [complexity points](https://linear.app/developers/rate-limiting) an hour, and rejects any single query over 10,000 points. These limits shaped the team-issues query:
+
+- **Only the fields the matrix needs** (the `IssueCard` fragment). Each field costs 0.1 points and each nested object costs 1, multiplied by the page size.
+- **`nodes` instead of `edges { node cursor }`**, which saves an object per issue. `pageInfo.endCursor` is the only cursor needed.
+- **Pages of 250**, Linear's maximum. A page costs about 1,000 points, which leaves plenty of room under the cap and keeps the request count low.
+- **Filtering on the server**: only the team's issues that aren't completed or canceled.
+
+The client reads Linear's rate-limit headers after each request. When Linear answers `RATELIMITED`, it backs off for 0.25s, 0.5s, then 1s. If that isn't enough, it gives up with the time the budget resets. It won't request the next page if the remaining budget can't cover what the last page cost.
+
 ## Signing in with Linear
 
 People sign in with their own Linear account through OAuth, so the app sees exactly the workspaces and teams they can see in Linear.

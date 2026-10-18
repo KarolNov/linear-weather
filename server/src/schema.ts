@@ -1,5 +1,6 @@
 import SchemaBuilder from "@pothos/core";
-import { LinearAuthError, type LinearClient } from "./linear";
+import { LinearAuthError, type LinearClient } from "./linear/client";
+import { graphql } from "./linear/generated";
 
 export interface GraphQLContext {
   /** Resolves to null when nobody is signed in. */
@@ -40,6 +41,20 @@ const UserRef = builder.objectRef<User>("User").implement({
   }),
 });
 
+const Viewer = graphql(`
+  query Viewer {
+    viewer {
+      id
+      name
+      avatarUrl
+      organization {
+        name
+        urlKey
+      }
+    }
+  }
+`);
+
 builder.queryType({
   fields: (t) => ({
     hello: t.string({ resolve: () => "☀️" }),
@@ -51,9 +66,7 @@ builder.queryType({
         const linear = await context.linear();
         if (!linear) return null;
         try {
-          const { viewer } = await linear.request<{ viewer: User }>(
-            "{ viewer { id name avatarUrl organization { name urlKey } } }",
-          );
+          const { viewer } = await linear.request(Viewer);
           return viewer;
         } catch (error) {
           // A revoked token means signed out, not a server error.

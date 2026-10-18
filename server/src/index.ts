@@ -1,7 +1,7 @@
 import { createYoga } from "graphql-yoga";
 import { Hono } from "hono";
 import { auth } from "./auth";
-import { LinearClient } from "./linear";
+import { LinearClient } from "./linear/client";
 import { type GraphQLContext, schema } from "./schema";
 import { discardSession, linearAuthorization } from "./session";
 

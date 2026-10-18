@@ -8,9 +8,22 @@ export interface Bindings {
   SERVER: { fetch(request: Request): Promise<Response> };
 }
 
-// In dev Vite serves the source module; the production client bundle has a fixed name
-// (see vite.config.ts).
+// In dev Vite serves the source module and the StyleX plugin the styles collected so far; the
+// production client bundle and stylesheet have fixed names (see vite.config.ts).
 const clientScript = import.meta.env.DEV ? "/src/client.tsx" : "/assets/client.js";
+const stylesheet = import.meta.env.DEV ? "/virtual:stylex.css" : "/assets/stylex.css";
+
+// Element defaults StyleX can't express, inlined because they're tiny.
+const globalCss = `*,*::before,*::after{box-sizing:border-box}
+html{color-scheme:light;-webkit-text-size-adjust:100%}
+body{margin:0}
+h1,h2,h3,p{margin:0}`;
+
+// Browser chrome and overscroll match the page's sky: the sunset sign-in page or the dawn board.
+const skyColors = {
+  sunset: { theme: "#46246b", body: "#1f1747" },
+  dawn: { theme: "#cfe2ff", body: "#cfe2ff" },
+};
 
 const toServer = (c: Context<{ Bindings: Bindings }>) => c.env.SERVER.fetch(c.req.raw);
 
@@ -27,13 +40,17 @@ export const app = new Hono<{ Bindings: Bindings }>()
     };
     // Escape "<" so the JSON can't close the <script> tag early.
     const propsJson = JSON.stringify(props).replaceAll("<", "\\u003c");
+    const sky = props.viewer ? skyColors.dawn : skyColors.sunset;
 
     return c.html(html`<!doctype html>
       <html lang="en">
         <head>
           <meta charset="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>Linear Weather</title>
+          <meta name="theme-color" content="${sky.theme}" />
+          <title>Weather Forecast for Linear</title>
+          <style>${raw(`${globalCss}\nbody{background:${sky.body}}`)}</style>
+          <link rel="stylesheet" href="${stylesheet}" />
           ${import.meta.env.DEV ? html`<script type="module" src="/@vite/client"></script>` : ""}
           <script type="module" src="${clientScript}"></script>
         </head>

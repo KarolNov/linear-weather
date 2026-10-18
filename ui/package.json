@@ -1,0 +1,21 @@
+{
+  "name": "ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.stylex": "./src/tokens.stylex.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "peerDependencies": {
+    "preact": "^10.29.8"
+  },
+  "dependencies": {
+    "@stylexjs/stylex": "^0.19.1"
+  },
+  "devDependencies": {
+    "preact": "^10.29.8"
+  }
+}

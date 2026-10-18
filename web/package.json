@@ -11,13 +11,16 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
+    "@stylexjs/stylex": "^0.19.1",
     "hono": "^4.13.13",
     "preact": "^10.29.8",
-    "preact-render-to-string": "^6.8.1"
+    "preact-render-to-string": "^6.8.1",
+    "ui": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.64.0",
     "@preact/preset-vite": "^2.10.6",
+    "@stylexjs/unplugin": "^0.19.1",
     "vite": "^8.3.4",
     "vitest": "^5.0.5",
     "wrangler": "^4.151.1"

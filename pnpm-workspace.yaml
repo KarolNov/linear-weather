@@ -1,5 +1,6 @@
 packages:
   - server
+  - ui
   - web
 allowBuilds:
   esbuild: true

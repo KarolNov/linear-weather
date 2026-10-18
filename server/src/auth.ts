@@ -6,13 +6,15 @@ import {
   type OAuthClient,
   OAuthError,
   revokeToken,
+  type TokenSet,
 } from "./linear-oauth";
 import {
   type AppContext,
-  base64url,
+  discardSession,
   endSession,
   isHttps,
   randomToken,
+  sha256Base64url,
   startSession,
 } from "./session";
 
@@ -33,7 +35,7 @@ export const auth = new Hono<{ Bindings: Env }>()
       path: "/auth",
       maxAge: PENDING_TTL_SECONDS,
     });
-    return c.redirect(authorizeUrl(oauthClient(c), state, await codeChallenge(verifier)));
+    return c.redirect(authorizeUrl(oauthClient(c), state, await sha256Base64url(verifier)));
   })
   .get("/callback", async (c) => {
     const { code, state, error } = c.req.query();
@@ -48,22 +50,22 @@ export const auth = new Hono<{ Bindings: Env }>()
       return c.text("This sign-in link expired or didn't come from us. Please sign in again.", 400);
     }
 
+    let tokens: TokenSet;
     try {
-      await startSession(c, await exchangeCode(oauthClient(c), code, verifier));
+      tokens = await exchangeCode(oauthClient(c), code, verifier);
     } catch (e) {
       if (!(e instanceof OAuthError)) throw e;
       console.error(e.message);
       return c.redirect("/?auth_error=token_exchange_failed");
     }
+    // Signing in again replaces any session this browser already had.
+    const previous = await discardSession(c);
+    await startSession(c, tokens);
+    await revokeAll(c, previous);
     return c.redirect("/");
   })
   .post("/logout", async (c) => {
-    const tokens = await endSession(c);
-    if (tokens) {
-      await Promise.all(
-        [tokens.refreshToken, tokens.accessToken].filter((t) => t !== null).map(revokeToken),
-      );
-    }
+    await revokeAll(c, await endSession(c));
     return c.redirect("/", 303);
   });
 
@@ -77,7 +79,11 @@ function oauthClient(c: AppContext): OAuthClient {
   };
 }
 
-async function codeChallenge(verifier: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-  return base64url(new Uint8Array(digest));
+async function revokeAll(c: AppContext, tokens: TokenSet | null): Promise<void> {
+  if (!tokens) return;
+  const client = oauthClient(c);
+  await Promise.all([
+    tokens.refreshToken && revokeToken(client, tokens.refreshToken, "refresh_token"),
+    revokeToken(client, tokens.accessToken, "access_token"),
+  ]);
 }

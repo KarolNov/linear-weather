@@ -17,9 +17,12 @@ const toServer = (c: Context<{ Bindings: Bindings }>) => c.env.SERVER.fetch(c.re
 export const app = new Hono<{ Bindings: Bindings }>()
   .all("/auth/*", toServer)
   .all("/graphql", toServer)
-  .get("*", async (c) => {
+  // Only known pages render; anything else 404s without asking Linear who is signed in.
+  .get("/", async (c) => {
+    const viewer = await fetchViewer(c);
     const props: AppProps = {
-      viewer: await fetchViewer(c),
+      viewer: viewer === UNAVAILABLE ? null : viewer,
+      linearUnavailable: viewer === UNAVAILABLE || undefined,
       authError: c.req.query("auth_error"),
     };
     // Escape "<" so the JSON can't close the <script> tag early.
@@ -41,22 +44,41 @@ export const app = new Hono<{ Bindings: Bindings }>()
       </html>`);
   });
 
-/** Asks our GraphQL server who is signed in, forwarding the browser's session cookie. */
-async function fetchViewer(c: Context<{ Bindings: Bindings }>): Promise<Viewer | null> {
-  const res = await c.env.SERVER.fetch(
-    new Request(new URL("/graphql", c.req.url), {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        cookie: c.req.header("cookie") ?? "",
-      },
-      body: JSON.stringify({
-        query: "{ viewer { name avatarUrl organization { name } } }",
+const UNAVAILABLE = Symbol("unavailable");
+
+/**
+ * Asks our GraphQL server who is signed in, forwarding the browser's session cookie.
+ * Null means signed out; UNAVAILABLE means we couldn't tell (server or Linear failed).
+ */
+async function fetchViewer(
+  c: Context<{ Bindings: Bindings }>,
+): Promise<Viewer | null | typeof UNAVAILABLE> {
+  try {
+    const res = await c.env.SERVER.fetch(
+      new Request(new URL("/graphql", c.req.url), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: c.req.header("cookie") ?? "",
+        },
+        body: JSON.stringify({
+          query: "{ viewer { name avatarUrl organization { name } } }",
+        }),
       }),
-    }),
-  );
-  const body = (await res.json()) as { data?: { viewer: Viewer | null } };
-  return body.data?.viewer ?? null;
+    );
+    if (!res.ok) throw new Error(`server responded ${res.status}`);
+    const body = (await res.json()) as {
+      data?: { viewer: Viewer | null };
+      errors?: { message: string }[];
+    };
+    if (body.errors?.length || !body.data) {
+      throw new Error(body.errors?.map((e) => e.message).join("; ") ?? "no data");
+    }
+    return body.data.viewer;
+  } catch (error) {
+    console.error(`Couldn't load the viewer: ${error}`);
+    return UNAVAILABLE;
+  }
 }
 
 export default app;

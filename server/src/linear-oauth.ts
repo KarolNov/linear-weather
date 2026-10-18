@@ -67,12 +67,27 @@ export function refreshTokens(client: Omit<OAuthClient, "redirectUri">, refreshT
 }
 
 /** Best effort: a token that's already invalid is as good as revoked. */
-export async function revokeToken(token: string): Promise<void> {
-  await fetch(REVOKE_URL, {
+export async function revokeToken(
+  client: Omit<OAuthClient, "redirectUri">,
+  token: string,
+  tokenTypeHint: "access_token" | "refresh_token",
+): Promise<void> {
+  const res = await fetch(REVOKE_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ token }),
-  }).catch(() => undefined);
+    body: new URLSearchParams({
+      token,
+      token_type_hint: tokenTypeHint,
+      client_id: client.clientId,
+      client_secret: client.clientSecret,
+    }),
+  }).catch((error: unknown) => {
+    console.warn(`Linear token revocation failed: ${error}`);
+    return null;
+  });
+  if (res && !res.ok) {
+    console.warn(`Linear token revocation failed (${res.status}): ${await res.text()}`);
+  }
 }
 
 async function requestTokens(params: Record<string, string>): Promise<TokenSet> {

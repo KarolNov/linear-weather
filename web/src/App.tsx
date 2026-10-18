@@ -6,10 +6,12 @@ export interface Viewer {
 
 export interface AppProps {
   viewer: Viewer | null;
+  /** We couldn't tell whether anyone is signed in, because the server or Linear failed. */
+  linearUnavailable?: boolean;
   authError?: string;
 }
 
-export function App({ viewer, authError }: AppProps) {
+export function App({ viewer, linearUnavailable, authError }: AppProps) {
   return (
     <main>
       <header>
@@ -26,6 +28,8 @@ export function App({ viewer, authError }: AppProps) {
       </header>
       {viewer ? (
         <p>Team load forecast coming soon. ☀️ ⛅ 🌧️ ⛈️</p>
+      ) : linearUnavailable ? (
+        <p role="alert">Couldn't reach Linear just now. Please reload in a minute.</p>
       ) : (
         <section>
           {authError && <p role="alert">{signInErrorMessage(authError)}</p>}

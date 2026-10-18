@@ -171,6 +171,21 @@ describe("/auth/callback", () => {
     });
   });
 
+  it("revokes the session this browser had before signing in again", async () => {
+    const first = await signIn();
+    const { cookie, state } = await startLogin();
+    await app.request(
+      `${ORIGIN}/auth/callback?code=good-code&state=${state}`,
+      { headers: { cookie: `${cookie}; ${first}` } },
+      env,
+    );
+    const revoked = linear.calls
+      .filter((c) => c.url.endsWith("/oauth/revoke"))
+      .map((c) => new URLSearchParams(c.body).get("token"));
+    expect(revoked.sort()).toEqual(["access-1", "refresh-1"]);
+    expect(await viewer(first)).toBeNull();
+  });
+
   it("rejects a state that doesn't match the one we issued", async () => {
     const { cookie } = await startLogin();
     const res = await app.request(
@@ -238,6 +253,30 @@ describe("viewer", () => {
     expect(linear.calls.at(-1)?.headers.get("authorization")).toBe("Bearer access-2");
   });
 
+  it("keeps the refresh token when a refresh response omits it", async () => {
+    linear.expiresIn = 60;
+    const cookie = await signIn();
+    linear.fetchMock.mockImplementationOnce(async () =>
+      Response.json({ access_token: "access-1", expires_in: 60 }),
+    );
+    await viewer(cookie);
+    await viewer(cookie);
+    const refreshes = linear.calls
+      .filter((c) => new URLSearchParams(c.body).get("grant_type") === "refresh_token")
+      .map((c) => new URLSearchParams(c.body).get("refresh_token"));
+    // The first refresh hit the one-off mock above; the second must reuse the kept token.
+    expect(refreshes).toEqual(["refresh-1"]);
+  });
+
+  it("forgets the session once Linear rejects its token", async () => {
+    const cookie = await signIn();
+    linear = fakeLinear();
+    vi.mocked(fetch).mockImplementation(linear.fetchMock);
+    await viewer(cookie);
+    await viewer(cookie);
+    expect(linear.calls.filter((c) => c.url.endsWith("/graphql"))).toHaveLength(1);
+  });
+
   it("falls back to the dev API key on localhost", async () => {
     const devEnv = { ...env, LINEAR_API_KEY: "lin_api_dev" };
     expect(await viewer(undefined, devEnv)).not.toBeNull();
@@ -275,6 +314,9 @@ describe("/auth/logout", () => {
       .filter((c) => c.url.endsWith("/oauth/revoke"))
       .map((c) => new URLSearchParams(c.body).get("token"));
     expect(revoked.sort()).toEqual(["access-1", "refresh-1"]);
+    for (const call of linear.calls.filter((c) => c.url.endsWith("/oauth/revoke"))) {
+      expect(new URLSearchParams(call.body).get("client_secret")).toBe("test-client-secret");
+    }
     expect(await viewer(cookie)).toBeNull();
   });
 

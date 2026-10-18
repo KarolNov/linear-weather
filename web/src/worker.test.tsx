@@ -14,6 +14,7 @@ describe("web worker", () => {
     const page = await res.text();
     expect(page).toContain("See the storm before it hits your team.");
     expect(page).toContain('href="/auth/login"');
+    expect(page).toContain('href="/?demo=true"');
     expect(page).toContain('<link rel="stylesheet"');
   });
 

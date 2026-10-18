@@ -1,16 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import {
-  Alert,
-  Avatar,
-  Badge,
-  Button,
-  Card,
-  LinkButton,
-  Logo,
-  Sky,
-  type Weather,
-  WeatherIcon,
-} from "ui";
+import { Alert, Avatar, Card, LinkButton, Logo, Sky, type Weather, WeatherIcon } from "ui";
 import { colors, fonts, motion, radii, space } from "ui/tokens.stylex";
 
 export interface SignInPageProps {
@@ -51,12 +40,11 @@ export function SignInPage({ linearUnavailable, authError }: SignInPageProps) {
                       Sign in with Linear
                       <span aria-hidden="true">→</span>
                     </LinkButton>
-                    {/* Will sign in as Nick Fury, PM of a mocked Avengers team, for trying the
-                        board without a Linear workspace. */}
-                    <Button variant="glass" size="lg" disabled>
+                    {/* Nick Fury's board for a mocked Avengers team, for trying it without a
+                        Linear workspace. */}
+                    <LinkButton href="/?demo=true" variant="glass" size="lg">
                       Explore the demo
-                      <Badge tone="onSky">Soon</Badge>
-                    </Button>
+                    </LinkButton>
                   </div>
                   <p {...stylex.props(styles.fineprint)}>
                     You'll see exactly the teams and issues you can see in Linear.
@@ -73,7 +61,7 @@ export function SignInPage({ linearUnavailable, authError }: SignInPageProps) {
   );
 }
 
-// The original Avengers, as their PM sees them. The demo will sign you in as Nick Fury.
+// The original Avengers, as their PM sees them. The demo shows you their board as Nick Fury.
 const sampleTeam: { name: string; weather: Weather; summary: string; week: Weather[] }[] = [
   {
     name: "Tony Stark",

@@ -105,9 +105,9 @@ sequenceDiagram
 
 If you just want data without setting up OAuth, put a personal API key in `server/.env` as `LINEAR_API_KEY`. It's used only when nobody is signed in and only for requests to `localhost`, so it can't leak through a deployed Worker. Leave it empty to test the real login.
 
-### Dev shortcut: the demo workspace
+### The demo workspace
 
-No Linear account at all? Set `LINEAR_DEMO=true` in `server/.env` to browse a mocked workspace as Nick Fury, PM of the Avengers. Like the API key, it's used only when nobody is signed in and only on `localhost`; the API key wins if both are set. The data lives in `server/src/linear/demo.ts` and answers the same typed queries as Linear (through the `LinearSource` interface), with due dates counted from today, so tests can use it too: `new DemoLinear({ today: "2026-10-18" })`.
+No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a mocked Avengers team. The web Worker passes the flag on to `/graphql?demo=true`, which answers from `server/src/linear/demo.ts` instead of Linear, whoever is signed in. The demo answers the same typed queries as Linear (through the `LinearSource` interface), with due dates counted from today, so tests can use it too: `new DemoLinear({ today: "2026-10-18" })`.
 
 ## Status
 

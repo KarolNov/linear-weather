@@ -4,7 +4,7 @@ import { auth } from "./auth";
 import { LinearClient, type LinearSource } from "./linear/client";
 import { DemoLinear } from "./linear/demo";
 import { type GraphQLContext, schema } from "./schema";
-import { type AppContext, discardSession, isLocalhost, linearAuthorization } from "./session";
+import { type AppContext, discardSession, linearAuthorization } from "./session";
 
 const yoga = createYoga<GraphQLContext>({
   schema,
@@ -29,14 +29,13 @@ export const app = new Hono<{ Bindings: Env }>()
   });
 
 /**
- * Linear as the signed-in user sees it. With nobody signed in, the dev shortcuts: the personal
- * API key, else the demo workspace when `LINEAR_DEMO=true`, both on localhost only.
+ * Linear as the signed-in user sees it, or the mocked Avengers workspace for `?demo=true`, so
+ * anyone can try the board without a Linear account.
  */
 async function linearSource(c: AppContext): Promise<LinearSource | null> {
+  if (c.req.query("demo") === "true") return new DemoLinear();
   const authorization = await linearAuthorization(c);
-  if (authorization) return new LinearClient(authorization);
-  if (c.env.LINEAR_DEMO === "true" && isLocalhost(c)) return new DemoLinear();
-  return null;
+  return authorization ? new LinearClient(authorization) : null;
 }
 
 export default app;

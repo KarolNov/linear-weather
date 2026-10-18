@@ -297,32 +297,23 @@ describe("viewer", () => {
     expect(linear.calls).toHaveLength(0);
   });
 
-  it("serves the demo workspace on localhost when LINEAR_DEMO is on", async () => {
-    expect(await viewer(undefined, { ...env, LINEAR_DEMO: "true" })).toEqual({
-      name: "Nick Fury",
-      organization: { name: "S.H.I.E.L.D." },
-    });
-    expect(linear.calls).toHaveLength(0);
-  });
-
-  it("prefers a signed-in user over the demo", async () => {
+  it("serves the demo workspace for ?demo=true, signed in or not", async () => {
     const cookie = await signIn();
-    expect(await viewer(cookie, { ...env, LINEAR_DEMO: "true" })).toMatchObject({
-      name: VIEWER.name,
-    });
-  });
-
-  it("ignores LINEAR_DEMO anywhere but localhost", async () => {
-    const res = await app.request(
-      "https://weather.example.com/graphql",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query: "{ viewer { name } }" }),
-      },
-      { ...env, LINEAR_DEMO: "true" },
-    );
-    expect(await res.json()).toEqual({ data: { viewer: null } });
+    for (const session of [undefined, cookie]) {
+      const res = await app.request(
+        `${ORIGIN}/graphql?demo=true`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(session ? { cookie: session } : {}) },
+          body: JSON.stringify({ query: "{ viewer { name organization { name } } }" }),
+        },
+        env,
+      );
+      expect(await res.json()).toEqual({
+        data: { viewer: { name: "Nick Fury", organization: { name: "S.H.I.E.L.D." } } },
+      });
+    }
+    expect(linear.calls.filter((c) => c.url.endsWith("/graphql"))).toHaveLength(0);
   });
 });
 

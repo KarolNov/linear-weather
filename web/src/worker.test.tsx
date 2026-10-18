@@ -32,6 +32,14 @@ describe("web worker", () => {
     expect(fetch.mock.calls[0]?.[0].headers.get("cookie")).toBe("lw_session=abc");
   });
 
+  it("asks the server for the demo workspace on ?demo=true", async () => {
+    const { bindings, fetch } = serverReturning(null);
+    await app.request("/?demo=true", {}, bindings);
+    await app.request("/", {}, bindings);
+    expect(new URL(fetch.mock.calls[0]?.[0].url ?? "").search).toBe("?demo=true");
+    expect(new URL(fetch.mock.calls[1]?.[0].url ?? "").search).toBe("");
+  });
+
   it("says Linear is unreachable instead of showing signed out when the server fails", async () => {
     const errored = vi.fn(async (_request: Request) =>
       Response.json({ data: { viewer: null }, errors: [{ message: "Unexpected error." }] }),

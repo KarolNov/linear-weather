@@ -64,15 +64,18 @@ export const app = new Hono<{ Bindings: Bindings }>()
 const UNAVAILABLE = Symbol("unavailable");
 
 /**
- * Asks our GraphQL server who is signed in, forwarding the browser's session cookie.
- * Null means signed out; UNAVAILABLE means we couldn't tell (server or Linear failed).
+ * Asks our GraphQL server who is signed in, forwarding the browser's session cookie, and
+ * `?demo=true` for the mocked Avengers workspace. Null means signed out; UNAVAILABLE means we
+ * couldn't tell (server or Linear failed).
  */
 async function fetchViewer(
   c: Context<{ Bindings: Bindings }>,
 ): Promise<Viewer | null | typeof UNAVAILABLE> {
   try {
+    const url = new URL("/graphql", c.req.url);
+    if (c.req.query("demo") === "true") url.searchParams.set("demo", "true");
     const res = await c.env.SERVER.fetch(
-      new Request(new URL("/graphql", c.req.url), {
+      new Request(url, {
         method: "POST",
         headers: {
           "content-type": "application/json",

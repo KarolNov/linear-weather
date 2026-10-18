@@ -117,7 +117,7 @@ export function isHttps(c: AppContext): boolean {
 }
 
 // Cloudflare routes by hostname, so a deployed Worker never sees a localhost URL.
-export function isLocalhost(c: AppContext): boolean {
+function isLocalhost(c: AppContext): boolean {
   const { hostname } = new URL(c.req.url);
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }

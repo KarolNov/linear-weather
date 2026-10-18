@@ -1,4 +1,3 @@
-/* eslint-disable */
 /** Internal type. DO NOT USE DIRECTLY. */
 type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
 /** Internal type. DO NOT USE DIRECTLY. */
@@ -38,7 +37,7 @@ export class TypedDocumentString<TResult, TVariables>
     return this.value;
   }
 }
-export const IssueCardFragmentDoc = new TypedDocumentString(`
+export const IssueCardFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
     fragment IssueCard on Issue {
   id
   identifier
@@ -57,7 +56,7 @@ export const IssueCardFragmentDoc = new TypedDocumentString(`
   }
 }
     `, {"fragmentName":"IssueCard"}) as unknown as TypedDocumentString<IssueCardFragment, unknown>;
-export const TeamOpenIssuesDocument = new TypedDocumentString(`
+export const TeamOpenIssuesDocument = /*#__PURE__*/ new TypedDocumentString(`
     query TeamOpenIssues($teamId: ID!, $first: Int!, $after: String) {
   issues(
     first: $first
@@ -93,7 +92,7 @@ export const TeamOpenIssuesDocument = new TypedDocumentString(`
     type
   }
 }`) as unknown as TypedDocumentString<TeamOpenIssuesQuery, TeamOpenIssuesQueryVariables>;
-export const ViewerDocument = new TypedDocumentString(`
+export const ViewerDocument = /*#__PURE__*/ new TypedDocumentString(`
     query Viewer {
   viewer {
     id

@@ -1,54 +1,12 @@
 import { type LinearClient, LinearRateLimitError } from "./client";
-import { graphql } from "./generated";
-import type { IssueCardFragment, TeamOpenIssuesQuery } from "./generated/graphql";
+import {
+  type IssueCardFragment,
+  TeamOpenIssuesDocument,
+  type TeamOpenIssuesQuery,
+} from "./generated";
 
 export type IssueCard = IssueCardFragment;
 export type Assignee = NonNullable<IssueCard["assignee"]>;
-
-// Everything the matrix needs to place and show an issue, and nothing more: each field costs
-// 0.1 complexity points and each nested object 1, multiplied by the page size.
-graphql(`
-  fragment IssueCard on Issue {
-    id
-    identifier
-    title
-    dueDate
-    priority
-    estimate
-    assignee {
-      id
-      name
-      avatarUrl
-    }
-    state {
-      name
-      type
-    }
-  }
-`);
-
-// `nodes` rather than `edges { node cursor }`: one object fewer per issue, and pageInfo has the
-// only cursor we need. Completed and canceled issues aren't anyone's load.
-const TeamOpenIssues = graphql(`
-  query TeamOpenIssues($teamId: ID!, $first: Int!, $after: String) {
-    issues(
-      first: $first
-      after: $after
-      filter: {
-        team: { id: { eq: $teamId } }
-        state: { type: { nin: ["completed", "canceled"] } }
-      }
-    ) {
-      nodes {
-        ...IssueCard
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-  }
-`);
 
 // Linear's largest page. About 4 points per issue, so ~1,000 per page: well under the 10,000
 // cap on a single query, and big pages mean fewer requests against the hourly request limit.
@@ -62,7 +20,7 @@ export async function fetchTeamOpenIssues(
   const issues: IssueCard[] = [];
   let after: string | null = null;
   for (;;) {
-    const page: TeamOpenIssuesQuery = await linear.request(TeamOpenIssues, {
+    const page: TeamOpenIssuesQuery = await linear.request(TeamOpenIssuesDocument, {
       teamId,
       first: PAGE_SIZE,
       after,

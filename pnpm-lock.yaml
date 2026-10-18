@@ -197,9 +197,12 @@ importers:
       '@graphql-codegen/cli':
         specifier: ^7.4.6
         version: 7.4.6(@types/node@26.6.5)(graphql@17.0.2)(supports-color@10.2.2)(typescript@7.0.2)
-      '@graphql-codegen/client-preset':
-        specifier: ^6.2.3
-        version: 6.2.3(graphql@17.0.2)
+      '@graphql-codegen/typed-document-node':
+        specifier: ^7.2.0
+        version: 7.2.0(graphql@17.0.2)
+      '@graphql-codegen/typescript-operations':
+        specifier: ^6.1.10
+        version: 6.1.10(graphql@17.0.2)
       '@graphql-typed-document-node/core':
         specifier: ^3.2.0
         version: 3.2.0(graphql@17.0.2)

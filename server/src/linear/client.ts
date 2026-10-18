@@ -1,5 +1,5 @@
 import type { LinearAuthorization } from "../session";
-import type { TypedDocumentString } from "./generated/graphql";
+import type { TypedDocumentString } from "./generated";
 
 const LINEAR_API = "https://api.linear.app/graphql";
 

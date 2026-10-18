@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LinearAuthError, LinearClient, LinearRateLimitError } from "./client";
-import { TypedDocumentString } from "./generated/graphql";
+import { TypedDocumentString } from "./generated";
 
 const Hello = new TypedDocumentString<{ viewer: { id: string } }, Record<string, never>>(
   "query Hello { viewer { id } }",

@@ -1,12 +1,6 @@
 import { BoardShell } from "./BoardShell";
-import type { Board, BoardError } from "./board";
+import type { Board, BoardError, Viewer } from "./board";
 import { SignInPage } from "./SignInPage";
-
-export interface Viewer {
-  name: string;
-  avatarUrl: string | null;
-  organization: { name: string };
-}
 
 export interface AppProps {
   viewer: Viewer | null;

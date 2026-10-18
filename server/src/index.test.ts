@@ -1,5 +1,6 @@
-import { exports } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { env, exports } from "cloudflare:workers";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { app } from "./index";
 
 describe("server worker", () => {
   it("reports health", async () => {
@@ -17,21 +18,67 @@ describe("server worker", () => {
   });
 });
 
-describe("GET /board", () => {
-  it("answers from the demo workspace on ?demo=true, with who is signed in", async () => {
-    const res = await exports.default.fetch("http://localhost/board?demo=true&team=demo-team-ops");
-    const body = (await res.json()) as {
-      viewer: { name: string };
-      board: { team: { name: string }; people: unknown[] };
-    };
-    expect(body.viewer.name).toBe("Nick Fury");
-    expect(body.board.team.name).toBe("S.H.I.E.L.D. Ops");
-    expect(body.board.people.length).toBeGreaterThan(0);
+describe("POST /graphql", () => {
+  const query = (url: string, source: string, bindings: Env = env) =>
+    app.request(
+      url,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: source }),
+      },
+      bindings,
+    );
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it("is 401 when nobody is signed in", async () => {
-    const res = await exports.default.fetch("http://example.com/board");
-    expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "signed_out" });
+  it("answers from the demo workspace on ?demo=true", async () => {
+    const res = await query(
+      "http://localhost/graphql?demo=true",
+      '{ viewer { name } team(id: "demo-team-ops") { name people { name } } }',
+    );
+    const { data } = (await res.json()) as {
+      data: { viewer: { name: string }; team: { name: string; people: unknown[] } };
+    };
+    expect(data.viewer.name).toBe("Nick Fury");
+    expect(data.team.name).toBe("S.H.I.E.L.D. Ops");
+    expect(data.team.people.length).toBeGreaterThan(0);
+  });
+
+  it("says when Linear's rate limit is spent, and when to retry, keeping the rest", async () => {
+    const resetAt = Date.now() + 60_000;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const { query } = (await new Request(input, init).json()) as { query: string };
+      if (query.includes("viewer {\n    id")) {
+        return Response.json({
+          data: {
+            viewer: {
+              id: "u",
+              name: "Ada",
+              avatarUrl: null,
+              organization: { name: "Acme", urlKey: "acme" },
+            },
+          },
+        });
+      }
+      return Response.json(
+        { errors: [{ message: "Rate limit exceeded", extensions: { code: "RATELIMITED" } }] },
+        { status: 400, headers: { "x-ratelimit-requests-reset": String(resetAt) } },
+      );
+    });
+    const res = await query("http://localhost/graphql", "{ viewer { name } teams { name } }", {
+      ...env,
+      LINEAR_API_KEY: "lin_api_dev",
+    });
+    const body = (await res.json()) as {
+      data: unknown;
+      errors: { path: string[]; extensions: unknown }[];
+    };
+    expect(body.data).toEqual({ viewer: { name: "Ada" }, teams: null });
+    expect(body.errors).toMatchObject([
+      { path: ["teams"], extensions: { code: "RATE_LIMITED", resetAt } },
+    ]);
   });
 });

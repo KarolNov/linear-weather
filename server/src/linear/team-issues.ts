@@ -35,26 +35,3 @@ export async function fetchTeamOpenIssues(
     after = endCursor;
   }
 }
-
-export interface AssigneeIssues {
-  /** Null for issues nobody is assigned to. */
-  assignee: Assignee | null;
-  issues: IssueCard[];
-}
-
-/** Groups issues by assignee, in order of first appearance; unassigned issues come last. */
-export function groupByAssignee(issues: IssueCard[]): AssigneeIssues[] {
-  const groups = new Map<string | null, AssigneeIssues>();
-  for (const issue of issues) {
-    const key = issue.assignee?.id ?? null;
-    let group = groups.get(key);
-    if (!group) {
-      group = { assignee: issue.assignee ?? null, issues: [] };
-      groups.set(key, group);
-    }
-    group.issues.push(issue);
-  }
-  const unassigned = groups.get(null);
-  groups.delete(null);
-  return unassigned ? [...groups.values(), unassigned] : [...groups.values()];
-}

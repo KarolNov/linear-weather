@@ -2,7 +2,14 @@ import { type Context, Hono } from "hono";
 import { html, raw } from "hono/html";
 import { renderToString } from "preact-render-to-string";
 import { App, type AppProps } from "./App";
-import type { BoardResponse } from "./board";
+import {
+  BOARD_QUERY,
+  type Board,
+  type BoardData,
+  type BoardError,
+  total,
+  type Viewer,
+} from "./board";
 
 export interface Bindings {
   /** Service binding to the server Worker (see wrangler.jsonc). */
@@ -71,11 +78,18 @@ export const app = new Hono<{ Bindings: Bindings }>()
 
 const UNAVAILABLE = Symbol("unavailable");
 
+/** Who is signed in, and their board or why it couldn't load. */
+type BoardResponse = { viewer: Viewer } & ({ board: Board } | { boardError: BoardError });
+
+interface GraphQLResponse<T> {
+  data?: T | null;
+  errors?: { message: string; path?: (string | number)[]; extensions?: Record<string, unknown> }[];
+}
+
 /**
- * Who is signed in and their board for `teamId` (or their team), from the server's temporary
- * `/board` route, forwarding the browser's session cookie; or the mocked Avengers workspace
- * when `demo` is set. Null means signed out; UNAVAILABLE means we couldn't tell (server or
- * Linear failed).
+ * Who is signed in and their board for `teamId` (or their team), from our GraphQL server,
+ * forwarding the browser's session cookie; or the mocked Avengers workspace when `demo` is set.
+ * Null means signed out; UNAVAILABLE means we couldn't tell (server or Linear failed).
  */
 async function fetchBoard(
   c: Context<{ Bindings: Bindings }>,
@@ -83,15 +97,47 @@ async function fetchBoard(
   teamId: string | undefined,
 ): Promise<BoardResponse | null | typeof UNAVAILABLE> {
   try {
-    const url = new URL("/board", c.req.url);
+    const url = new URL("/graphql", c.req.url);
     if (demo) url.searchParams.set("demo", "true");
-    if (teamId) url.searchParams.set("team", teamId);
     const res = await c.env.SERVER.fetch(
-      new Request(url, { headers: { cookie: c.req.header("cookie") ?? "" } }),
+      new Request(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: c.req.header("cookie") ?? "" },
+        body: JSON.stringify({ query: BOARD_QUERY, variables: { teamId: teamId ?? null } }),
+      }),
     );
-    if (res.status === 401) return null;
     if (!res.ok) throw new Error(`server responded ${res.status}`);
-    return (await res.json()) as BoardResponse;
+    const { data, errors = [] } = (await res.json()) as GraphQLResponse<BoardData>;
+    const viewerFailed = errors.some((e) => e.path?.[0] === "viewer");
+    if (!data || viewerFailed) {
+      throw new Error(errors.map((e) => e.message).join("; ") || "no data");
+    }
+    // Without a viewer the rest failed too, as "sign in first".
+    if (!data.viewer) return null;
+
+    if (errors.length > 0 || !data.teams) {
+      // Errors are about the board alone, so the page still shows who is signed in.
+      const limited = errors.find((e) => e.extensions?.code === "RATE_LIMITED");
+      if (!limited) console.error(`Couldn't load the board: ${errors.map((e) => e.message)}`);
+      const boardError: BoardError = limited
+        ? { kind: "rate_limited", resetAt: (limited.extensions?.resetAt as number) ?? null }
+        : { kind: "unavailable" };
+      return { viewer: data.viewer, boardError };
+    }
+
+    const { team, teams, today } = data;
+    const people: Board["people"] = team
+      ? team.people.map(({ matrix, ...assignee }) => ({ assignee, matrix }))
+      : [];
+    if (team && total(team.unassigned) > 0)
+      people.push({ assignee: null, matrix: team.unassigned });
+    const board: Board = {
+      today,
+      teams,
+      team: team && { id: team.id, name: team.name, key: team.key },
+      people,
+    };
+    return { viewer: data.viewer, board };
   } catch (error) {
     console.error(`Couldn't load the board: ${error}`);
     return UNAVAILABLE;

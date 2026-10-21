@@ -62,7 +62,7 @@ Linear limits each user to 5,000 requests and 2,000,000 [complexity points](http
 
 - **Only the fields the matrix needs** (the `IssueCard` fragment). Each field costs 0.1 points and each nested object costs 1, multiplied by the page size.
 - **`nodes` instead of `edges { node cursor }`**, which saves an object per issue. `pageInfo.endCursor` is the only cursor needed.
-- **Pages of 250**, Linear's maximum. A page costs about 1,300 points, which leaves plenty of room under the cap and keeps the request count low.
+- **Pages of 250**, Linear's maximum. A full page should cost about 1,300 points, which leaves plenty of room under the cap and keeps the request count low.
 - **Filtering on the server**: only issues that aren't completed or canceled, in the teams asked for. One query covers several teams, and each issue carries its `team { id }` so they can be split up again.
 
 The client reads Linear's rate-limit headers after each request and remembers what each query cost. Linear's budget refills continuously, so before sending a query the client waits until the remaining budget covers one more request at that cost. When Linear still answers `RATELIMITED`, it retries up to 3 times, waiting at least 0.25s, 0.5s, then 1s. If the budget would take more than 5s to refill, or the retries run out, it gives up with the time the budget resets.
@@ -106,10 +106,17 @@ Resolvers don't fetch anything themselves. They ask the `Workspace` for a team's
 
 The per-team cache removed the per-person N+1. That left one per team: each team cost a members query and an issues query of its own. DataLoader removes that too. Requests no longer grow with the number of people or teams, only with the number of issues (one more page per 250).
 
-Complexity, estimated with [Linear's rules](https://linear.app/developers/rate-limiting) (0.1 a field, 1 an object, multiplied by `first`), since Linear's `x-complexity` header needs a real workspace to read:
+Measured against a real workspace (2 teams, 5 open issues) through Linear's `x-complexity` header:
 
-- `OpenIssues`: about 5.3 points an issue, so ~1,300 a page of 250, however many teams the page covers.
-- `TeamsMembers`: about 330 points a team (250 members at 1.3 each). Batches stop at 10 teams (~3,300 points), well under the 10,000 cap on one query.
+| Linear query | Complexity |
+|---|---|
+| `Viewer` | 3 |
+| `Teams` | 376 |
+| `TeamsMembers`, 1 team / 2 teams | 327 / 653 |
+| `OpenIssues`, 1 team / 2 teams | 8 / 8 |
+
+- `TeamsMembers` grows by ~327 points a team, as [Linear's rules](https://linear.app/developers/rate-limiting) predict (250 members at 1.3 points each). Batches stop at 10 teams (~3,300 points), well under the 10,000 cap on one query.
+- `OpenIssues` cost the same for 1 issue and for 5. The ~1,300 a full page of 250 would cost by those rules is an estimate; no workspace we've tried has that many open issues.
 
 Errors stay next to the field that failed: `teams` and `team` are nullable, so a rate-limited board still returns the `viewer`. Linear's rate limit comes back as `extensions: { code: "RATE_LIMITED", resetAt }` and a revoked token as `UNAUTHENTICATED`. Any other error is masked.
 

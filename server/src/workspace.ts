@@ -30,7 +30,8 @@ export interface TeamWork {
 }
 
 // The members query costs ~330 complexity points a team, so 10 teams stay well under Linear's
-// 10,000 cap on one query. Issues are paged at a fixed cost however many teams they cover.
+// 10,000 cap on one query. Issues are paged at a fixed cost however many teams they cover, so
+// one batch takes every team. `teamWork` already caches each team, so the loaders only batch.
 const TEAMS_PER_BATCH = 10;
 
 export class Workspace {
@@ -41,11 +42,11 @@ export class Workspace {
   private readonly abandoned = new Set<string>();
   private readonly members = new DataLoader<string, Assignee[]>(
     (teamIds) => this.loadMembers(teamIds),
-    { maxBatchSize: TEAMS_PER_BATCH },
+    { maxBatchSize: TEAMS_PER_BATCH, cache: false },
   );
   private readonly openIssues = new DataLoader<string, IssueCard[]>(
     (teamIds) => this.loadOpenIssues(teamIds),
-    { maxBatchSize: TEAMS_PER_BATCH },
+    { cache: false },
   );
 
   constructor(private readonly linear: LinearSource) {}
@@ -133,7 +134,7 @@ export class Workspace {
     for (const { team, ...issue } of await fetchOpenIssues(this.wanted(teamIds), teamIds)) {
       byTeam.get(team.id)?.push(issue);
     }
-    return teamIds.map((id) => byTeam.get(id) ?? []);
+    return [...byTeam.values()];
   }
 
   /**

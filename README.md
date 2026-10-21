@@ -102,7 +102,7 @@ Resolvers don't fetch anything themselves. They ask the `Workspace` for a team's
 |---|---|---|---|---|
 | `BOARD_QUERY`, one team | 9 | 20 | 4 | 4 |
 | Every team's people and matrices, 2 teams | 15 | 31 | 5 | 3 |
-| … with *T* teams | | ~2 × lookups + 1 | 1 + 2*T* | 1 + 2⌈*T*/10⌉ |
+| … with *T* teams | | ~2 × lookups + 1 | 1 + 2*T* | 2 + ⌈*T*/10⌉ |
 
 The per-team cache removed the per-person N+1. That left one per team: each team cost a members query and an issues query of its own. DataLoader removes that too. Requests no longer grow with the number of people or teams, only with the number of issues (one more page per 250).
 
@@ -115,7 +115,7 @@ Measured against a real workspace (2 teams, 5 open issues) through Linear's `x-c
 | `TeamsMembers`, 1 team / 2 teams | 327 / 653 |
 | `OpenIssues`, 1 team / 2 teams | 8 / 8 |
 
-- `TeamsMembers` grows by ~327 points a team, as [Linear's rules](https://linear.app/developers/rate-limiting) predict (250 members at 1.3 points each). Batches stop at 10 teams (~3,300 points), well under the 10,000 cap on one query.
+- `TeamsMembers` grows by ~327 points a team, as [Linear's rules](https://linear.app/developers/rate-limiting) predict (250 members at 1.3 points each). Batches stop at 10 teams (~3,300 points), well under the 10,000 cap on one query. `OpenIssues` takes every team at once.
 - `OpenIssues` cost the same for 1 issue and for 5. The ~1,300 a full page of 250 would cost by those rules is an estimate; no workspace we've tried has that many open issues.
 
 Errors stay next to the field that failed: `teams` and `team` are nullable, so a rate-limited board still returns the `viewer`. Linear's rate limit comes back as `extensions: { code: "RATE_LIMITED", resetAt }` and a revoked token as `UNAUTHENTICATED`. Any other error is masked.

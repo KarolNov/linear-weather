@@ -55,7 +55,10 @@ export interface LinearSource {
 export class LinearClient implements LinearSource {
   /** Updated after every request; null until the first one. */
   rateLimit: RateLimit | null = null;
-  /** What each query string cost last time, so concurrent queries don't read each other's. */
+  /**
+   * What each query cost last time, so concurrent queries don't read each other's. Keyed by
+   * page size too: Linear multiplies a connection's cost by `first`.
+   */
   private readonly costs = new Map<string, number>();
   private readonly sleep: (ms: number) => Promise<void>;
 
@@ -72,10 +75,12 @@ export class LinearClient implements LinearSource {
     ...[variables]: TVariables extends Record<string, never> ? [] : [TVariables]
   ): Promise<TResult> {
     const query = document.toString();
+    const first = (variables as { first?: unknown } | undefined)?.first;
+    const costKey = first == null ? query : `${first}:${query}`;
     for (let attempt = 0; ; attempt++) {
-      await this.waitForBudget(query, attempt === 0 ? 0 : BASE_BACKOFF_MS * 2 ** (attempt - 1));
+      await this.waitForBudget(costKey, attempt === 0 ? 0 : BASE_BACKOFF_MS * 2 ** (attempt - 1));
       try {
-        return await this.send<TResult>(query, variables);
+        return await this.send<TResult>(query, variables, costKey);
       } catch (error) {
         if (!(error instanceof LinearRateLimitError) || attempt >= MAX_RETRIES) throw error;
       }
@@ -84,11 +89,11 @@ export class LinearClient implements LinearSource {
 
   /**
    * Waits at least `minMs`, and until the budget has refilled enough for one more request
-   * costing what `query` cost last time. Throws instead if that would take too long.
+   * costing what it cost last time. Throws instead if that would take too long.
    */
-  private async waitForBudget(query: string, minMs: number): Promise<void> {
+  private async waitForBudget(costKey: string, minMs: number): Promise<void> {
     const { requestsRemaining, complexityRemaining, resetAt } = this.rateLimit ?? {};
-    const cost = this.costs.get(query) ?? 0;
+    const cost = this.costs.get(costKey) ?? 0;
     const refill = Math.max(
       requestsRemaining == null ? 0 : (1 - requestsRemaining) / REQUESTS_PER_MS,
       complexityRemaining == null ? 0 : (cost - complexityRemaining) / COMPLEXITY_PER_MS,
@@ -98,14 +103,14 @@ export class LinearClient implements LinearSource {
     if (wait > 0) await this.sleep(wait);
   }
 
-  private async send<T>(query: string, variables: unknown): Promise<T> {
+  private async send<T>(query: string, variables: unknown, costKey: string): Promise<T> {
     const res = await fetch(LINEAR_API, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: this.authorization },
       body: JSON.stringify({ query, variables }),
     });
     this.rateLimit = readRateLimit(res.headers);
-    if (this.rateLimit.complexity !== null) this.costs.set(query, this.rateLimit.complexity);
+    if (this.rateLimit.complexity !== null) this.costs.set(costKey, this.rateLimit.complexity);
     if (res.status === 401) throw new LinearAuthError("Linear rejected the access token");
 
     // Outages can come back as HTML error pages.

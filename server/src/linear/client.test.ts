@@ -103,6 +103,31 @@ describe("LinearClient", () => {
     expect(sleep.mock.calls).toEqual([[900]]);
   });
 
+  it("remembers costs per page size, since Linear scales a query's cost by it", async () => {
+    const Paged = new TypedDocumentString<{ viewer: { id: string } }, { first: number }>(
+      "query Paged($first: Int!) { viewer { id } }",
+    );
+    const big = () =>
+      Response.json(
+        { data: { viewer: { id: "u1" } } },
+        {
+          headers: {
+            ...RATE_HEADERS,
+            "x-complexity": "1000",
+            "x-ratelimit-complexity-remaining": "500",
+          },
+        },
+      );
+    mockFetch(big, ok, ok);
+    const sleep = vi.fn(async () => {});
+    const client = new LinearClient("Bearer token", { sleep });
+
+    await client.request(Paged, { first: 10 });
+    // A smaller page hasn't been seen to cost that much, so it goes out at once.
+    await client.request(Paged, { first: 1 });
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
   it("waits for a request when the request budget is spent", async () => {
     const spent = () =>
       Response.json(

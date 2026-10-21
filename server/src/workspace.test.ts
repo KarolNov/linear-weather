@@ -146,6 +146,31 @@ describe("Workspace.teamWork", () => {
     );
   });
 
+  it("stops paging a prefetched team that turns out not to be theirs", async () => {
+    let releasePage!: () => void;
+    const pageAnswered = new Promise<void>((resolve) => {
+      releasePage = resolve;
+    });
+    const sent: string[] = [];
+    const source: LinearSource = {
+      request: async (document: { toString(): string }, ..._variables: unknown[]) => {
+        const query = document.toString();
+        sent.push(query);
+        if (query === TeamsDocument.toString()) {
+          return teams([{ id: "t", name: "Eng", key: "ENG" }]) as never;
+        }
+        if (query === TeamsMembersDocument.toString()) return members(["gone", []]) as never;
+        await pageAnswered;
+        return { issues: { nodes: [], pageInfo: { hasNextPage: true, endCursor: "1" } } } as never;
+      },
+    };
+    const workspace = new Workspace(source);
+    expect((await workspace.team("gone"))?.id).toBe("t");
+    releasePage();
+    await expect(workspace.teamWork("gone")).rejects.toThrow("no longer wanted");
+    expect(sent.filter((q) => q === OpenIssuesDocument.toString())).toHaveLength(1);
+  });
+
   it("asks Linear about every team asked for in the same tick in one query each", async () => {
     const sent: { query: string; variables: unknown }[] = [];
     const source: LinearSource = {

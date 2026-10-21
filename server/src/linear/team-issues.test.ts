@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LinearClient } from "./client";
-import { fetchTeamOpenIssues, groupByAssignee, type IssueCard, PAGE_SIZE } from "./team-issues";
+import { fetchTeamOpenIssues, type IssueCard, PAGE_SIZE } from "./team-issues";
 
 const ada = { id: "u-ada", name: "Ada", avatarUrl: null };
 const grace = { id: "u-grace", name: "Grace", avatarUrl: "https://example.com/grace.png" };
@@ -83,23 +83,5 @@ describe("fetchTeamOpenIssues", () => {
     await expect(fetchTeamOpenIssues(new LinearClient("Bearer t"), "team-1")).rejects.toThrow(
       "no cursor",
     );
-  });
-});
-
-describe("groupByAssignee", () => {
-  it("groups issues per person, unassigned last", () => {
-    const issues = [issue(1, null), issue(2, ada), issue(3, grace), issue(4, ada)];
-
-    expect(
-      groupByAssignee(issues).map((g) => [g.assignee?.name ?? null, g.issues.map((i) => i.id)]),
-    ).toEqual([
-      ["Ada", ["issue-2", "issue-4"]],
-      ["Grace", ["issue-3"]],
-      [null, ["issue-1"]],
-    ]);
-  });
-
-  it("returns no groups for no issues", () => {
-    expect(groupByAssignee([])).toEqual([]);
   });
 });

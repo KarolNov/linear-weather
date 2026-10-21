@@ -12,12 +12,13 @@ import {
   weatherLabels,
 } from "ui";
 import { colors, fonts, radii, space } from "ui/tokens.stylex";
-import type { Viewer } from "./App";
 import {
   type Board,
   type BoardError,
   type PersonMatrix as PersonMatrixData,
   QUADRANTS,
+  total,
+  type Viewer,
 } from "./board";
 import { entrance } from "./motion";
 import { PersonMatrix } from "./PersonMatrix";
@@ -101,8 +102,8 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
   const { team, teams, people, today } = board;
   // Lists start shut so the matrices are what you see first. Keyed by assignee id.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const keyOf = (matrix: PersonMatrixData) => matrix.assignee?.id ?? "unassigned";
-  const withIssues = people.filter((p) => p.issues.length > 0).map(keyOf);
+  const keyOf = (person: PersonMatrixData) => person.assignee?.id ?? "unassigned";
+  const withIssues = people.filter((p) => total(p.matrix) > 0).map(keyOf);
   const allExpanded = withIssues.length > 0 && withIssues.every((key) => expanded.has(key));
   const setOne = (key: string, open: boolean) =>
     setExpanded((current) => {
@@ -150,13 +151,13 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
         </div>
       </div>
       <div {...stylex.props(styles.people)}>
-        {people.map((matrix, i) => (
+        {people.map((person, i) => (
           <PersonMatrix
-            key={keyOf(matrix)}
-            matrix={matrix}
+            key={keyOf(person)}
+            person={person}
             today={today}
-            expanded={expanded.has(keyOf(matrix))}
-            onExpandedChange={(open) => setOne(keyOf(matrix), open)}
+            expanded={expanded.has(keyOf(person))}
+            onExpandedChange={(open) => setOne(keyOf(person), open)}
             xstyle={[
               entrance.board,
               entrance.delay(PERSON_DELAY_MS + Math.min(i, MAX_STAGGERED) * PERSON_STEP_MS),

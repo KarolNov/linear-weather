@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Board, BoardIssue } from "./board";
+import type { BoardData, BoardIssue, Matrix } from "./board";
 import { app, type Bindings } from "./worker";
 
 const avengers = { id: "t-avg", name: "Avengers", key: "AVG" };
@@ -15,48 +15,69 @@ function issue(fields: Partial<BoardIssue>): BoardIssue {
     dueDate: "2026-10-13",
     priority: 1,
     estimate: 5,
-    state: { name: "In Progress", type: "started" },
-    quadrant: "do",
-    reason: "Urgent priority, overdue by 5 days",
+    state: { name: "In Progress" },
+    placementReason: "Urgent priority, overdue by 5 days",
     ...fields,
   };
 }
 
-const board: Board = {
-  today: "2026-10-18",
-  teams: [avengers, ops],
-  team: avengers,
-  people: [
-    {
-      assignee: tony,
-      counts: { do: 1, schedule: 0, delegate: 0, drop: 1 },
-      issues: [
-        issue({}),
-        issue({
-          id: "i-2",
-          identifier: "AVG-2",
-          title: "Tidy the workshop",
-          dueDate: null,
-          priority: 4,
-          estimate: null,
-          quadrant: "drop",
-        }),
-      ],
-    },
-    { assignee: null, counts: { do: 0, schedule: 0, delegate: 0, drop: 0 }, issues: [] },
+const emptyMatrix: Matrix = {
+  counts: { do: 0, schedule: 0, delegate: 0, drop: 0 },
+  do: [],
+  schedule: [],
+  delegate: [],
+  drop: [],
+};
+
+const tonysMatrix: Matrix = {
+  counts: { do: 1, schedule: 0, delegate: 0, drop: 1 },
+  do: [issue({})],
+  schedule: [],
+  delegate: [],
+  drop: [
+    issue({
+      id: "i-2",
+      identifier: "AVG-2",
+      title: "Tidy the workshop",
+      dueDate: null,
+      priority: 4,
+      estimate: null,
+    }),
   ],
 };
 
-/** The server Worker's `/board`: signed out (401) without a viewer, else the viewer's board. */
+const unassigned: Matrix = {
+  ...emptyMatrix,
+  counts: { ...emptyMatrix.counts, drop: 1 },
+  drop: [issue({ id: "i-3", identifier: "AVG-3", title: "Find a new HQ", dueDate: null })],
+};
+
+/** The board query's answer when `viewer` is signed in. */
+function boardData(viewer: unknown, team: BoardData["team"] = defaultTeam) {
+  return { today: "2026-10-18", viewer, teams: [avengers, ops], team };
+}
+
+const defaultTeam: BoardData["team"] = {
+  ...avengers,
+  people: [{ ...tony, matrix: tonysMatrix }],
+  unassigned,
+};
+
+/** The server Worker's GraphQL endpoint: `viewer` null when signed out, else their board. */
 function serverReturning(
   viewer: unknown,
-  boardResponse = () =>
-    viewer
-      ? Response.json({ viewer, board })
-      : Response.json({ error: "signed_out" }, { status: 401 }),
+  graphqlResponse = () =>
+    Response.json({
+      data: viewer ? boardData(viewer) : { ...boardData(null), teams: null, team: null },
+    }),
 ) {
-  const fetch = vi.fn(async (_request: Request) => boardResponse());
+  const fetch = vi.fn(async (_request: Request) => graphqlResponse());
   return { bindings: { SERVER: { fetch } } satisfies Bindings, fetch };
+}
+
+/** What the web Worker asked the server's GraphQL endpoint. */
+async function sentQuery(request: Request | undefined) {
+  return (await request?.clone().json()) as { query: string; variables: { teamId: string | null } };
 }
 
 const fury = { name: "Nick Fury", avatarUrl: null, organization: { name: "S.H.I.E.L.D." } };
@@ -120,28 +141,41 @@ describe("web worker", () => {
   it("asks for the picked team and keeps the demo in the picker", async () => {
     const { bindings, fetch } = serverReturning(fury);
     const page = await (await app.request("/?demo=true&team=t-ops", {}, bindings)).text();
-    const boardUrl = new URL(fetch.mock.calls[0]?.[0].url ?? "");
-    expect(boardUrl.pathname).toBe("/board");
-    expect(boardUrl.searchParams.get("team")).toBe("t-ops");
-    expect(boardUrl.searchParams.get("demo")).toBe("true");
+    const request = fetch.mock.calls[0]?.[0];
+    const url = new URL(request?.url ?? "");
+    expect(url.pathname).toBe("/graphql");
+    expect(url.searchParams.get("demo")).toBe("true");
+    expect((await sentQuery(request)).variables).toEqual({ teamId: "t-ops" });
     expect(page).toContain('href="/?demo=true&amp;team=t-avg"');
     expect(page).toContain('aria-current="page"');
   });
 
   it("says nobody has open issues when every member's matrix is empty", async () => {
-    const empty = { do: 0, schedule: 0, delegate: 0, drop: 0 };
-    const quiet: Board = { ...board, people: [{ assignee: tony, counts: empty, issues: [] }] };
-    const { bindings } = serverReturning(fury, () => Response.json({ viewer: fury, board: quiet }));
+    const quiet = {
+      ...avengers,
+      people: [{ ...tony, matrix: emptyMatrix }],
+      unassigned: emptyMatrix,
+    };
+    const { bindings } = serverReturning(fury, () =>
+      Response.json({ data: boardData(fury, quiet) }),
+    );
     const page = await (await app.request("/", {}, bindings)).text();
     expect(page).toContain("Nobody on this team has open issues.");
     expect(page).not.toContain("Expand all");
+    expect(page).not.toContain("Unassigned");
   });
 
   it("explains a spent rate limit instead of showing an empty board", async () => {
     const { bindings } = serverReturning(fury, () =>
       Response.json({
-        viewer: fury,
-        boardError: { kind: "rate_limited", resetAt: Date.UTC(2026, 9, 18, 16, 30) },
+        data: { ...boardData(fury), teams: null, team: null },
+        errors: [
+          {
+            message: "Linear's rate limit is spent for now",
+            path: ["teams"],
+            extensions: { code: "RATE_LIMITED", resetAt: Date.UTC(2026, 9, 18, 16, 30) },
+          },
+        ],
       }),
     );
     const page = await (await app.request("/", {}, bindings)).text();
@@ -151,7 +185,10 @@ describe("web worker", () => {
 
   it("says Linear didn't answer when the board fails to load", async () => {
     const { bindings } = serverReturning(fury, () =>
-      Response.json({ viewer: fury, boardError: { kind: "unavailable" } }),
+      Response.json({
+        data: { ...boardData(fury), team: null },
+        errors: [{ message: "Unexpected error.", path: ["team"] }],
+      }),
     );
     const page = await (await app.request("/", {}, bindings)).text();
     expect(page).toContain("Fury");
@@ -162,12 +199,15 @@ describe("web worker", () => {
     const { bindings, fetch } = serverReturning(fury);
     await app.request("/", {}, bindings);
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(new URL(fetch.mock.calls[0]?.[0].url ?? "").pathname).toBe("/board");
+    expect(new URL(fetch.mock.calls[0]?.[0].url ?? "").pathname).toBe("/graphql");
   });
 
   it("shows the sign-in page when the server has just ended a rejected session", async () => {
     const { bindings } = serverReturning(fury, () =>
-      Response.json({ error: "signed_out" }, { status: 401 }),
+      Response.json({
+        data: { ...boardData(null), teams: null, team: null },
+        errors: [{ message: "Linear rejected the session; sign in again", path: ["teams"] }],
+      }),
     );
     const page = await (await app.request("/", {}, bindings)).text();
     expect(page).toContain('href="/auth/login"');
@@ -182,12 +222,18 @@ describe("web worker", () => {
 
   it("says Linear is unreachable instead of showing signed out when the server fails", async () => {
     const errored = vi.fn(async (_request: Request) =>
-      Response.json({ error: "unavailable" }, { status: 503 }),
+      Response.json({
+        data: { ...boardData(null), viewer: null },
+        errors: [{ message: "Unexpected error.", path: ["viewer"] }],
+      }),
     );
     const crashed = vi.fn(
       async (_request: Request) => new Response("Internal Server Error", { status: 500 }),
     );
-    for (const fetch of [errored, crashed]) {
+    const unreadable = vi.fn(
+      async (_request: Request) => new Response("Bad Gateway", { status: 502 }),
+    );
+    for (const fetch of [errored, crashed, unreadable]) {
       const page = await (await app.request("/", {}, { SERVER: { fetch } })).text();
       expect(page).toContain("Couldn't reach Linear");
       expect(page).not.toContain('href="/auth/login"');

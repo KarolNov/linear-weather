@@ -67,6 +67,35 @@ Linear limits each user to 5,000 requests and 2,000,000 [complexity points](http
 
 The client reads Linear's rate-limit headers after each request and remembers what each query cost. Linear's budget refills continuously, so before sending a query the client waits until the remaining budget covers one more request at that cost. When Linear still answers `RATELIMITED`, it retries up to 3 times, waiting at least 0.25s, 0.5s, then 1s. If the budget would take more than 5s to refill, or the retries run out, it gives up with the time the budget resets.
 
+## Our schema
+
+The server's own schema (`server/src/schema.ts`, code-first with Pothos) mirrors the slice of Linear's `Issue`, `User` and `Team` the board needs, and extends them with fields derived by the pure rules engine in `server/src/domain/`:
+
+```graphql
+enum Quadrant { DO SCHEDULE DELEGATE DROP }
+enum QuadrantSource { RULE OVERRIDE }   # OVERRIDE arrives with stored overrides (#10)
+
+type Issue {          # id, identifier, title, url, dueDate, priority, estimate, state, assignee, plus:
+  quadrant: Quadrant!
+  quadrantSource: QuadrantSource!
+  placementReason: String!   # "High priority, due in 3 days"
+  becomesUrgentOn: Date      # today if already urgent, null if it never will be
+}
+
+type Matrix {         # each list most pressing first
+  do: [Issue!]!  schedule: [Issue!]!  delegate: [Issue!]!  drop: [Issue!]!
+  counts: QuadrantCounts!  points: QuadrantPoints!
+}
+
+type User { matrix(teamId: ID): Matrix! }   # defaults to the team it was reached through
+type Team { rules: QuadrantRules!  people: [User!]!  unassigned: Matrix! }
+type Query { today: Date!  viewer: User  teams: [Team]  team(id: ID): Team }
+```
+
+The web Worker loads a page with one query (`BOARD_QUERY` in `web/src/board.ts`), and a server test runs that exact query against the schema so the two can't drift apart. Within a request each team's members and issues are fetched from Linear once and shared by every resolver that needs them (`server/src/workspace.ts`). Batching across fields is #9.
+
+Errors stay next to the field that failed: `teams` and `team` are nullable, so a rate-limited board still returns the `viewer`. Linear's rate limit comes back as `extensions: { code: "RATE_LIMITED", resetAt }` and a revoked token as `UNAUTHENTICATED`. Any other error is masked.
+
 ## Signing in with Linear
 
 People sign in with their own Linear account through OAuth, so the app sees exactly the workspaces and teams they can see in Linear.
@@ -111,6 +140,6 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 
 ## Status
 
-🌦️ Read-only board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop with the default rules. For now the web Worker renders it from the server's `GET /board` JSON route; it moves to our GraphQL schema in #8.
+🌦️ Read-only board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop with the default rules, served by our GraphQL schema.
 # linear-weather
 Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

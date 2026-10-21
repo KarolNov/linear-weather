@@ -1,17 +1,25 @@
+import { env } from "cloudflare:workers";
 import { graphql } from "graphql";
 import { describe, expect, it } from "vitest";
 // The web app keeps its query by its components; checking it here catches schema drift.
 import { BOARD_QUERY } from "../../web/src/board";
+import { Store } from "./db/store";
 import { DEMO_OPS_TEAM, DEMO_TEAM, DemoLinear } from "./linear/demo";
+import { type PlacementSource, Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
 import { Workspace } from "./workspace";
 
 const today = "2026-10-18";
 
-/** Runs a query against the demo workspace, or signed out. */
-function run(source: string, variables: Record<string, unknown> = {}, { signedIn = true } = {}) {
+/** Runs a query against the demo workspace, or signed out, with rules and overrides from D1. */
+function run(
+  source: string,
+  variables: Record<string, unknown> = {},
+  { signedIn = true, store = new Store(env.DB) as PlacementSource } = {},
+) {
   const contextValue: GraphQLContext = {
     workspace: async () => (signedIn ? new Workspace(new DemoLinear({ today })) : null),
+    placements: new Placements(store),
     today,
   };
   return graphql({ schema, source, variableValues: variables, contextValue });
@@ -120,6 +128,66 @@ describe("schema", () => {
     const result = await run("{ viewer { name } teams { name } }", {}, { signedIn: false });
     expect(result.data).toEqual({ viewer: null, teams: null });
     expect(result.errors?.map((e) => e.extensions)).toEqual([{ code: "UNAUTHENTICATED" }]);
+  });
+});
+
+describe("stored rules and overrides", () => {
+  const tony = `{
+    team {
+      rules { urgencyWindowDays }
+      people { name matrix { counts { do schedule delegate drop } drop { identifier quadrantSource placementReason } } }
+    }
+  }`;
+  type Board = {
+    team: {
+      rules: { urgencyWindowDays: number };
+      people: {
+        name: string;
+        matrix: { counts: Counts; drop: { identifier: string; quadrantSource: string }[] };
+      }[];
+    };
+  };
+  const tonyOf = (board: Board) => board.team.people.find((p) => p.name === "Tony Stark")?.matrix;
+
+  it("puts an overridden issue where the PM put it", async () => {
+    await new Store(env.DB).setOverride("demo-issue-avg-1", "drop");
+    const matrix = tonyOf(await data<Board>(tony));
+    expect(matrix?.counts).toEqual({ do: 8, schedule: 1, delegate: 2, drop: 2 });
+    expect(matrix?.drop).toContainEqual({
+      identifier: "AVG-1",
+      quadrantSource: "OVERRIDE",
+      placementReason: "Placed by hand; the rules say Do (Urgent priority, overdue by 5 days)",
+    });
+  });
+
+  it("sorts by the team's stored rules", async () => {
+    await new Store(env.DB).setRules(DEMO_TEAM.id, {
+      importantFrom: 1,
+      urgencyWindowDays: 1,
+      noDueDate: "notUrgent",
+    });
+    const board = await data<Board>(tony);
+    expect(board.team.rules).toEqual({ urgencyWindowDays: 1 });
+    // Only Urgent priority is important now, and only today or overdue is urgent.
+    expect(tonyOf(board)?.counts).toEqual({ do: 2, schedule: 2, delegate: 2, drop: 7 });
+  });
+
+  it("reads each team's rules and overrides once per request, however many people", async () => {
+    const store = new Store(env.DB);
+    const reads = { rules: 0, overrides: 0 };
+    const counting: PlacementSource = {
+      rules: (teamId) => {
+        reads.rules++;
+        return store.rules(teamId);
+      },
+      overrides: (ids) => {
+        reads.overrides++;
+        return store.overrides(ids);
+      },
+    };
+    const result = await run(tony, {}, { store: counting });
+    expect(result.errors).toBeUndefined();
+    expect(reads).toEqual({ rules: 1, overrides: 1 });
   });
 });
 

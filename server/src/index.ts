@@ -2,6 +2,7 @@ import { GraphQLError } from "graphql";
 import { createLogger, createYoga, maskError, type YogaLogger } from "graphql-yoga";
 import { Hono } from "hono";
 import { auth } from "./auth";
+import { Store } from "./db/store";
 import {
   LinearAuthError,
   LinearClient,
@@ -9,6 +10,7 @@ import {
   type LinearSource,
 } from "./linear/client";
 import { DemoLinear } from "./linear/demo";
+import { Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
 import { type AppContext, discardSession, linearAuthorization } from "./session";
 import { Workspace } from "./workspace";
@@ -32,6 +34,7 @@ export const app = new Hono<{ Bindings: Env }>()
     return yoga.fetch(c.req.raw, {
       workspace: () =>
         (workspace ??= linearSource(c).then((linear) => linear && new Workspace(linear))),
+      placements: new Placements(new Store(c.env.DB)),
       today: new Date().toISOString().slice(0, 10),
     });
   });

@@ -3,15 +3,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "pnpm db:migrate:local && wrangler dev",
     "deploy": "wrangler deploy",
     "cf-typegen": "wrangler types",
     "typecheck": "tsc -p .",
     "codegen": "graphql-codegen",
-    "codegen:check": "graphql-codegen --check"
+    "codegen:check": "graphql-codegen --check",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
   },
   "dependencies": {
     "@pothos/core": "^4.15.1",
+    "drizzle-orm": "0.45.4",
     "graphql": "^17.0.2",
     "graphql-yoga": "^5.24.6",
     "hono": "^4.13.13"
@@ -22,6 +26,7 @@
     "@graphql-codegen/typed-document-node": "^7.2.0",
     "@graphql-codegen/typescript-operations": "^6.1.10",
     "@graphql-typed-document-node/core": "^3.2.0",
+    "drizzle-kit": "0.31.11",
     "vitest": "^5.0.5",
     "wrangler": "^4.151.1"
   }

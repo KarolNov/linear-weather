@@ -4,19 +4,17 @@
 import SchemaBuilder from "@pothos/core";
 import { GraphQLError } from "graphql";
 import { buildMatrix, counts, type Matrix, points } from "./domain/matrix";
-import {
-  type CalendarDate,
-  DEFAULT_RULES,
-  type Quadrant,
-  type QuadrantRules,
-} from "./domain/quadrant";
+import type { CalendarDate, Quadrant, QuadrantRules } from "./domain/quadrant";
 import { LinearAuthError } from "./linear/client";
 import type { Assignee } from "./linear/team-issues";
+import type { Placements } from "./placements";
 import type { Team, TeamIssue, Viewer, Workspace } from "./workspace";
 
 export interface GraphQLContext {
   /** Linear as the signed-in user sees it; null when nobody is signed in. */
   workspace: () => Promise<Workspace | null>;
+  /** Each team's rules and the issues placed by hand, from our own database. */
+  placements: Placements;
   /** The day issues are placed against. UTC, so near midnight a PM elsewhere may be a day off. */
   today: CalendarDate;
 }
@@ -31,8 +29,19 @@ type UserModel = (Viewer | Assignee) & { teamId?: string };
 
 type IssueModel = Matrix<TeamIssue>[Quadrant][number];
 
-/** Rules are per team once they're stored (#10); until then every team gets the defaults. */
-const rulesFor = (_teamId: string): QuadrantRules => DEFAULT_RULES;
+/** The matrix of some of a team's open issues, by the team's rules and any hand placements. */
+async function teamMatrix(
+  context: GraphQLContext,
+  teamId: string,
+  pick: (byAssignee: Map<string | null, TeamIssue[]>) => TeamIssue[] | undefined,
+): Promise<Matrix<TeamIssue>> {
+  const { issues, byAssignee } = await (await signedIn(context)).teamWork(teamId);
+  const [rules, overrides] = await Promise.all([
+    context.placements.rules(teamId),
+    context.placements.overrides(teamId, issues),
+  ]);
+  return buildMatrix(pick(byAssignee) ?? [], rules, context.today, overrides);
+}
 
 async function signedIn(context: GraphQLContext): Promise<Workspace> {
   const workspace = await context.workspace();
@@ -205,8 +214,7 @@ UserRef.implement({
       resolve: async (user, args, context) => {
         const teamId = args.teamId == null ? user.teamId : String(args.teamId);
         if (!teamId) throw new GraphQLError("Which team? Pass teamId.");
-        const { byAssignee } = await (await signedIn(context)).teamWork(teamId);
-        return buildMatrix(byAssignee.get(user.id) ?? [], rulesFor(teamId), context.today);
+        return teamMatrix(context, teamId, (byAssignee) => byAssignee.get(user.id));
       },
     }),
   }),
@@ -218,7 +226,10 @@ TeamRef.implement({
     id: t.exposeID("id"),
     name: t.exposeString("name"),
     key: t.exposeString("key", { description: "The prefix of its issue identifiers, e.g. ENG." }),
-    rules: t.field({ type: QuadrantRulesRef, resolve: (team) => rulesFor(team.id) }),
+    rules: t.field({
+      type: QuadrantRulesRef,
+      resolve: (team, _args, context) => context.placements.rules(team.id),
+    }),
     people: t.field({
       type: [UserRef],
       description:
@@ -231,10 +242,8 @@ TeamRef.implement({
     unassigned: t.field({
       type: MatrixRef,
       description: "The team's open issues nobody is assigned to.",
-      resolve: async (team, _args, context) => {
-        const { byAssignee } = await (await signedIn(context)).teamWork(team.id);
-        return buildMatrix(byAssignee.get(null) ?? [], rulesFor(team.id), context.today);
-      },
+      resolve: (team, _args, context) =>
+        teamMatrix(context, team.id, (byAssignee) => byAssignee.get(null)),
     }),
   }),
 });

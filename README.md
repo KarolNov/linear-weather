@@ -28,6 +28,7 @@ Everything deploys to Cloudflare Workers.
 |---|---|
 | Workspace | [pnpm](https://pnpm.io) workspaces: `server/`, `web/` and `ui/` (shared Preact components) |
 | Server | [Hono](https://hono.dev) Worker hosting [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server) with a code-first [Pothos](https://pothos-graphql.dev) schema |
+| Storage | [D1](https://developers.cloudflare.com/d1/) (Cloudflare's SQLite) for team rules and hand-placed issues, through [Drizzle ORM](https://orm.drizzle.team). Linear tokens live in KV |
 | Web | [Preact](https://preactjs.com) server-rendered by a Hono Worker, hydrated in the browser; built with [Vite](https://vite.dev) and the [Cloudflare Vite plugin](https://developers.cloudflare.com/workers/vite-plugin/) |
 | Styling | [StyleX](https://stylexjs.com), compiled at build time by `@stylexjs/unplugin`. Theme tokens (sky gradients, weather colours) live in `ui/src/tokens.stylex.ts` |
 | Tests | [Vitest](https://vitest.dev); server tests run inside workerd via [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/) |
@@ -44,6 +45,8 @@ pnpm dev:web      # http://localhost:5173, runs the server Worker alongside
 ```
 
 `pnpm dev:server` runs the server alone on http://localhost:8787 (GraphiQL at `/graphql`).
+
+Both dev commands apply pending D1 migrations to the local database first.
 
 Checks (same as CI): `pnpm typecheck`, `pnpm codegen:check`, `pnpm lint`, `pnpm test`, `pnpm build`. `pnpm format` fixes formatting.
 
@@ -73,7 +76,7 @@ The server's own schema (`server/src/schema.ts`, code-first with Pothos) mirrors
 
 ```graphql
 enum Quadrant { DO SCHEDULE DELEGATE DROP }
-enum QuadrantSource { RULE OVERRIDE }   # OVERRIDE arrives with stored overrides (#10)
+enum QuadrantSource { RULE OVERRIDE }
 
 type Issue {          # id, identifier, title, url, dueDate, priority, estimate, state, assignee, plus:
   quadrant: Quadrant!
@@ -95,6 +98,26 @@ type Query { today: Date!  viewer: User  teams: [Team]  team(id: ID): Team }
 The web Worker loads a page with one query (`BOARD_QUERY` in `web/src/board.ts`), and a server test runs that exact query against the schema so the two can't drift apart. Within a request each team's members and issues are fetched from Linear once and shared by every resolver that needs them (`server/src/workspace.ts`). Batching across fields is #9.
 
 Errors stay next to the field that failed: `teams` and `team` are nullable, so a rate-limited board still returns the `viewer`. Linear's rate limit comes back as `extensions: { code: "RATE_LIMITED", resetAt }` and a revoked token as `UNAUTHENTICATED`. Any other error is masked.
+
+## Our own data
+
+Linear holds the issues. What only this app knows lives in a D1 database (binding `DB`), defined in `server/src/db/tables.ts`:
+
+- **`quadrant_rules`**: one row per team that changed its rules. Teams without a row use the defaults above, so a new team needs no setup.
+- **`quadrant_override`**: issues a PM placed by hand, keyed by Linear's issue id, so an override follows the issue if it moves teams. An overridden issue reports `quadrantSource: OVERRIDE`, and its `placementReason` still says where the rules would put it. `becomesUrgentOn` keeps following the due date.
+
+CHECK constraints keep values the rules engine can't use out of the database.
+
+Within a request, each team's rules and overrides are read once and shared by every matrix on the board (`server/src/placements.ts`). Overrides for a whole team come back in one round trip: one `SELECT … IN` per 100 issues, which is as many parameters as D1 binds in one statement, sent together with `batch`.
+
+### Migrations
+
+[Drizzle Kit](https://orm.drizzle.team/docs/kit-overview) writes SQL migrations from the tables, and Wrangler applies them with [D1's own migrations](https://developers.cloudflare.com/d1/reference/migrations/), which record what has run in a `d1_migrations` table.
+
+- After changing `tables.ts`, run `pnpm --filter server db:generate` and commit the new file in `server/migrations/`.
+- Local dev applies them for you. To apply them by hand, run `pnpm --filter server db:migrate:local`.
+- Tests apply every migration to an empty database in workerd (`server/test/apply-migrations.ts`) and empty the tables after each test.
+- In production, Wrangler creates the database on the first `wrangler deploy`; run `pnpm --filter server db:migrate:remote` right after it to create the tables. From then on, apply new migrations before deploying the code that needs them.
 
 ## Signing in with Linear
 
@@ -140,6 +163,6 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 
 ## Status
 
-🌦️ Read-only board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop with the default rules, served by our GraphQL schema.
+🌦️ Read-only board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. Rules and overrides are stored, but setting them waits for the mutations (#11).
 # linear-weather
 Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "pnpm --filter server db:migrate:local --persist-to ../web/.wrangler/state && vite",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",

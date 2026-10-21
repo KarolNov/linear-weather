@@ -1,7 +1,7 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["./worker-configuration.d.ts"]
+    "types": ["./worker-configuration.d.ts", "@cloudflare/vitest-plugin/types"]
   },
-  "include": ["src", "vitest.config.ts", "codegen.ts"]
+  "include": ["src", "test", "vitest.config.ts", "codegen.ts", "drizzle.config.ts"]
 }

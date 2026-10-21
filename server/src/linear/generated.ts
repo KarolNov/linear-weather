@@ -5,14 +5,14 @@ export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' |
 import type { DocumentTypeDecoration } from '@graphql-typed-document-node/core';
 export type IssueCardFragment = { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } };
 
-export type TeamOpenIssuesQueryVariables = Exact<{
-  teamId: string;
+export type OpenIssuesQueryVariables = Exact<{
+  teamIds: Array<string> | string;
   first: number;
   after?: string | null | undefined;
 }>;
 
 
-export type TeamOpenIssuesQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } }>, pageInfo: { hasNextPage: boolean, endCursor: string | null } } };
+export type OpenIssuesQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string }, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } }>, pageInfo: { hasNextPage: boolean, endCursor: string | null } } };
 
 export type TeamsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -21,12 +21,13 @@ export type TeamsQuery = { teams: { nodes: Array<{ id: string, name: string, key
 
 export type TeamSummaryFragment = { id: string, name: string, key: string };
 
-export type TeamMembersQueryVariables = Exact<{
-  teamId: string;
+export type TeamsMembersQueryVariables = Exact<{
+  teamIds: Array<string> | string;
+  first: number;
 }>;
 
 
-export type TeamMembersQuery = { team: { members: { nodes: Array<{ id: string, name: string, avatarUrl: string | null }> } } };
+export type TeamsMembersQuery = { teams: { nodes: Array<{ id: string, members: { nodes: Array<{ id: string, name: string, avatarUrl: string | null }> } }> } };
 
 export type ViewerQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -78,18 +79,21 @@ export const TeamSummaryFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
   key
 }
     `, {"fragmentName":"TeamSummary"}) as unknown as TypedDocumentString<TeamSummaryFragment, unknown>;
-export const TeamOpenIssuesDocument = /*#__PURE__*/ new TypedDocumentString(`
-    query TeamOpenIssues($teamId: ID!, $first: Int!, $after: String) {
+export const OpenIssuesDocument = /*#__PURE__*/ new TypedDocumentString(`
+    query OpenIssues($teamIds: [ID!]!, $first: Int!, $after: String) {
   issues(
     first: $first
     after: $after
     filter: {
-      team: { id: { eq: $teamId } }
+      team: { id: { in: $teamIds } }
       state: { type: { nin: ["completed", "canceled"] } }
     }
   ) {
     nodes {
       ...IssueCard
+      team {
+        id
+      }
     }
     pageInfo {
       hasNextPage
@@ -114,7 +118,7 @@ export const TeamOpenIssuesDocument = /*#__PURE__*/ new TypedDocumentString(`
     name
     type
   }
-}`) as unknown as TypedDocumentString<TeamOpenIssuesQuery, TeamOpenIssuesQueryVariables>;
+}`) as unknown as TypedDocumentString<OpenIssuesQuery, OpenIssuesQueryVariables>;
 export const TeamsDocument = /*#__PURE__*/ new TypedDocumentString(`
     query Teams {
   teams(first: 250) {
@@ -135,19 +139,22 @@ export const TeamsDocument = /*#__PURE__*/ new TypedDocumentString(`
   name
   key
 }`) as unknown as TypedDocumentString<TeamsQuery, TeamsQueryVariables>;
-export const TeamMembersDocument = /*#__PURE__*/ new TypedDocumentString(`
-    query TeamMembers($teamId: String!) {
-  team(id: $teamId) {
-    members(first: 250) {
-      nodes {
-        id
-        name
-        avatarUrl
+export const TeamsMembersDocument = /*#__PURE__*/ new TypedDocumentString(`
+    query TeamsMembers($teamIds: [ID!]!, $first: Int!) {
+  teams(first: $first, filter: { id: { in: $teamIds } }) {
+    nodes {
+      id
+      members(first: 250) {
+        nodes {
+          id
+          name
+          avatarUrl
+        }
       }
     }
   }
 }
-    `) as unknown as TypedDocumentString<TeamMembersQuery, TeamMembersQueryVariables>;
+    `) as unknown as TypedDocumentString<TeamsMembersQuery, TeamsMembersQueryVariables>;
 export const ViewerDocument = /*#__PURE__*/ new TypedDocumentString(`
     query Viewer {
   viewer {

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@pothos/core": "^4.15.1",
+    "dataloader": "^2.2.3",
     "graphql": "^17.0.2",
     "graphql-yoga": "^5.24.6",
     "hono": "^4.13.13"

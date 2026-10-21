@@ -5,19 +5,19 @@
 import { addDays, type CalendarDate, type LinearPriority } from "../domain/quadrant";
 import type { LinearSource } from "./client";
 import {
-  TeamMembersDocument,
-  type TeamMembersQuery,
-  type TeamMembersQueryVariables,
-  TeamOpenIssuesDocument,
-  type TeamOpenIssuesQuery,
-  type TeamOpenIssuesQueryVariables,
+  OpenIssuesDocument,
+  type OpenIssuesQuery,
+  type OpenIssuesQueryVariables,
   TeamsDocument,
+  TeamsMembersDocument,
+  type TeamsMembersQuery,
+  type TeamsMembersQueryVariables,
   type TeamsQuery,
   type TypedDocumentString,
   ViewerDocument,
   type ViewerQuery,
 } from "./generated";
-import type { Assignee, IssueCard } from "./team-issues";
+import type { Assignee, IssueCard, OpenIssue } from "./team-issues";
 
 const member = (key: string, name: string): Assignee => ({
   id: `demo-user-${key}`,
@@ -191,8 +191,8 @@ export interface DemoLinearOptions {
 
 /** A `LinearSource` that answers from the mocked Avengers workspace instead of Linear. */
 export class DemoLinear implements LinearSource {
-  /** The issues for the last team and "today" asked about, so paging doesn't rebuild them. */
-  private issues: { teamId: string; today: CalendarDate; all: IssueCard[] } | undefined;
+  /** The issues for the last teams and "today" asked about, so paging doesn't rebuild them. */
+  private issues: { teams: string; today: CalendarDate; all: OpenIssue[] } | undefined;
 
   constructor(private readonly options: DemoLinearOptions = {}) {}
 
@@ -210,27 +210,33 @@ export class DemoLinear implements LinearSource {
       const viewer = { teams: { nodes: [] } };
       return { teams: { nodes }, viewer } satisfies TeamsQuery as TResult;
     }
-    if (query === TeamMembersDocument.toString()) {
-      return this.teamMembers(variables as TeamMembersQueryVariables) as TResult;
+    if (query === TeamsMembersDocument.toString()) {
+      return this.teamsMembers(variables as TeamsMembersQueryVariables) as TResult;
     }
-    if (query === TeamOpenIssuesDocument.toString()) {
-      return this.teamOpenIssues(variables as TeamOpenIssuesQueryVariables) as TResult;
+    if (query === OpenIssuesDocument.toString()) {
+      return this.openIssues(variables as OpenIssuesQueryVariables) as TResult;
     }
     throw new Error(`The demo workspace can't answer this query yet:\n${query}`);
   }
 
-  private teamMembers({ teamId }: TeamMembersQueryVariables) {
-    const demo = TEAMS.find(({ team }) => team.id === teamId);
-    // Linear answers an unknown team with an "Entity not found" error.
-    if (!demo) throw new Error(`Entity not found: Team ${teamId}`);
-    return { team: { members: { nodes: demo.team.members } } } satisfies TeamMembersQuery;
+  /** Like Linear's `teams`, teams it doesn't know are left out. */
+  private teamsMembers({ teamIds, first }: TeamsMembersQueryVariables) {
+    const ids = [teamIds].flat();
+    const nodes = TEAMS.filter(({ team }) => ids.includes(team.id))
+      .slice(0, first)
+      .map(({ team }) => ({ id: team.id, members: { nodes: team.members } }));
+    return { teams: { nodes } } satisfies TeamsMembersQuery;
   }
 
   /** Pages like Linear's `issues` connection; cursors are the index of the next issue. */
-  private teamOpenIssues({ teamId, first, after }: TeamOpenIssuesQueryVariables) {
+  private openIssues({ teamIds, first, after }: OpenIssuesQueryVariables) {
     const today = this.options.today ?? new Date().toISOString().slice(0, 10);
-    if (this.issues?.today !== today || this.issues.teamId !== teamId) {
-      this.issues = { teamId, today, all: demoIssues(today, teamId) };
+    const teams = [teamIds].flat().join(",");
+    if (this.issues?.today !== today || this.issues.teams !== teams) {
+      const all = [teamIds]
+        .flat()
+        .flatMap((id) => demoIssues(today, id).map((issue) => ({ ...issue, team: { id } })));
+      this.issues = { teams, today, all };
     }
     const { all } = this.issues;
     const start = after ? Number(after) : 0;
@@ -243,6 +249,6 @@ export class DemoLinear implements LinearSource {
         // Like Linear, the last page still has a cursor unless it's empty.
         pageInfo: { hasNextPage: end < all.length, endCursor: nodes.length ? String(end) : null },
       },
-    } satisfies TeamOpenIssuesQuery;
+    } satisfies OpenIssuesQuery;
   }
 }

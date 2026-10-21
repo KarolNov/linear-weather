@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LinearClient } from "./client";
-import { fetchTeamOpenIssues, type IssueCard, PAGE_SIZE } from "./team-issues";
+import { fetchOpenIssues, type OpenIssue, PAGE_SIZE } from "./team-issues";
 
 const ada = { id: "u-ada", name: "Ada", avatarUrl: null };
 const grace = { id: "u-grace", name: "Grace", avatarUrl: "https://example.com/grace.png" };
 
-function issue(n: number, assignee: IssueCard["assignee"]): IssueCard {
+function issue(n: number, assignee: OpenIssue["assignee"]): OpenIssue {
   return {
     id: `issue-${n}`,
     identifier: `ENG-${n}`,
@@ -16,11 +16,12 @@ function issue(n: number, assignee: IssueCard["assignee"]): IssueCard {
     estimate: null,
     assignee,
     state: { name: "Todo", type: "unstarted" },
+    team: { id: "team-1" },
   };
 }
 
 /** Answers like Linear's `issues` connection, one page per call, with the given headers. */
-function mockPages(pages: { nodes: IssueCard[]; headers?: Record<string, string> }[]) {
+function mockPages(pages: { nodes: OpenIssue[]; headers?: Record<string, string> }[]) {
   const fetchMock = vi.spyOn(globalThis, "fetch");
   pages.forEach(({ nodes, headers }, i) => {
     const last = i === pages.length - 1;
@@ -50,7 +51,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("fetchTeamOpenIssues", () => {
+describe("fetchOpenIssues", () => {
   it("follows the cursor until the last page", async () => {
     const fetchMock = mockPages([
       { nodes: [issue(1, ada), issue(2, grace)] },
@@ -58,12 +59,12 @@ describe("fetchTeamOpenIssues", () => {
       { nodes: [issue(4, null)] },
     ]);
 
-    const issues = await fetchTeamOpenIssues(new LinearClient("Bearer t"), "team-1");
+    const issues = await fetchOpenIssues(new LinearClient("Bearer t"), ["team-1", "team-2"]);
 
     expect(issues.map((i) => i.identifier)).toEqual(["ENG-1", "ENG-2", "ENG-3", "ENG-4"]);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(await sentVariables(fetchMock, 0)).toEqual({
-      teamId: "team-1",
+      teamIds: ["team-1", "team-2"],
       first: PAGE_SIZE,
       after: null,
     });
@@ -80,8 +81,8 @@ describe("fetchTeamOpenIssues", () => {
       }),
     );
 
-    await expect(fetchTeamOpenIssues(new LinearClient("Bearer t"), "team-1")).rejects.toThrow(
-      "no cursor",
-    );
+    await expect(
+      fetchOpenIssues(new LinearClient("Bearer t"), ["team-1", "team-2"]),
+    ).rejects.toThrow("no cursor");
   });
 });

@@ -19,16 +19,20 @@ fragment IssueCard on Issue {
   }
 }
 
-# `nodes` rather than `edges { node cursor }`: one object fewer per issue, and pageInfo has the
-# only cursor we need. Completed and canceled issues aren't anyone's load.
-query TeamOpenIssues($teamId: ID!, $first: Int!, $after: String) {
+# Several teams' open issues at once, each tagged with its team. `nodes` rather than
+# `edges { node cursor }`: one object fewer per issue, and pageInfo has the only cursor we need.
+# Completed and canceled issues aren't anyone's load.
+query OpenIssues($teamIds: [ID!]!, $first: Int!, $after: String) {
   issues(
     first: $first
     after: $after
-    filter: { team: { id: { eq: $teamId } }, state: { type: { nin: ["completed", "canceled"] } } }
+    filter: { team: { id: { in: $teamIds } }, state: { type: { nin: ["completed", "canceled"] } } }
   ) {
     nodes {
       ...IssueCard
+      team {
+        id
+      }
     }
     pageInfo {
       hasNextPage

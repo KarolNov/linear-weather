@@ -1,8 +1,7 @@
-import { createYoga } from "graphql-yoga";
+import { GraphQLError } from "graphql";
+import { createLogger, createYoga, maskError, type YogaLogger } from "graphql-yoga";
 import { Hono } from "hono";
 import { auth } from "./auth";
-import { loadBoard } from "./board";
-import { DEFAULT_RULES } from "./domain/quadrant";
 import {
   LinearAuthError,
   LinearClient,
@@ -10,9 +9,9 @@ import {
   type LinearSource,
 } from "./linear/client";
 import { DemoLinear } from "./linear/demo";
-import { ViewerDocument } from "./linear/generated";
 import { type GraphQLContext, schema } from "./schema";
 import { type AppContext, discardSession, linearAuthorization } from "./session";
+import { Workspace } from "./workspace";
 
 const yoga = createYoga<GraphQLContext>({
   schema,
@@ -20,6 +19,8 @@ const yoga = createYoga<GraphQLContext>({
   // Use the runtime's own Request/Response. Under the Vite dev server Yoga otherwise resolves
   // its Node polyfill, whose Response can't cross the web Worker's service binding.
   fetchAPI: globalThis,
+  maskedErrors: { maskError: explainLinearErrors },
+  logging: quietAboutLinear(createLogger()),
 });
 
 export const app = new Hono<{ Bindings: Env }>()
@@ -27,53 +28,51 @@ export const app = new Hono<{ Bindings: Env }>()
   .route("/auth", auth)
   .on(["GET", "POST"], "/graphql", (c) => {
     // Resolved on first use, so queries that don't touch Linear skip the session lookup.
-    let linear: Promise<LinearSource | null> | undefined;
+    let workspace: Promise<Workspace | null> | undefined;
     return yoga.fetch(c.req.raw, {
-      linear: () => (linear ??= linearSource(c)),
-      discardSession: async () => {
-        await discardSession(c);
-      },
+      workspace: () =>
+        (workspace ??= linearSource(c).then((linear) => linear && new Workspace(linear))),
+      today: new Date().toISOString().slice(0, 10),
     });
-  })
-  // Temporary, until the board moves to GraphQL (#8): the web Worker renders this JSON. It
-  // answers who is signed in too, so a page load is one request: one token refresh, not two.
-  .get("/board", async (c) => {
-    const linear = await linearSource(c);
-    if (!linear) return c.json({ error: "signed_out" }, 401);
-    const [viewer, board] = await Promise.allSettled([
-      linear.request(ViewerDocument),
-      loadBoard(linear, {
-        teamId: c.req.query("team"),
-        // Rules are per team once they're stored (#10); until then everyone gets the defaults.
-        rules: DEFAULT_RULES,
-        // UTC, so near midnight a PM elsewhere may be a day off. Fine for a read-only board.
-        today: new Date().toISOString().slice(0, 10),
-      }),
-    ]);
-    const failures = [viewer, board].flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
-    if (failures.some((error) => error instanceof LinearAuthError)) {
-      await discardSession(c);
-      return c.json({ error: "signed_out" }, 401);
-    }
-    // Without the viewer there's no board page to show, only "couldn't reach Linear".
-    if (viewer.status === "rejected") {
-      console.error("Couldn't load the viewer:", viewer.reason);
-      return c.json({ error: "unavailable" }, 503);
-    }
-    if (board.status === "rejected") {
-      if (!(board.reason instanceof LinearRateLimitError)) {
-        console.error("Couldn't load the board:", board.reason);
-      }
-      return c.json({ viewer: viewer.value.viewer, boardError: boardError(board.reason) });
-    }
-    return c.json({ viewer: viewer.value.viewer, board: board.value });
   });
 
-/** Why the board couldn't load, as the web app explains it. */
-function boardError(error: unknown) {
-  return error instanceof LinearRateLimitError
-    ? { kind: "rate_limited" as const, resetAt: error.resetAt }
-    : { kind: "unavailable" as const };
+/**
+ * Linear's errors that clients can act on, as GraphQL errors with a code: the rate limit, with
+ * when to retry, and a rejected token. Anything else is masked as Yoga does by default.
+ */
+function explainLinearErrors(error: unknown, message: string, isDev?: boolean): Error {
+  const cause = error instanceof GraphQLError ? error.originalError : error;
+  // Keep where in the query it failed, so the client knows which fields are missing.
+  const at = error instanceof GraphQLError ? { nodes: error.nodes, path: error.path } : {};
+  if (cause instanceof LinearRateLimitError) {
+    return new GraphQLError("Linear's rate limit is spent for now", {
+      ...at,
+      extensions: { code: "RATE_LIMITED", resetAt: cause.resetAt },
+    });
+  }
+  if (cause instanceof LinearAuthError) {
+    return new GraphQLError("Linear rejected the session; sign in again", {
+      ...at,
+      extensions: { code: "UNAUTHENTICATED" },
+    });
+  }
+  return maskError(error, message, isDev);
+}
+
+/**
+ * Yoga logs every error it masks or rewrites. A spent rate limit or a revoked token is expected
+ * and reaches the client with a code, so only log what's actually unexpected.
+ */
+function quietAboutLinear(logger: YogaLogger): YogaLogger {
+  return {
+    ...logger,
+    error: (...args: unknown[]) => {
+      const [error] = args;
+      const cause = error instanceof GraphQLError ? error.originalError : error;
+      if (cause instanceof LinearRateLimitError || cause instanceof LinearAuthError) return;
+      logger.error(...args);
+    },
+  };
 }
 
 /**
@@ -83,7 +82,21 @@ function boardError(error: unknown) {
 async function linearSource(c: AppContext): Promise<LinearSource | null> {
   if (c.req.query("demo") === "true") return new DemoLinear();
   const authorization = await linearAuthorization(c);
-  return authorization ? new LinearClient(authorization) : null;
+  if (!authorization) return null;
+  const client = new LinearClient(authorization);
+  // Concurrent requests fail together on a revoked token; forget the session once.
+  let discarded: Promise<unknown> | undefined;
+  return {
+    // A revoked token means signed out: forget it, so the next page shows the sign-in.
+    request: (document, ...variables) =>
+      client.request(document, ...variables).catch(async (error: unknown) => {
+        if (error instanceof LinearAuthError) {
+          discarded ??= discardSession(c);
+          await discarded;
+        }
+        throw error;
+      }),
+  };
 }
 
 export default app;

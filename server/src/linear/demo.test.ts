@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { addDays, becomesUrgentOn, classify, DEFAULT_RULES } from "../domain/quadrant";
 import { DEMO_TEAM, DEMO_VIEWER, DemoLinear, demoIssues } from "./demo";
 import { TeamOpenIssuesDocument, type TeamOpenIssuesQuery, ViewerDocument } from "./generated";
-import { fetchTeamOpenIssues, groupByAssignee, type IssueCard } from "./team-issues";
+import { fetchTeamOpenIssues, type IssueCard } from "./team-issues";
 
 const TODAY = "2026-10-18";
 const issues = demoIssues(TODAY);
@@ -45,13 +45,18 @@ describe("demoIssues", () => {
   });
 
   it("gives each Avenger the load the sign-in preview shows", () => {
+    const byName = new Map<string, IssueCard[]>();
+    for (const issue of issues) {
+      const name = issue.assignee?.name ?? "Unassigned";
+      byName.set(name, [...(byName.get(name) ?? []), issue]);
+    }
     const load = Object.fromEntries(
-      groupByAssignee(issues).map(({ assignee, issues }) => [
-        assignee?.name ?? "Unassigned",
+      [...byName].map(([name, theirs]) => [
+        name,
         {
-          urgent: issues.filter(isUrgent).length,
-          overdue: issues.filter((i) => i.dueDate !== null && i.dueDate < TODAY).length,
-          undated: issues.filter((i) => i.dueDate === null).length,
+          urgent: theirs.filter(isUrgent).length,
+          overdue: theirs.filter((i) => i.dueDate !== null && i.dueDate < TODAY).length,
+          undated: theirs.filter((i) => i.dueDate === null).length,
         },
       ]),
     );

@@ -1,20 +1,21 @@
 import * as stylex from "@stylexjs/stylex";
 import { Badge, VisuallyHidden } from "ui";
 import { colors, fonts, media, motion, radii, space } from "ui/tokens.stylex";
-import { type BoardIssue, type CalendarDate, describeDue } from "./board";
+import { type BoardIssue, type CalendarDate, describeDue, type Quadrant } from "./board";
 import { quadrantEdge } from "./quadrants";
 
 export interface IssueCardProps {
   issue: BoardIssue;
+  quadrant: Quadrant;
   today: CalendarDate;
   xstyle?: stylex.StyleXStyles;
 }
 
 /** One issue on the board, linking to it in Linear. */
-export function IssueCard({ issue, today, xstyle }: IssueCardProps) {
+export function IssueCard({ issue, quadrant, today, xstyle }: IssueCardProps) {
   const due = issue.dueDate ? describeDue(issue.dueDate, today) : null;
   return (
-    <li {...stylex.props(styles.card, quadrantEdge[issue.quadrant], xstyle)}>
+    <li {...stylex.props(styles.card, quadrantEdge[quadrant], xstyle)}>
       <div {...stylex.props(styles.meta)}>
         <span {...stylex.props(styles.identifier)}>{issue.identifier}</span>
         <span aria-hidden="true">·</span>
@@ -25,7 +26,7 @@ export function IssueCard({ issue, today, xstyle }: IssueCardProps) {
         href={issue.url}
         target="_blank"
         rel="noopener noreferrer"
-        title={issue.reason}
+        title={issue.placementReason}
         {...stylex.props(styles.title)}
       >
         {issue.title}

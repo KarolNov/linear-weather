@@ -2,13 +2,19 @@ import * as stylex from "@stylexjs/stylex";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Avatar, Card } from "ui";
 import { colors, fonts, media, motion, radii, space } from "ui/tokens.stylex";
-import { type CalendarDate, type PersonMatrix as Matrix, QUADRANTS, type Quadrant } from "./board";
+import {
+  type CalendarDate,
+  total as countIssues,
+  type PersonMatrix as Person,
+  QUADRANTS,
+  type Quadrant,
+} from "./board";
 import { IssueCard } from "./IssueCard";
 import { entrance } from "./motion";
 import { quadrantFill, quadrantInfo } from "./quadrants";
 
 export interface PersonMatrixProps {
-  matrix: Matrix;
+  person: Person;
   today: CalendarDate;
   /** Whether the issue list under the matrix is open. The board starts with every list shut. */
   expanded: boolean;
@@ -21,7 +27,7 @@ export interface PersonMatrixProps {
  * Picking a quadrant opens the list narrowed to it; picking it again shows every quadrant.
  */
 export function PersonMatrix({
-  matrix,
+  person: { assignee, matrix },
   today,
   expanded,
   onExpandedChange,
@@ -88,8 +94,8 @@ export function PersonMatrix({
       setOnly(only === q ? null : q);
     }
   };
-  const name = matrix.assignee?.name ?? "Unassigned";
-  const total = matrix.issues.length;
+  const name = assignee?.name ?? "Unassigned";
+  const total = countIssues(matrix);
   const shown = QUADRANTS.filter((q) => (only ? q === only : matrix.counts[q] > 0));
   // Counts cards as they render, across quadrants, for the reveal's stagger.
   let revealed = 0;
@@ -97,8 +103,8 @@ export function PersonMatrix({
   return (
     <Card as="article" xstyle={[styles.card, xstyle]}>
       <header {...stylex.props(styles.header)}>
-        {matrix.assignee ? (
-          <Avatar name={name} src={matrix.assignee.avatarUrl} size={36} />
+        {assignee ? (
+          <Avatar name={name} src={assignee.avatarUrl} size={36} />
         ) : (
           <span aria-hidden="true" {...stylex.props(styles.nobody)}>
             ?
@@ -195,19 +201,18 @@ export function PersonMatrix({
                     <span {...stylex.props(styles.groupCount)}>{matrix.counts[q]}</span>
                   </h3>
                   <ul {...stylex.props(styles.list)}>
-                    {matrix.issues
-                      .filter((issue) => issue.quadrant === q)
-                      .map((issue) => (
-                        <IssueCard
-                          key={issue.id}
-                          issue={issue}
-                          today={today}
-                          xstyle={[
-                            entrance.reveal,
-                            entrance.delay(Math.min(revealed++, MAX_STAGGERED) * CARD_STEP_MS),
-                          ]}
-                        />
-                      ))}
+                    {matrix[q].map((issue) => (
+                      <IssueCard
+                        key={issue.id}
+                        issue={issue}
+                        quadrant={q}
+                        today={today}
+                        xstyle={[
+                          entrance.reveal,
+                          entrance.delay(Math.min(revealed++, MAX_STAGGERED) * CARD_STEP_MS),
+                        ]}
+                      />
+                    ))}
                   </ul>
                 </section>
               ))}

@@ -142,6 +142,14 @@ Within a request, rules and overrides are read through two DataLoaders (`server/
 - Local dev applies them for you. To apply them by hand, run `pnpm --filter server db:migrate:local`.
 - Tests apply every migration to an empty database in workerd (`server/test/apply-migrations.ts`) and empty the tables after each test.
 - In production, `pnpm --filter server deploy` (`server/scripts/deploy.sh`, the server's Workers Builds deploy command) applies migrations, then deploys. On the very first deploy Wrangler creates the database while deploying, so the script migrates right after instead. A migration runs while the previous code is still live, so it should add rather than rename or drop.
+- [Worker Previews](https://developers.cloudflare.com/workers/previews/) of other branches use a shared staging database, `linear-weather-preview`, and their own session store (the `previews` block in `server/wrangler.jsonc`). `pnpm --filter server preview` (`server/scripts/preview.sh`, the server's Workers Builds preview command) migrates that database, then deploys the Preview.
+
+### Previews
+
+Every branch gets a Preview of each Worker, with its URL posted on the pull request. Previews don't inherit production settings, so each `wrangler.jsonc` lists its bindings again under `previews`, and secrets are set with `wrangler preview base-config secret put <NAME>`.
+
+- **Try changes in the demo.** Linear's OAuth app only redirects back to the production URL, so signing in doesn't work on a Preview. Add `?demo=true`.
+- **A web Preview talks to the production server.** Service bindings from a Preview reach the bound Worker's production deployment. To try a branch's server changes, use the server Preview's own URL: GraphiQL at `/graphql?demo=true`.
 
 ## Signing in with Linear
 

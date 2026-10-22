@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "pnpm db:migrate:local && wrangler dev",
     "deploy": "sh scripts/deploy.sh",
+    "preview": "sh scripts/preview.sh",
     "cf-typegen": "wrangler types",
     "typecheck": "tsc -p . && tsc -p test",
     "codegen": "graphql-codegen",

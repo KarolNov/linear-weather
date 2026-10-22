@@ -6,6 +6,11 @@
   "observability": { "enabled": true },
   // Login sessions (Linear OAuth tokens). Wrangler provisions the namespace on first deploy.
   "kv_namespaces": [{ "binding": "SESSIONS" }],
+  // Team rules and quadrant overrides (src/db/tables.ts). Wrangler provisions the database on
+  // first deploy; `pnpm --filter server db:migrate:remote` then creates its tables.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "linear-weather", "migrations_dir": "migrations" }
+  ],
   // LINEAR_API_KEY is an optional dev shortcut, typed in src/env.d.ts.
   "secrets": { "required": ["LINEAR_CLIENT_ID", "LINEAR_CLIENT_SECRET", "LINEAR_WEBHOOK_SECRET"] }
 }

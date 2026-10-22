@@ -35,6 +35,9 @@ export default defineConfig({
       viteEnvironment: { name: "ssr" },
       // Runs the server Worker in the same dev session so the SERVER binding resolves.
       auxiliaryWorkers: [{ configPath: "../server/wrangler.jsonc" }],
+      // The dev script applies D1 migrations here (`--persist-to` in package.json); keep the two
+      // paths in step, or the dev server reads a database without tables.
+      persistState: { path: ".wrangler/state" },
     }),
   ],
   environments: {

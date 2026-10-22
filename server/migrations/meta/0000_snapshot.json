@@ -1,0 +1,112 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "b4cb58aa-3844-47b9-aa6e-1b4c859a0d51",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "quadrant_override": {
+      "name": "quadrant_override",
+      "columns": {
+        "issue_id": {
+          "name": "issue_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "quadrant": {
+          "name": "quadrant",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "quadrant_is_known": {
+          "name": "quadrant_is_known",
+          "value": "\"quadrant_override\".\"quadrant\" IN ('do', 'schedule', 'delegate', 'drop')"
+        }
+      }
+    },
+    "quadrant_rules": {
+      "name": "quadrant_rules",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "important_from": {
+          "name": "important_from",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "urgency_window_days": {
+          "name": "urgency_window_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "no_due_date": {
+          "name": "no_due_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "important_from_is_a_priority": {
+          "name": "important_from_is_a_priority",
+          "value": "typeof(\"quadrant_rules\".\"important_from\") = 'integer' AND \"quadrant_rules\".\"important_from\" BETWEEN 1 AND 4"
+        },
+        "urgency_window_is_positive": {
+          "name": "urgency_window_is_positive",
+          "value": "typeof(\"quadrant_rules\".\"urgency_window_days\") = 'integer' AND \"quadrant_rules\".\"urgency_window_days\" >= 1"
+        },
+        "no_due_date_is_known": {
+          "name": "no_due_date_is_known",
+          "value": "\"quadrant_rules\".\"no_due_date\" IN ('urgent', 'notUrgent')"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

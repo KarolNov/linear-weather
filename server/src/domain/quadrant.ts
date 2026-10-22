@@ -7,7 +7,12 @@ export type LinearPriority = 0 | 1 | 2 | 3 | 4;
 /** A calendar date as Linear sends `dueDate`: `YYYY-MM-DD`, no time or zone. */
 export type CalendarDate = string;
 
-export type Quadrant = "do" | "schedule" | "delegate" | "drop";
+export const QUADRANTS = ["do", "schedule", "delegate", "drop"] as const;
+
+export type Quadrant = (typeof QUADRANTS)[number];
+
+/** Where issues without a due date can land. */
+export const NO_DUE_DATE = ["urgent", "notUrgent"] as const;
 
 export interface QuadrantRules {
   /** Lowest priority that still counts as important. "No priority" never does. */
@@ -15,7 +20,7 @@ export interface QuadrantRules {
   /** An issue is urgent when it's due in fewer than this many days, or overdue. */
   urgencyWindowDays: number;
   /** Where issues without a due date land. */
-  noDueDate: "urgent" | "notUrgent";
+  noDueDate: (typeof NO_DUE_DATE)[number];
 }
 
 export const DEFAULT_RULES: QuadrantRules = {

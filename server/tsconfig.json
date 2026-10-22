@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["./worker-configuration.d.ts"]
   },
-  "include": ["src", "vitest.config.ts", "codegen.ts"]
+  "include": ["src", "vitest.config.ts", "codegen.ts", "drizzle.config.ts"]
 }

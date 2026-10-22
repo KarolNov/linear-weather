@@ -10,7 +10,7 @@ import {
   type QuadrantRules,
 } from "./quadrant";
 
-/** Where an issue landed and why. Overrides come with #10; until then every placement is a rule's. */
+/** Where an issue landed and why: by the team's rules, or by hand. */
 export interface Placement {
   quadrant: Quadrant;
   quadrantSource: "rule" | "override";
@@ -27,17 +27,34 @@ export type Placed<I> = I & Placement;
 
 export type Matrix<I> = Record<Quadrant, Placed<I>[]>;
 
+/** Issue ids a PM placed by hand, and where. */
+export type Overrides = ReadonlyMap<string, Quadrant>;
+
+const QUADRANT_LABEL: Record<Quadrant, string> = {
+  do: "Do",
+  schedule: "Schedule",
+  delegate: "Delegate",
+  drop: "Drop",
+};
+
+/**
+ * Places an issue by the rules, unless a PM placed it by hand. An override only moves the issue:
+ * when it turns urgent still follows its due date.
+ */
 export function place<I extends MatrixIssue>(
   issue: I,
   rules: QuadrantRules,
   today: CalendarDate,
+  override?: Quadrant,
 ): Placed<I> {
   const { quadrant, reason } = classify(issue, rules, today);
   return {
     ...issue,
-    quadrant,
-    quadrantSource: "rule",
-    placementReason: reason,
+    quadrant: override ?? quadrant,
+    quadrantSource: override ? "override" : "rule",
+    placementReason: override
+      ? `Placed by hand; the rules say ${QUADRANT_LABEL[quadrant]} (${reason})`
+      : reason,
     // Few clients ask for it, so work it out only when read.
     get becomesUrgentOn() {
       return becomesUrgentOn(issue, rules, today);
@@ -46,14 +63,15 @@ export function place<I extends MatrixIssue>(
 }
 
 /** Sorts issues into quadrants, each most pressing first: by due date (undated last), then priority. */
-export function buildMatrix<I extends MatrixIssue>(
+export function buildMatrix<I extends MatrixIssue & { id: string }>(
   issues: I[],
   rules: QuadrantRules,
   today: CalendarDate,
+  overrides: Overrides = new Map(),
 ): Matrix<I> {
   const matrix: Matrix<I> = { do: [], schedule: [], delegate: [], drop: [] };
   for (const issue of issues.toSorted(mostPressingFirst)) {
-    const placed = place(issue, rules, today);
+    const placed = place(issue, rules, today, overrides.get(issue.id));
     matrix[placed.quadrant].push(placed);
   }
   return matrix;

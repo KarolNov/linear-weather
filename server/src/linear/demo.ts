@@ -5,6 +5,9 @@
 import { addDays, type CalendarDate, type LinearPriority } from "../domain/quadrant";
 import type { LinearSource } from "./client";
 import {
+  IssueByIdDocument,
+  type IssueByIdQuery,
+  type IssueByIdQueryVariables,
   OpenIssuesDocument,
   type OpenIssuesQuery,
   type OpenIssuesQueryVariables,
@@ -216,6 +219,9 @@ export class DemoLinear implements LinearSource {
     if (query === OpenIssuesDocument.toString()) {
       return this.openIssues(variables as OpenIssuesQueryVariables) as TResult;
     }
+    if (query === IssueByIdDocument.toString()) {
+      return this.issueById(variables as IssueByIdQueryVariables) as TResult;
+    }
     throw new Error(`The demo workspace can't answer this query yet:\n${query}`);
   }
 
@@ -228,9 +234,20 @@ export class DemoLinear implements LinearSource {
     return { teams: { nodes } } satisfies TeamsMembersQuery;
   }
 
+  /** Like Linear's `issues` filtered by id: no nodes for an issue it doesn't know. */
+  private issueById({ id }: IssueByIdQueryVariables) {
+    const today = this.today();
+    const nodes = TEAMS.flatMap(({ team: { id: teamId, name, key } }) =>
+      demoIssues(today, teamId)
+        .filter((issue) => issue.id === id)
+        .map((issue) => ({ ...issue, team: { id: teamId, name, key } })),
+    );
+    return { issues: { nodes } } satisfies IssueByIdQuery;
+  }
+
   /** Pages like Linear's `issues` connection; cursors are the index of the next issue. */
   private openIssues({ teamIds, first, after }: OpenIssuesQueryVariables) {
-    const today = this.options.today ?? new Date().toISOString().slice(0, 10);
+    const today = this.today();
     const teams = [teamIds].flat().join(",");
     if (this.issues?.today !== today || this.issues.teams !== teams) {
       const all = [teamIds]
@@ -250,5 +267,9 @@ export class DemoLinear implements LinearSource {
         pageInfo: { hasNextPage: end < all.length, endCursor: nodes.length ? String(end) : null },
       },
     } satisfies OpenIssuesQuery;
+  }
+
+  private today(): CalendarDate {
+    return this.options.today ?? new Date().toISOString().slice(0, 10);
   }
 }

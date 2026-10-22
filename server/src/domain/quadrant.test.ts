@@ -4,7 +4,9 @@ import {
   type ClassifiableIssue,
   classify,
   DEFAULT_RULES,
+  parseRules,
   type QuadrantRules,
+  type RulesInput,
 } from "./quadrant";
 
 const TODAY = "2026-10-18";
@@ -213,5 +215,42 @@ describe("becomesUrgentOn", () => {
     expect(becomesUrgentOn({ dueDate: "0050-06-14" }, DEFAULT_RULES, "0050-01-01")).toBe(
       "0050-06-01",
     );
+  });
+});
+
+describe("parseRules", () => {
+  const problemFields = (input: RulesInput) => parseRules(input).problems?.map((p) => p.field);
+
+  it("accepts the defaults and the extremes", () => {
+    for (const rules of [
+      DEFAULT_RULES,
+      { importantFrom: 1, urgencyWindowDays: 1, noDueDate: "urgent" },
+      { importantFrom: 4, urgencyWindowDays: 365, noDueDate: "notUrgent" },
+    ] satisfies QuadrantRules[]) {
+      expect(parseRules(rules)).toEqual({ rules });
+    }
+  });
+
+  it.each([0, 5, 2.5, Number.NaN])("refuses importantFrom %s", (importantFrom) => {
+    expect(problemFields({ ...DEFAULT_RULES, importantFrom })).toEqual(["importantFrom"]);
+  });
+
+  it.each([0, -3, 366, 1.5, Number.POSITIVE_INFINITY])(
+    "refuses an urgency window of %s days",
+    (urgencyWindowDays) => {
+      expect(problemFields({ ...DEFAULT_RULES, urgencyWindowDays })).toEqual(["urgencyWindowDays"]);
+    },
+  );
+
+  it("reports every problem at once", () => {
+    expect(parseRules({ ...DEFAULT_RULES, importantFrom: 0, urgencyWindowDays: 0 })).toEqual({
+      problems: [
+        {
+          field: "importantFrom",
+          message: "Important from must be a priority: 1 (Urgent) to 4 (Low).",
+        },
+        { field: "urgencyWindowDays", message: "The urgency window must be 1 to 365 whole days." },
+      ],
+    });
   });
 });

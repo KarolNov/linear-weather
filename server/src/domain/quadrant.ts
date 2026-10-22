@@ -29,6 +29,53 @@ export const DEFAULT_RULES: QuadrantRules = {
   noDueDate: "notUrgent",
 };
 
+/** The longest urgency window a team can pick. Past a year, every dated issue is urgent anyway. */
+export const MAX_URGENCY_WINDOW_DAYS = 365;
+
+/** Something wrong with proposed rules, on the field a settings form would mark. */
+export interface RuleProblem {
+  field: "importantFrom" | "urgencyWindowDays";
+  message: string;
+}
+
+/** Proposed rules: like QuadrantRules, but `importantFrom` not yet known to be a priority. */
+export type RulesInput = Omit<QuadrantRules, "importantFrom"> & { importantFrom: number };
+
+/**
+ * These rules as `classify()` can use them, or everything wrong with them. Nothing gets past
+ * without being checked, so callers never assert the type themselves.
+ */
+export function parseRules(
+  input: RulesInput,
+): { rules: QuadrantRules; problems?: never } | { rules?: never; problems: RuleProblem[] } {
+  const { importantFrom, urgencyWindowDays, noDueDate } = input;
+  const problems: RuleProblem[] = [];
+  if (!isImportantFrom(importantFrom)) {
+    problems.push({
+      field: "importantFrom",
+      message: "Important from must be a priority: 1 (Urgent) to 4 (Low).",
+    });
+  }
+  if (
+    !Number.isInteger(urgencyWindowDays) ||
+    urgencyWindowDays < 1 ||
+    urgencyWindowDays > MAX_URGENCY_WINDOW_DAYS
+  ) {
+    problems.push({
+      field: "urgencyWindowDays",
+      message: `The urgency window must be 1 to ${MAX_URGENCY_WINDOW_DAYS} whole days.`,
+    });
+  }
+  if (problems.length === 0 && isImportantFrom(importantFrom)) {
+    return { rules: { importantFrom, urgencyWindowDays, noDueDate } };
+  }
+  return { problems };
+}
+
+function isImportantFrom(priority: number): priority is QuadrantRules["importantFrom"] {
+  return Number.isInteger(priority) && priority >= 1 && priority <= 4;
+}
+
 export interface ClassifiableIssue {
   priority: LinearPriority;
   dueDate: CalendarDate | null;

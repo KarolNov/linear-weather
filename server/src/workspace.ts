@@ -7,6 +7,7 @@ import DataLoader from "dataloader";
 import type { LinearPriority } from "./domain/quadrant";
 import type { LinearSource } from "./linear/client";
 import {
+  IssueByIdDocument,
   type TeamSummaryFragment,
   TeamsDocument,
   TeamsMembersDocument,
@@ -73,6 +74,12 @@ export class Workspace {
     const asked = all.find((t) => t.id === id);
     if (id && !asked) this.abandoned.add(id);
     return asked ?? all.find((t) => theirs.has(t.id)) ?? all[0] ?? null;
+  }
+
+  /** An issue the viewer can see, open or not, with its team; null when they can't. */
+  async issue(id: string): Promise<(TeamIssue & { team: Team }) | null> {
+    const { issues } = await this.linear.request(IssueByIdDocument, { id });
+    return (issues.nodes[0] as (TeamIssue & { team: Team }) | undefined) ?? null;
   }
 
   teamWork(teamId: string): Promise<TeamWork> {

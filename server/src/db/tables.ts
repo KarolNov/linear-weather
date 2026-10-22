@@ -4,7 +4,12 @@
 
 import { type SQL, sql } from "drizzle-orm";
 import { check, integer, type SQLiteColumn, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { type LinearPriority, NO_DUE_DATE, QUADRANTS } from "../domain/quadrant";
+import {
+  type LinearPriority,
+  MAX_URGENCY_WINDOW_DAYS,
+  NO_DUE_DATE,
+  QUADRANTS,
+} from "../domain/quadrant";
 
 /** One row per team that changed its rules; teams without one use DEFAULT_RULES. */
 export const quadrantRules = sqliteTable(
@@ -23,8 +28,9 @@ export const quadrantRules = sqliteTable(
       sql`${isInteger(t.importantFrom)} AND ${t.importantFrom} BETWEEN 1 AND 4`,
     ),
     check(
-      "urgency_window_is_positive",
-      sql`${isInteger(t.urgencyWindowDays)} AND ${t.urgencyWindowDays} >= 1`,
+      "urgency_window_in_range",
+      // DDL can't bind parameters; the bound is our own constant.
+      sql`${isInteger(t.urgencyWindowDays)} AND ${t.urgencyWindowDays} BETWEEN 1 AND ${sql.raw(String(MAX_URGENCY_WINDOW_DAYS))}`,
     ),
     check("no_due_date_is_known", oneOf(t.noDueDate, NO_DUE_DATE)),
   ],

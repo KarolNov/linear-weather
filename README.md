@@ -93,7 +93,24 @@ type Matrix {         # each list most pressing first
 type User { matrix(teamId: ID): Matrix! }   # defaults to the team it was reached through
 type Team { rules: QuadrantRules!  people: [User!]!  unassigned: Matrix! }
 type Query { today: Date!  viewer: User  teams: [Team]  team(id: ID): Team }
+
+type Mutation {
+  updateQuadrantRules(teamId: ID!, input: QuadrantRulesInput!): UpdateRulesResult!
+  overrideQuadrant(issueId: ID!, quadrant: Quadrant!): OverrideResult!
+  clearOverride(issueId: ID!): OverrideResult!
+}
+union UpdateRulesResult = UpdateRulesSuccess | InvalidRules | TeamNotFound | Unauthorized | LinearRateLimited
+union OverrideResult = OverrideSuccess | IssueNotFound | Unauthorized | LinearRateLimited
+interface Error { message: String! }   # every failure above implements it
 ```
+
+### Mutations and their errors
+
+Each mutation answers with a union: what it did, or one of the failures a client is expected to handle (bad rules, an id the viewer can't see, signed out, Linear's rate limit). They're ordinary types with fields of their own, like `InvalidRules.problems` (one per input field, for a settings form) or `LinearRateLimited.resetAt`, so clients see them in the schema and switch on `__typename`. Each implements `Error`, so `... on Error { message }` catches any a client doesn't single out. Top-level `errors` are left for the unexpected, like the database failing.
+
+- **Checked against Linear first.** A team must be one the viewer can see, and so must an issue, so nobody changes rules or places issues in workspaces they aren't in.
+- **The demo is read-only.** Anyone can open `?demo=true`, so its mutations answer `Unauthorized`.
+- **Derived fields follow on their own.** A success hands back the team (and, for overrides, the issue), and everything on them is derived when read. After `updateQuadrantRules`, `team { people { matrix { counts } } }` in the same response is already sorted by the new rules, with no code written for it. Writes go through the request's `Placements`, so nothing later in the response reads what was cached before.
 
 The web Worker loads a page with one query (`BOARD_QUERY` in `web/src/board.ts`), and a server test runs that exact query against the schema so the two can't drift apart. Within a request each team's members and issues are fetched from Linear once and shared by every resolver that needs them (`server/src/workspace.ts`). Two per-request [DataLoaders](https://github.com/graphql/dataloader) batch the lookups, one for team members and one for open issues, so every team resolved in the same tick shares one Linear query of each kind.
 

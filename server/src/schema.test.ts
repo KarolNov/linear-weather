@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 // The web app keeps its query by its components; checking it here catches schema drift.
 import { BOARD_QUERY } from "../../web/src/board";
 import { Store } from "./db/store";
+import type { LinearSource } from "./linear/client";
 import { DEMO_OPS_TEAM, DEMO_TEAM, DemoLinear } from "./linear/demo";
 import { type PlacementSource, Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
@@ -17,8 +18,9 @@ function run(
   variables: Record<string, unknown> = {},
   { signedIn = true, store = new Store(env.DB) as PlacementSource } = {},
 ) {
+  const workspace = signedIn ? new Workspace(new DemoLinear({ today })) : null;
   const contextValue: GraphQLContext = {
-    workspace: async () => (signedIn ? new Workspace(new DemoLinear({ today })) : null),
+    workspace: async () => workspace,
     placements: new Placements(store),
     today,
   };
@@ -196,5 +198,49 @@ describe("the web app's board query", () => {
     const board = await data<{ viewer: unknown; team: unknown }>(BOARD_QUERY, { teamId: null });
     expect(board.viewer).toMatchObject({ name: "Nick Fury" });
     expect(board.team).toMatchObject({ name: "Avengers" });
+  });
+});
+
+describe("Linear requests per query", () => {
+  /** The operations a query sends to Linear, by name. */
+  async function linearRequests(source: string, variables: Record<string, unknown> = {}) {
+    const demo = new DemoLinear({ today });
+    const sent: string[] = [];
+    const counting: LinearSource = {
+      request: (document, ...rest) => {
+        sent.push(/\bquery (\w+)/.exec(document.toString())?.[1] ?? "?");
+        return demo.request(document, ...rest);
+      },
+    };
+    // One Workspace per GraphQL request, as the server makes it.
+    const workspace = new Workspace(counting);
+    const result = await graphql({
+      schema,
+      source,
+      variableValues: variables,
+      contextValue: {
+        workspace: async () => workspace,
+        placements: new Placements(new Store(env.DB)),
+        today,
+      } satisfies GraphQLContext,
+    });
+    expect(result.errors).toBeUndefined();
+    return sent.toSorted();
+  }
+
+  it("loads the board in one request per kind of data, however many people are on it", async () => {
+    expect(await linearRequests(BOARD_QUERY, { teamId: null })).toEqual([
+      "OpenIssues",
+      "Teams",
+      "TeamsMembers",
+      "Viewer",
+    ]);
+  });
+
+  it("batches every team's members and issues into one request each", async () => {
+    const everyTeam = `{
+      teams { people { matrix { counts { do } } } unassigned { counts { do } } }
+    }`;
+    expect(await linearRequests(everyTeam)).toEqual(["OpenIssues", "Teams", "TeamsMembers"]);
   });
 });

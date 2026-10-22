@@ -1,8 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { addDays, becomesUrgentOn, classify, DEFAULT_RULES } from "../domain/quadrant";
-import { DEMO_TEAM, DEMO_VIEWER, DemoLinear, demoIssues } from "./demo";
-import { TeamOpenIssuesDocument, type TeamOpenIssuesQuery, ViewerDocument } from "./generated";
-import { fetchTeamOpenIssues, type IssueCard } from "./team-issues";
+import { DEMO_OPS_TEAM, DEMO_TEAM, DEMO_VIEWER, DemoLinear, demoIssues } from "./demo";
+import {
+  OpenIssuesDocument,
+  type OpenIssuesQuery,
+  TeamsMembersDocument,
+  ViewerDocument,
+} from "./generated";
+import { fetchOpenIssues, type IssueCard, type OpenIssue } from "./team-issues";
+
+/** Issues as the batched query returns them: tagged with their team. */
+const ofTeam = (issues: IssueCard[], id: string): OpenIssue[] =>
+  issues.map((issue) => ({ ...issue, team: { id } }));
 
 const TODAY = "2026-10-18";
 const issues = demoIssues(TODAY);
@@ -85,15 +94,30 @@ describe("DemoLinear", () => {
   });
 
   it("serves the team's issues through the same code as Linear", async () => {
-    expect(await fetchTeamOpenIssues(demo, DEMO_TEAM.id)).toEqual(issues);
+    expect(await fetchOpenIssues(demo, [DEMO_TEAM.id])).toEqual(ofTeam(issues, DEMO_TEAM.id));
+  });
+
+  it("serves several teams' issues and members at once", async () => {
+    const both = await fetchOpenIssues(demo, [DEMO_TEAM.id, DEMO_OPS_TEAM.id]);
+    expect(both).toEqual([
+      ...ofTeam(issues, DEMO_TEAM.id),
+      ...ofTeam(demoIssues(TODAY, DEMO_OPS_TEAM.id), DEMO_OPS_TEAM.id),
+    ]);
+    const { teams } = await demo.request(TeamsMembersDocument, {
+      teamIds: [DEMO_OPS_TEAM.id, "some-other-team"],
+      first: 2,
+    });
+    expect(teams.nodes).toEqual([
+      { id: DEMO_OPS_TEAM.id, members: { nodes: DEMO_OPS_TEAM.members } },
+    ]);
   });
 
   it("pages like Linear", async () => {
-    const pages: IssueCard[][] = [];
+    const pages: OpenIssue[][] = [];
     let after: string | null = null;
     for (;;) {
-      const { issues: page }: TeamOpenIssuesQuery = await demo.request(TeamOpenIssuesDocument, {
-        teamId: DEMO_TEAM.id,
+      const { issues: page }: OpenIssuesQuery = await demo.request(OpenIssuesDocument, {
+        teamIds: [DEMO_TEAM.id],
         first: 20,
         after,
       });
@@ -102,18 +126,18 @@ describe("DemoLinear", () => {
       after = page.pageInfo.endCursor;
     }
     expect(pages.map((p) => p.length)).toEqual([20, 20, issues.length - 40]);
-    expect(pages.flat()).toEqual(issues);
+    expect(pages.flat()).toEqual(ofTeam(issues, DEMO_TEAM.id));
   });
 
   it("has no issues for other teams", async () => {
-    expect(await fetchTeamOpenIssues(demo, "some-other-team")).toEqual([]);
+    expect(await fetchOpenIssues(demo, ["some-other-team"])).toEqual([]);
   });
 
   it("defaults to the current date", async () => {
     vi.useFakeTimers({ now: new Date("2026-10-19T23:59:59Z") });
     try {
-      expect(await fetchTeamOpenIssues(new DemoLinear(), DEMO_TEAM.id)).toEqual(
-        demoIssues("2026-10-19"),
+      expect(await fetchOpenIssues(new DemoLinear(), [DEMO_TEAM.id])).toEqual(
+        ofTeam(demoIssues("2026-10-19"), DEMO_TEAM.id),
       );
     } finally {
       vi.useRealTimers();
@@ -122,7 +146,7 @@ describe("DemoLinear", () => {
 
   it("rejects cursors it didn't issue", async () => {
     await expect(
-      demo.request(TeamOpenIssuesDocument, { teamId: DEMO_TEAM.id, first: 20, after: "abc" }),
+      demo.request(OpenIssuesDocument, { teamIds: [DEMO_TEAM.id], first: 20, after: "abc" }),
     ).rejects.toThrow("Not a demo cursor");
   });
 });

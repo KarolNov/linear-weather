@@ -1,6 +1,7 @@
 // How one GraphQL request places issues: team rules and hand-placed issues from the store.
 // Resolvers for every team and person on a page ask in the same tick, so DataLoader batches them
-// into one query for rules and one for overrides, like Workspace does for Linear.
+// into one query for rules and one for overrides, like Workspace does for Linear. Writes go
+// through here too, so the rest of a mutation's response reads what it just wrote.
 
 import DataLoader from "dataloader";
 import type { Overrides } from "./domain/matrix";
@@ -10,6 +11,13 @@ import { DEFAULT_RULES, type Quadrant, type QuadrantRules } from "./domain/quadr
 export interface PlacementSource {
   rules(teamIds: readonly string[]): Promise<ReadonlyMap<string, QuadrantRules>>;
   overrides(issueIds: readonly string[]): Promise<Overrides>;
+}
+
+/** The Store as placing issues reads and changes it. */
+export interface PlacementStore extends PlacementSource {
+  setRules(teamId: string, rules: QuadrantRules): Promise<void>;
+  setOverride(issueId: string, quadrant: Quadrant): Promise<void>;
+  clearOverride(issueId: string): Promise<void>;
 }
 
 export class Placements {
@@ -23,7 +31,7 @@ export class Placements {
   });
 
   constructor(
-    private readonly source: PlacementSource,
+    private readonly source: PlacementStore,
     private readonly log: (message: string, error: unknown) => void = console.error,
   ) {}
 
@@ -40,6 +48,18 @@ export class Placements {
       if (typeof quadrant === "string") overrides.set(id, quadrant);
     });
     return overrides;
+  }
+
+  async setRules(teamId: string, rules: QuadrantRules): Promise<void> {
+    await this.source.setRules(teamId, rules);
+    this.rulesLoader.clear(teamId).prime(teamId, rules);
+  }
+
+  /** Places an issue by hand, or with null hands it back to the rules. */
+  async setOverride(issueId: string, quadrant: Quadrant | null): Promise<void> {
+    if (quadrant) await this.source.setOverride(issueId, quadrant);
+    else await this.source.clearOverride(issueId);
+    this.overrideLoader.clear(issueId).prime(issueId, quadrant);
   }
 
   /**

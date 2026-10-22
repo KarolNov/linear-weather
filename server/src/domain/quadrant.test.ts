@@ -5,6 +5,7 @@ import {
   classify,
   DEFAULT_RULES,
   type QuadrantRules,
+  ruleProblems,
 } from "./quadrant";
 
 const TODAY = "2026-10-18";
@@ -213,5 +214,38 @@ describe("becomesUrgentOn", () => {
     expect(becomesUrgentOn({ dueDate: "0050-06-14" }, DEFAULT_RULES, "0050-01-01")).toBe(
       "0050-06-01",
     );
+  });
+});
+
+describe("ruleProblems", () => {
+  it("accepts the defaults and the extremes", () => {
+    expect(ruleProblems(DEFAULT_RULES)).toEqual([]);
+    expect(ruleProblems({ importantFrom: 1, urgencyWindowDays: 1 })).toEqual([]);
+    expect(ruleProblems({ importantFrom: 4, urgencyWindowDays: 365 })).toEqual([]);
+  });
+
+  it.each([0, 5, 2.5, Number.NaN])("refuses importantFrom %s", (importantFrom) => {
+    expect(ruleProblems({ importantFrom, urgencyWindowDays: 14 }).map((p) => p.field)).toEqual([
+      "importantFrom",
+    ]);
+  });
+
+  it.each([0, -3, 366, 1.5, Number.POSITIVE_INFINITY])(
+    "refuses an urgency window of %s days",
+    (urgencyWindowDays) => {
+      expect(ruleProblems({ importantFrom: 3, urgencyWindowDays }).map((p) => p.field)).toEqual([
+        "urgencyWindowDays",
+      ]);
+    },
+  );
+
+  it("reports every problem at once", () => {
+    expect(ruleProblems({ importantFrom: 0, urgencyWindowDays: 0 })).toEqual([
+      {
+        field: "importantFrom",
+        message: "Important from must be a priority: 1 (Urgent) to 4 (Low).",
+      },
+      { field: "urgencyWindowDays", message: "The urgency window must be 1 to 365 whole days." },
+    ]);
   });
 });

@@ -4,27 +4,34 @@ import { describe, expect, it } from "vitest";
 // The web app keeps its query by its components; checking it here catches schema drift.
 import { BOARD_QUERY } from "../../web/src/board";
 import { Store } from "./db/store";
-import type { LinearSource } from "./linear/client";
+import { DEFAULT_RULES } from "./domain/quadrant";
+import { LinearAuthError, LinearRateLimitError, type LinearSource } from "./linear/client";
 import { DEMO_OPS_TEAM, DEMO_TEAM, DemoLinear } from "./linear/demo";
-import { type PlacementSource, Placements } from "./placements";
+import { type PlacementStore, Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
 import { Workspace } from "./workspace";
 
 const today = "2026-10-18";
 
-/** Runs a query against the demo workspace, or signed out, with rules and overrides from D1. */
+/**
+ * Runs a query as someone signed in to the demo workspace (or signed out), with rules and
+ * overrides from D1.
+ */
 function run(
   source: string,
   variables: Record<string, unknown> = {},
   {
     signedIn = true,
-    store = new Store(env.DB) as PlacementSource,
+    demo = false,
+    linear = new DemoLinear({ today }) as LinearSource,
+    store = new Store(env.DB) as PlacementStore,
     log = undefined as ((message: string, error: unknown) => void) | undefined,
   } = {},
 ) {
-  const workspace = signedIn ? new Workspace(new DemoLinear({ today })) : null;
+  const workspace = signedIn ? new Workspace(linear) : null;
   const contextValue: GraphQLContext = {
     workspace: async () => workspace,
+    demo,
     placements: new Placements(store, log),
     today,
   };
@@ -39,6 +46,15 @@ async function data<T>(source: string, variables?: Record<string, unknown>): Pro
 }
 
 type Counts = Record<"do" | "schedule" | "delegate" | "drop", number>;
+
+/** A store's writes, for a stand-in that only changes how it reads. */
+function writesTo(store: Store): Omit<PlacementStore, "rules" | "overrides"> {
+  return {
+    setRules: (teamId, rules) => store.setRules(teamId, rules),
+    setOverride: (issueId, quadrant) => store.setOverride(issueId, quadrant),
+    clearOverride: (issueId) => store.clearOverride(issueId),
+  };
+}
 
 describe("schema", () => {
   it("shows a team's people, each with their matrix, and the unassigned issues", async () => {
@@ -179,9 +195,11 @@ describe("stored rules and overrides", () => {
   });
 
   /** Counts the store reads a query makes. */
-  async function storeReads(source: string, store: PlacementSource = new Store(env.DB)) {
+  async function storeReads(source: string) {
+    const store = new Store(env.DB);
     const reads = { rules: 0, overrides: 0 };
-    const counting: PlacementSource = {
+    const counting: PlacementStore = {
+      ...writesTo(store),
       rules: (teamIds) => {
         reads.rules++;
         return store.rules(teamIds);
@@ -211,7 +229,8 @@ describe("stored rules and overrides", () => {
   });
 
   it("still shows the board by the default rules when the database fails", async () => {
-    const down: PlacementSource = {
+    const down: PlacementStore = {
+      ...writesTo(new Store(env.DB)),
       rules: () => Promise.reject(new Error("D1_ERROR: no such table: quadrant_rules")),
       overrides: () => Promise.reject(new Error("D1_ERROR: no such table: quadrant_override")),
     };
@@ -222,6 +241,219 @@ describe("stored rules and overrides", () => {
     expect(tonyOf(board)?.counts).toEqual({ do: 9, schedule: 1, delegate: 2, drop: 1 });
   });
 });
+
+describe("mutations", () => {
+  const updateRules = `mutation ($teamId: ID!, $input: QuadrantRulesInput!) {
+    updateQuadrantRules(teamId: $teamId, input: $input) {
+      __typename
+      ... on Error { message }
+      ... on InvalidRules { problems { field message } }
+      ... on TeamNotFound { teamId }
+      ... on LinearRateLimited { resetAt }
+      ... on UpdateRulesSuccess {
+        team {
+          rules { importantFrom urgencyWindowDays noDueDate }
+          people { name matrix { counts { do schedule delegate drop } } }
+        }
+      }
+    }
+  }`;
+  const strict = { importantFrom: 1, urgencyWindowDays: 1, noDueDate: "NOT_URGENT" };
+
+  type RulesResult = {
+    updateQuadrantRules: {
+      __typename: string;
+      message?: string;
+      problems?: unknown[];
+      team?: { rules: unknown; people: { name: string; matrix: { counts: Counts } }[] };
+    };
+  };
+  const tonyCounts = (result: RulesResult) =>
+    result.updateQuadrantRules.team?.people.find((p) => p.name === "Tony Stark")?.matrix.counts;
+
+  it("changes a team's rules, and every matrix follows with no extra code", async () => {
+    const result = await data<RulesResult>(updateRules, { teamId: DEMO_TEAM.id, input: strict });
+    expect(result.updateQuadrantRules.__typename).toBe("UpdateRulesSuccess");
+    expect(result.updateQuadrantRules.team?.rules).toEqual(strict);
+    // By the defaults Tony has { do: 9, schedule: 1, delegate: 2, drop: 1 }.
+    expect(tonyCounts(result)).toEqual({ do: 2, schedule: 2, delegate: 2, drop: 7 });
+
+    // And it's kept: the next request sorts by the new rules too.
+    const { team } = await data<{ team: { rules: unknown } }>(
+      "{ team { rules { importantFrom urgencyWindowDays noDueDate } } }",
+    );
+    expect(team.rules).toEqual(strict);
+  });
+
+  it("refuses rules it couldn't sort by, saying what's wrong with each field", async () => {
+    const result = await data<RulesResult>(updateRules, {
+      teamId: DEMO_TEAM.id,
+      input: { importantFrom: 0, urgencyWindowDays: 0, noDueDate: "URGENT" },
+    });
+    expect(result.updateQuadrantRules).toEqual({
+      __typename: "InvalidRules",
+      message:
+        "Important from must be a priority: 1 (Urgent) to 4 (Low). The urgency window must be 1 to 365 whole days.",
+      problems: [
+        {
+          field: "importantFrom",
+          message: "Important from must be a priority: 1 (Urgent) to 4 (Low).",
+        },
+        { field: "urgencyWindowDays", message: "The urgency window must be 1 to 365 whole days." },
+      ],
+    });
+    expect(await new Store(env.DB).rules([DEMO_TEAM.id])).toEqual(
+      new Map([[DEMO_TEAM.id, DEFAULT_RULES]]),
+    );
+  });
+
+  it("won't change the rules of a team the viewer can't see", async () => {
+    const result = await data<RulesResult>(updateRules, { teamId: "someone-elses", input: strict });
+    expect(result.updateQuadrantRules).toEqual({
+      __typename: "TeamNotFound",
+      message: "There's no such team, or you can't see it.",
+      teamId: "someone-elses",
+    });
+  });
+
+  it.each([
+    { case: "signed out", options: { signedIn: false }, message: "Sign in with Linear first." },
+    {
+      case: "in the demo",
+      options: { demo: true },
+      message: "The demo can't be changed. Sign in with Linear to try.",
+    },
+    {
+      case: "with a revoked Linear session",
+      options: { linear: failingWith(new LinearAuthError("revoked")) },
+      message: "Linear rejected the session; sign in again.",
+    },
+  ])("is Unauthorized $case, and saves nothing", async ({ options, message }) => {
+    const result = await run(updateRules, { teamId: DEMO_TEAM.id, input: strict }, options);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({ updateQuadrantRules: { __typename: "Unauthorized", message } });
+    expect(await new Store(env.DB).rules([DEMO_TEAM.id])).toEqual(
+      new Map([[DEMO_TEAM.id, DEFAULT_RULES]]),
+    );
+  });
+
+  it("says when Linear's rate limit is spent, and when it's back", async () => {
+    const resetAt = Date.UTC(2026, 9, 18, 12, 30);
+    const result = await run(
+      updateRules,
+      { teamId: DEMO_TEAM.id, input: strict },
+      { linear: failingWith(new LinearRateLimitError(resetAt)) },
+    );
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      updateQuadrantRules: {
+        __typename: "LinearRateLimited",
+        message: "Linear's rate limit is spent for now; try again later.",
+        resetAt: "2026-10-18T12:30:00.000Z",
+      },
+    });
+  });
+
+  it("leaves other failures, like the database's, to top-level errors", async () => {
+    const store = new Store(env.DB);
+    const broken: PlacementStore = {
+      rules: (teamIds) => store.rules(teamIds),
+      overrides: (ids) => store.overrides(ids),
+      ...writesTo(store),
+      setRules: () => Promise.reject(new Error("D1_ERROR: database is locked")),
+    };
+    const result = await run(
+      updateRules,
+      { teamId: DEMO_TEAM.id, input: strict },
+      { store: broken },
+    );
+    expect(result.data).toEqual({ updateQuadrantRules: null });
+    expect(result.errors?.map((e) => e.message)).toEqual(["D1_ERROR: database is locked"]);
+  });
+
+  const placement = `
+    __typename
+    ... on Error { message }
+    ... on IssueNotFound { issueId }
+    ... on OverrideSuccess {
+      issue { identifier quadrant quadrantSource placementReason }
+      team { people { name matrix { counts { do drop } } } }
+    }
+  `;
+  type PlacementResult = {
+    __typename: string;
+    issue?: { quadrant: string; quadrantSource: string };
+    team?: { people: { name: string; matrix: { counts: Partial<Counts> } }[] };
+  };
+  const tonyIn = (result: PlacementResult) =>
+    result.team?.people.find((p) => p.name === "Tony Stark")?.matrix.counts;
+
+  it("places an issue by hand and hands it back, each answer showing the matrix after", async () => {
+    // Both in one request: the second must not read what the first cached.
+    const { moved, back } = await data<{ moved: PlacementResult; back: PlacementResult }>(
+      `mutation ($id: ID!) {
+        moved: overrideQuadrant(issueId: $id, quadrant: DROP) { ${placement} }
+        back: clearOverride(issueId: $id) { ${placement} }
+      }`,
+      { id: "demo-issue-avg-1" },
+    );
+    expect(moved.issue).toEqual({
+      identifier: "AVG-1",
+      quadrant: "DROP",
+      quadrantSource: "OVERRIDE",
+      placementReason: "Placed by hand; the rules say Do (Urgent priority, overdue by 5 days)",
+    });
+    expect(tonyIn(moved)).toEqual({ do: 8, drop: 2 });
+    expect(back.issue).toEqual({
+      identifier: "AVG-1",
+      quadrant: "DO",
+      quadrantSource: "RULE",
+      placementReason: "Urgent priority, overdue by 5 days",
+    });
+    expect(tonyIn(back)).toEqual({ do: 9, drop: 1 });
+    expect(await new Store(env.DB).overrides(["demo-issue-avg-1"])).toEqual(new Map());
+  });
+
+  it("keeps a hand placement for later requests", async () => {
+    await data(
+      `mutation { overrideQuadrant(issueId: "demo-issue-ops-1", quadrant: SCHEDULE) { __typename } }`,
+    );
+    expect(await new Store(env.DB).overrides(["demo-issue-ops-1"])).toEqual(
+      new Map([["demo-issue-ops-1", "schedule"]]),
+    );
+  });
+
+  it("won't place an issue the viewer can't see", async () => {
+    const { overrideQuadrant } = await data<{ overrideQuadrant: PlacementResult }>(
+      `mutation { overrideQuadrant(issueId: "someone-elses", quadrant: DO) { ${placement} } }`,
+    );
+    expect(overrideQuadrant).toEqual({
+      __typename: "IssueNotFound",
+      message: "There's no such issue, or you can't see it.",
+      issueId: "someone-elses",
+    });
+    expect(await new Store(env.DB).overrides(["someone-elses"])).toEqual(new Map());
+  });
+
+  it("won't place issues in the demo", async () => {
+    const result = await run(
+      `mutation { clearOverride(issueId: "demo-issue-avg-1") { ${placement} } }`,
+      {},
+      { demo: true },
+    );
+    expect(result.data).toEqual({
+      clearOverride: {
+        __typename: "Unauthorized",
+        message: "The demo can't be changed. Sign in with Linear to try.",
+      },
+    });
+  });
+});
+
+/** A Linear that fails every request this way. */
+function failingWith(error: Error): LinearSource {
+  return { request: () => Promise.reject(error) };
+}
 
 describe("the web app's board query", () => {
   it("is valid against the schema and loads the demo board", async () => {
@@ -250,6 +482,7 @@ describe("Linear requests per query", () => {
       variableValues: variables,
       contextValue: {
         workspace: async () => workspace,
+        demo: false,
         placements: new Placements(new Store(env.DB)),
         today,
       } satisfies GraphQLContext,

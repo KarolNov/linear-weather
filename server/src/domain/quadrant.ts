@@ -29,6 +29,41 @@ export const DEFAULT_RULES: QuadrantRules = {
   noDueDate: "notUrgent",
 };
 
+/** The longest urgency window a team can pick. Past a year, every dated issue is urgent anyway. */
+export const MAX_URGENCY_WINDOW_DAYS = 365;
+
+/** Something wrong with proposed rules, on the field a settings form would mark. */
+export interface RuleProblem {
+  field: "importantFrom" | "urgencyWindowDays";
+  message: string;
+}
+
+/** What's wrong with these rules, if anything. Nothing means `classify()` can use them. */
+export function ruleProblems(rules: {
+  importantFrom: number;
+  urgencyWindowDays: number;
+}): RuleProblem[] {
+  const problems: RuleProblem[] = [];
+  if (
+    !Number.isInteger(rules.importantFrom) ||
+    rules.importantFrom < 1 ||
+    rules.importantFrom > 4
+  ) {
+    problems.push({
+      field: "importantFrom",
+      message: "Important from must be a priority: 1 (Urgent) to 4 (Low).",
+    });
+  }
+  const window = rules.urgencyWindowDays;
+  if (!Number.isInteger(window) || window < 1 || window > MAX_URGENCY_WINDOW_DAYS) {
+    problems.push({
+      field: "urgencyWindowDays",
+      message: `The urgency window must be 1 to ${MAX_URGENCY_WINDOW_DAYS} whole days.`,
+    });
+  }
+  return problems;
+}
+
 export interface ClassifiableIssue {
   priority: LinearPriority;
   dueDate: CalendarDate | null;

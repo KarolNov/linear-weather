@@ -3,6 +3,13 @@ type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
 /** Internal type. DO NOT USE DIRECTLY. */
 export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
 import type { DocumentTypeDecoration } from '@graphql-typed-document-node/core';
+export type IssueByIdQueryVariables = Exact<{
+  id: string;
+}>;
+
+
+export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string }, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } }> } };
+
 export type IssueCardFragment = { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } };
 
 export type OpenIssuesQueryVariables = Exact<{
@@ -79,6 +86,35 @@ export const TeamSummaryFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
   key
 }
     `, {"fragmentName":"TeamSummary"}) as unknown as TypedDocumentString<TeamSummaryFragment, unknown>;
+export const IssueByIdDocument = /*#__PURE__*/ new TypedDocumentString(`
+    query IssueById($id: ID!) {
+  issues(first: 1, filter: { id: { eq: $id } }) {
+    nodes {
+      ...IssueCard
+      team {
+        id
+      }
+    }
+  }
+}
+    fragment IssueCard on Issue {
+  id
+  identifier
+  title
+  url
+  dueDate
+  priority
+  estimate
+  assignee {
+    id
+    name
+    avatarUrl
+  }
+  state {
+    name
+    type
+  }
+}`) as unknown as TypedDocumentString<IssueByIdQuery, IssueByIdQueryVariables>;
 export const OpenIssuesDocument = /*#__PURE__*/ new TypedDocumentString(`
     query OpenIssues($teamIds: [ID!]!, $first: Int!, $after: String) {
   issues(

@@ -47,6 +47,16 @@ describe("POST /graphql", () => {
     expect(data.team.people.length).toBeGreaterThan(0);
   });
 
+  it("keeps the demo read-only, since anyone can open it", async () => {
+    const res = await query(
+      "http://localhost/graphql?demo=true",
+      'mutation { overrideQuadrant(issueId: "demo-issue-avg-1", quadrant: DROP) { __typename } }',
+    );
+    expect(await res.json()).toEqual({
+      data: { overrideQuadrant: { __typename: "Unauthorized" } },
+    });
+  });
+
   it("says when Linear's rate limit is spent, and when to retry, keeping the rest", async () => {
     const resetAt = Date.now() + 60_000;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {

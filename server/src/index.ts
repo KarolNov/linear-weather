@@ -32,6 +32,7 @@ export const app = new Hono<{ Bindings: Env }>()
     // Resolved on first use, so queries that don't touch Linear skip the session lookup.
     let workspace: Promise<Workspace | null> | undefined;
     return yoga.fetch(c.req.raw, {
+      demo: isDemo(c),
       workspace: () =>
         (workspace ??= linearSource(c).then((linear) => linear && new Workspace(linear))),
       placements: new Placements(new Store(c.env.DB)),
@@ -78,12 +79,16 @@ function quietAboutLinear(logger: YogaLogger): YogaLogger {
   };
 }
 
+function isDemo(c: AppContext): boolean {
+  return c.req.query("demo") === "true";
+}
+
 /**
  * Linear as the signed-in user sees it, or the mocked Avengers workspace for `?demo=true`, so
  * anyone can try the board without a Linear account.
  */
 async function linearSource(c: AppContext): Promise<LinearSource | null> {
-  if (c.req.query("demo") === "true") return new DemoLinear();
+  if (isDemo(c)) return new DemoLinear();
   const authorization = await linearAuthorization(c);
   if (!authorization) return null;
   const client = new LinearClient(authorization);

@@ -8,6 +8,13 @@
       "when": 1792570124750,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792660369273,
+      "tag": "0001_cap_urgency_window",
+      "breakpoints": true
     }
   ]
 }

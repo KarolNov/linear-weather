@@ -47,6 +47,22 @@ describe("POST /graphql", () => {
     expect(data.team.people.length).toBeGreaterThan(0);
   });
 
+  it.each(["application/x-www-form-urlencoded", "multipart/form-data; boundary=x", "text/plain"])(
+    "refuses %s bodies, which a cross-site form can send",
+    async (contentType) => {
+      const res = await app.request(
+        "http://localhost/graphql",
+        {
+          method: "POST",
+          headers: { "content-type": contentType },
+          body: "query=mutation%20%7B%20clearOverride(issueId%3A%20%22x%22)%20%7B%20__typename%20%7D%20%7D",
+        },
+        env,
+      );
+      expect(res.status).toBe(415);
+    },
+  );
+
   it("keeps the demo read-only, since anyone can open it", async () => {
     const res = await query(
       "http://localhost/graphql?demo=true",

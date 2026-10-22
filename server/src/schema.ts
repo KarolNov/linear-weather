@@ -6,12 +6,11 @@ import { GraphQLError } from "graphql";
 import { buildMatrix, counts, type Matrix, place, points } from "./domain/matrix";
 import {
   type CalendarDate,
-  type LinearPriority,
   MAX_URGENCY_WINDOW_DAYS,
+  parseRules,
   type Quadrant,
   type QuadrantRules,
   type RuleProblem,
-  ruleProblems,
 } from "./domain/quadrant";
 import { LinearAuthError, LinearRateLimitError } from "./linear/client";
 import type { Assignee } from "./linear/team-issues";
@@ -352,7 +351,7 @@ interface UpdateRulesSuccess {
 interface OverrideSuccess {
   __typename: "OverrideSuccess";
   issue: IssueModel;
-  teamId: string;
+  team: Team;
 }
 
 /** Every failure, so the Error interface resolves to whichever this is. */
@@ -420,13 +419,7 @@ const OverrideSuccessRef = builder.objectRef<OverrideSuccess>("OverrideSuccess")
   description: "The issue is where it was asked to be: placed by hand, or back with the rules.",
   fields: (t) => ({
     issue: t.expose("issue", { type: IssueRef }),
-    team: t.field({
-      type: TeamRef,
-      nullable: true,
-      description: "The issue's team, for its matrices.",
-      resolve: async ({ teamId }, _args, context) =>
-        (await (await signedIn(context)).teams()).find((team) => team.id === teamId) ?? null,
-    }),
+    team: t.expose("team", { type: TeamRef, description: "The issue's team, for its matrices." }),
   }),
 });
 
@@ -498,7 +491,7 @@ async function placeByHand(
   return {
     __typename: "OverrideSuccess",
     issue: place(issue, rules, context.today, quadrant ?? undefined),
-    teamId: issue.team.id,
+    team: issue.team,
   };
 }
 
@@ -515,8 +508,8 @@ builder.mutationType({
         attempt(
           context,
           async (workspace): Promise<UpdateRulesSuccess | InvalidRules | TeamNotFound> => {
-            const problems = ruleProblems(input);
-            if (problems.length > 0) {
+            const { rules, problems } = parseRules(input);
+            if (problems) {
               return {
                 __typename: "InvalidRules",
                 message: problems.map((problem) => problem.message).join(" "),
@@ -531,10 +524,7 @@ builder.mutationType({
                 teamId: String(teamId),
               };
             }
-            await context.placements.setRules(team.id, {
-              ...input,
-              importantFrom: input.importantFrom as Exclude<LinearPriority, 0>,
-            });
+            await context.placements.setRules(team.id, rules);
             return { __typename: "UpdateRulesSuccess", team };
           },
         ),

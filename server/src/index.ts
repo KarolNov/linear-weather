@@ -29,6 +29,12 @@ export const app = new Hono<{ Bindings: Env }>()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/auth", auth)
   .on(["GET", "POST"], "/graphql", (c) => {
+    // A cross-site form can POST urlencoded or multipart bodies without a CORS preflight, which
+    // Yoga would run as a mutation. The session cookie is SameSite, but a dev API key needs no
+    // cookie at all, so only take what a form can't send.
+    if (c.req.method === "POST" && !isGraphQLBody(c.req.header("content-type"))) {
+      return c.text("Send GraphQL as application/json", 415);
+    }
     // Resolved on first use, so queries that don't touch Linear skip the session lookup.
     let workspace: Promise<Workspace | null> | undefined;
     return yoga.fetch(c.req.raw, {
@@ -77,6 +83,11 @@ function quietAboutLinear(logger: YogaLogger): YogaLogger {
       logger.error(...args);
     },
   };
+}
+
+function isGraphQLBody(contentType: string | undefined): boolean {
+  const type = contentType?.split(";")[0]?.trim().toLowerCase();
+  return type === "application/json" || type === "application/graphql+json";
 }
 
 function isDemo(c: AppContext): boolean {

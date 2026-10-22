@@ -237,10 +237,10 @@ export class DemoLinear implements LinearSource {
   /** Like Linear's `issues` filtered by id: no nodes for an issue it doesn't know. */
   private issueById({ id }: IssueByIdQueryVariables) {
     const today = this.today();
-    const nodes = TEAMS.flatMap(({ team }) =>
-      demoIssues(today, team.id)
+    const nodes = TEAMS.flatMap(({ team: { id: teamId, name, key } }) =>
+      demoIssues(today, teamId)
         .filter((issue) => issue.id === id)
-        .map((issue) => ({ ...issue, team: { id: team.id } })),
+        .map((issue) => ({ ...issue, team: { id: teamId, name, key } })),
     );
     return { issues: { nodes } } satisfies IssueByIdQuery;
   }

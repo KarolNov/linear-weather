@@ -1,11 +1,12 @@
 # One issue, wherever it is, to check the viewer can see it before placing it by hand. A filter
 # rather than `issue(id:)`, so an issue they can't see comes back as no nodes, not an error.
+# Archived issues too, so an override placed before archiving can still be cleared.
 query IssueById($id: ID!) {
-  issues(first: 1, filter: { id: { eq: $id } }) {
+  issues(first: 1, includeArchived: true, filter: { id: { eq: $id } }) {
     nodes {
       ...IssueCard
       team {
-        id
+        ...TeamSummary
       }
     }
   }

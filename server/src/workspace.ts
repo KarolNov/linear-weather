@@ -77,9 +77,9 @@ export class Workspace {
   }
 
   /** An issue the viewer can see, open or not, with its team; null when they can't. */
-  async issue(id: string): Promise<(TeamIssue & { team: { id: string } }) | null> {
+  async issue(id: string): Promise<(TeamIssue & { team: Team }) | null> {
     const { issues } = await this.linear.request(IssueByIdDocument, { id });
-    return (issues.nodes[0] as (TeamIssue & { team: { id: string } }) | undefined) ?? null;
+    return (issues.nodes[0] as (TeamIssue & { team: Team }) | undefined) ?? null;
   }
 
   teamWork(teamId: string): Promise<TeamWork> {

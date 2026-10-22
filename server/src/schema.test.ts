@@ -7,6 +7,7 @@ import { Store } from "./db/store";
 import { DEFAULT_RULES } from "./domain/quadrant";
 import { LinearAuthError, LinearRateLimitError, type LinearSource } from "./linear/client";
 import { DEMO_OPS_TEAM, DEMO_TEAM, DemoLinear } from "./linear/demo";
+import { TeamsMembersDocument } from "./linear/generated";
 import { type PlacementStore, Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
 import { Workspace } from "./workspace";
@@ -351,6 +352,29 @@ describe("mutations", () => {
         message: "Linear's rate limit is spent for now; try again later.",
         resetAt: "2026-10-18T12:30:00.000Z",
       },
+    });
+  });
+
+  it("still says the rules were saved when Linear fails on what's derived from them", async () => {
+    const demo = new DemoLinear({ today });
+    const limitedOnMembers: LinearSource = {
+      request: (document, ...variables) =>
+        document.toString() === TeamsMembersDocument.toString()
+          ? Promise.reject(new LinearRateLimitError(null))
+          : demo.request(document, ...variables),
+    };
+    const result = await run(
+      updateRules,
+      { teamId: DEMO_TEAM.id, input: strict },
+      { linear: limitedOnMembers },
+    );
+    expect(result.data).toMatchObject({
+      updateQuadrantRules: { __typename: "UpdateRulesSuccess", team: { people: null } },
+    });
+    expect(result.errors?.map((e) => e.path)).toEqual([["updateQuadrantRules", "team", "people"]]);
+    expect((await new Store(env.DB).rules([DEMO_TEAM.id])).get(DEMO_TEAM.id)).toMatchObject({
+      importantFrom: 1,
+      urgencyWindowDays: 1,
     });
   });
 

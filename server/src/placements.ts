@@ -1,41 +1,57 @@
-// How one GraphQL request places issues: each team's rules and its hand-placed issues, read
-// from the store once and shared by every matrix on the board, like Workspace does for Linear.
+// How one GraphQL request places issues: team rules and hand-placed issues from the store.
+// Resolvers for every team and person on a page ask in the same tick, so DataLoader batches them
+// into one query for rules and one for overrides, like Workspace does for Linear.
 
+import DataLoader from "dataloader";
 import type { Overrides } from "./domain/matrix";
-import type { QuadrantRules } from "./domain/quadrant";
+import { DEFAULT_RULES, type Quadrant, type QuadrantRules } from "./domain/quadrant";
 
 /** The part of the Store placing issues reads. */
 export interface PlacementSource {
-  rules(teamId: string): Promise<QuadrantRules>;
+  rules(teamIds: readonly string[]): Promise<ReadonlyMap<string, QuadrantRules>>;
   overrides(issueIds: readonly string[]): Promise<Overrides>;
 }
 
 export class Placements {
-  private readonly rulesLoads = new Map<string, Promise<QuadrantRules>>();
-  private readonly overrideLoads = new Map<string, Promise<Overrides>>();
+  private readonly rulesLoader = new DataLoader<string, QuadrantRules>(async (teamIds) => {
+    const rules = await this.read(() => this.source.rules(teamIds), new Map());
+    return teamIds.map((id) => rules.get(id) ?? DEFAULT_RULES);
+  });
+  private readonly overrideLoader = new DataLoader<string, Quadrant | null>(async (issueIds) => {
+    const overrides = await this.read(() => this.source.overrides(issueIds), new Map());
+    return issueIds.map((id) => overrides.get(id) ?? null);
+  });
 
-  constructor(private readonly source: PlacementSource) {}
+  constructor(
+    private readonly source: PlacementSource,
+    private readonly log: (message: string, error: unknown) => void = console.error,
+  ) {}
 
   rules(teamId: string): Promise<QuadrantRules> {
-    return memo(this.rulesLoads, teamId, () => this.source.rules(teamId));
+    return this.rulesLoader.load(teamId);
+  }
+
+  /** Which of these issues a PM placed by hand, and where. */
+  async overrides(issues: readonly { id: string }[]): Promise<Overrides> {
+    const quadrants = await this.overrideLoader.loadMany(issues.map((issue) => issue.id));
+    const overrides = new Map<string, Quadrant>();
+    issues.forEach(({ id }, i) => {
+      const quadrant = quadrants[i];
+      if (typeof quadrant === "string") overrides.set(id, quadrant);
+    });
+    return overrides;
   }
 
   /**
-   * Overrides among a team's open issues, looked up all at once the first time anyone on the
-   * team needs them. Pass the whole team's issues, not one person's.
+   * Linear still answers when our database doesn't, so the board falls back to the default rules
+   * and no hand placements rather than going blank.
    */
-  overrides(teamId: string, teamIssues: readonly { id: string }[]): Promise<Overrides> {
-    return memo(this.overrideLoads, teamId, () =>
-      this.source.overrides(teamIssues.map((issue) => issue.id)),
-    );
+  private async read<T>(load: () => Promise<T>, fallback: T): Promise<T> {
+    try {
+      return await load();
+    } catch (error) {
+      this.log("Couldn't read placements from D1; using the defaults", error);
+      return fallback;
+    }
   }
-}
-
-function memo<T>(loads: Map<string, Promise<T>>, key: string, load: () => Promise<T>): Promise<T> {
-  let loading = loads.get(key);
-  if (!loading) {
-    loading = load();
-    loads.set(key, loading);
-  }
-  return loading;
 }

@@ -35,12 +35,13 @@ async function teamMatrix(
   teamId: string,
   pick: (byAssignee: Map<string | null, TeamIssue[]>) => TeamIssue[] | undefined,
 ): Promise<Matrix<TeamIssue>> {
-  const { issues, byAssignee } = await (await signedIn(context)).teamWork(teamId);
+  const { byAssignee } = await (await signedIn(context)).teamWork(teamId);
+  const issues = pick(byAssignee) ?? [];
   const [rules, overrides] = await Promise.all([
     context.placements.rules(teamId),
-    context.placements.overrides(teamId, issues),
+    context.placements.overrides(issues),
   ]);
-  return buildMatrix(pick(byAssignee) ?? [], rules, context.today, overrides);
+  return buildMatrix(issues, rules, context.today, overrides);
 }
 
 async function signedIn(context: GraphQLContext): Promise<Workspace> {

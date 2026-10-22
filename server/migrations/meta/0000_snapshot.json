@@ -86,11 +86,11 @@
       "checkConstraints": {
         "important_from_is_a_priority": {
           "name": "important_from_is_a_priority",
-          "value": "\"quadrant_rules\".\"important_from\" BETWEEN 1 AND 4"
+          "value": "typeof(\"quadrant_rules\".\"important_from\") = 'integer' AND \"quadrant_rules\".\"important_from\" BETWEEN 1 AND 4"
         },
         "urgency_window_is_positive": {
           "name": "urgency_window_is_positive",
-          "value": "\"quadrant_rules\".\"urgency_window_days\" >= 1"
+          "value": "typeof(\"quadrant_rules\".\"urgency_window_days\") = 'integer' AND \"quadrant_rules\".\"urgency_window_days\" >= 1"
         },
         "no_due_date_is_known": {
           "name": "no_due_date_is_known",

@@ -130,9 +130,9 @@ Linear holds the issues. What only this app knows lives in a D1 database (bindin
 - **`quadrant_rules`**: one row per team that changed its rules. Teams without a row use the defaults above, so a new team needs no setup.
 - **`quadrant_override`**: issues a PM placed by hand, keyed by Linear's issue id, so an override follows the issue if it moves teams. An overridden issue reports `quadrantSource: OVERRIDE`, and its `placementReason` still says where the rules would put it. `becomesUrgentOn` keeps following the due date.
 
-CHECK constraints keep values the rules engine can't use out of the database.
+CHECK constraints keep values the board can't use out of the database, including non-integer rules that GraphQL's `Int` couldn't send.
 
-Within a request, each team's rules and overrides are read once and shared by every matrix on the board (`server/src/placements.ts`). Overrides for a whole team come back in one round trip: one `SELECT … IN` per 100 issues, which is as many parameters as D1 binds in one statement, sent together with `batch`.
+Within a request, rules and overrides are read through two DataLoaders (`server/src/placements.ts`), so every team and person resolved in the same tick shares one query for rules and one for overrides. The ids go in as a single JSON parameter (`IN (SELECT value FROM json_each(?))`), because D1 binds at most 100 parameters per statement and a team can have thousands of open issues. If D1 fails, the board still loads, using the default rules and no hand placements, and the error is logged.
 
 ### Migrations
 
@@ -141,7 +141,7 @@ Within a request, each team's rules and overrides are read once and shared by ev
 - After changing `tables.ts`, run `pnpm --filter server db:generate` and commit the new file in `server/migrations/`.
 - Local dev applies them for you. To apply them by hand, run `pnpm --filter server db:migrate:local`.
 - Tests apply every migration to an empty database in workerd (`server/test/apply-migrations.ts`) and empty the tables after each test.
-- In production, Wrangler creates the database on the first `wrangler deploy`; run `pnpm --filter server db:migrate:remote` right after it to create the tables. From then on, apply new migrations before deploying the code that needs them.
+- In production, `pnpm --filter server deploy` (`server/scripts/deploy.sh`, the server's Workers Builds deploy command) applies migrations, then deploys. On the very first deploy Wrangler creates the database while deploying, so the script migrates right after instead. A migration runs while the previous code is still live, so it should add rather than rename or drop.
 
 ## Signing in with Linear
 

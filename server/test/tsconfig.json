@@ -1,0 +1,9 @@
+{
+  // The test setup only: `cloudflare:test` and TEST_MIGRATIONS don't exist in the deployed
+  // Worker, so code under src/ doesn't see their types.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["../worker-configuration.d.ts", "@cloudflare/vitest-plugin/types"]
+  },
+  "include": [".", "../src/env.d.ts"]
+}

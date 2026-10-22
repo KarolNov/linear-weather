@@ -16,12 +16,16 @@ const today = "2026-10-18";
 function run(
   source: string,
   variables: Record<string, unknown> = {},
-  { signedIn = true, store = new Store(env.DB) as PlacementSource } = {},
+  {
+    signedIn = true,
+    store = new Store(env.DB) as PlacementSource,
+    log = undefined as ((message: string, error: unknown) => void) | undefined,
+  } = {},
 ) {
   const workspace = signedIn ? new Workspace(new DemoLinear({ today })) : null;
   const contextValue: GraphQLContext = {
     workspace: async () => workspace,
-    placements: new Placements(store),
+    placements: new Placements(store, log),
     today,
   };
   return graphql({ schema, source, variableValues: variables, contextValue });
@@ -174,22 +178,48 @@ describe("stored rules and overrides", () => {
     expect(tonyOf(board)?.counts).toEqual({ do: 2, schedule: 2, delegate: 2, drop: 7 });
   });
 
-  it("reads each team's rules and overrides once per request, however many people", async () => {
-    const store = new Store(env.DB);
+  /** Counts the store reads a query makes. */
+  async function storeReads(source: string, store: PlacementSource = new Store(env.DB)) {
     const reads = { rules: 0, overrides: 0 };
     const counting: PlacementSource = {
-      rules: (teamId) => {
+      rules: (teamIds) => {
         reads.rules++;
-        return store.rules(teamId);
+        return store.rules(teamIds);
       },
       overrides: (ids) => {
         reads.overrides++;
         return store.overrides(ids);
       },
     };
-    const result = await run(tony, {}, { store: counting });
+    const result = await run(source, {}, { store: counting });
     expect(result.errors).toBeUndefined();
-    expect(reads).toEqual({ rules: 1, overrides: 1 });
+    return reads;
+  }
+
+  it("reads rules and overrides once per request, however many people", async () => {
+    expect(await storeReads(tony)).toEqual({ rules: 1, overrides: 1 });
+  });
+
+  it("reads rules and overrides once per request, however many teams", async () => {
+    const everyTeam = `{ teams { rules { importantFrom } people { matrix { counts { do } } } } }`;
+    expect(await storeReads(everyTeam)).toEqual({ rules: 1, overrides: 1 });
+    // Unassigned matrices are reached a tick before people's, so they share a second read.
+    const withUnassigned = `{
+      teams { people { matrix { counts { do } } } unassigned { counts { do } } }
+    }`;
+    expect(await storeReads(withUnassigned)).toEqual({ rules: 1, overrides: 2 });
+  });
+
+  it("still shows the board by the default rules when the database fails", async () => {
+    const down: PlacementSource = {
+      rules: () => Promise.reject(new Error("D1_ERROR: no such table: quadrant_rules")),
+      overrides: () => Promise.reject(new Error("D1_ERROR: no such table: quadrant_override")),
+    };
+    const result = await run(tony, {}, { store: down, log: () => {} });
+    expect(result.errors).toBeUndefined();
+    const board = result.data as unknown as Board;
+    expect(board.team.rules).toEqual({ urgencyWindowDays: 14 });
+    expect(tonyOf(board)?.counts).toEqual({ do: 9, schedule: 1, delegate: 2, drop: 1 });
   });
 });
 

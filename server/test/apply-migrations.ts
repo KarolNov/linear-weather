@@ -1,6 +1,7 @@
 import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
-import { getTableName } from "drizzle-orm";
+import { getTableName, is } from "drizzle-orm";
+import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { afterEach } from "vitest";
 import * as tables from "../src/db/tables";
 
@@ -10,6 +11,8 @@ await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
 
 afterEach(async () => {
   await env.DB.batch(
-    Object.values(tables).map((table) => env.DB.prepare(`DELETE FROM ${getTableName(table)}`)),
+    Object.values(tables)
+      .filter((table) => is(table, SQLiteTable))
+      .map((table) => env.DB.prepare(`DELETE FROM ${getTableName(table)}`)),
   );
 });

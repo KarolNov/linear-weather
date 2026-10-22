@@ -4,9 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm db:migrate:local && wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "sh scripts/deploy.sh",
     "cf-typegen": "wrangler types",
-    "typecheck": "tsc -p .",
+    "typecheck": "tsc -p . && tsc -p test",
     "codegen": "graphql-codegen",
     "codegen:check": "graphql-codegen --check",
     "db:generate": "drizzle-kit generate",

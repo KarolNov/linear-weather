@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineProject } from "vitest/config";
 
@@ -13,7 +14,7 @@ export default defineProject(async () => ({
           LINEAR_WEBHOOK_SECRET: "test-secret",
           // Read here in Node, applied inside workerd by test/apply-migrations.ts.
           TEST_MIGRATIONS: await readD1Migrations(
-            new URL("./migrations", import.meta.url).pathname,
+            fileURLToPath(new URL("./migrations", import.meta.url)),
           ),
         },
       },

@@ -7,20 +7,29 @@ const store = () => new Store(env.DB);
 
 describe("Store", () => {
   it("gives the default rules to a team that never changed them", async () => {
-    expect(await store().rules("team-new")).toEqual(DEFAULT_RULES);
+    expect(await store().rules(["team-new"])).toEqual(new Map([["team-new", DEFAULT_RULES]]));
   });
 
   it("keeps a team's rules, and replaces them on the next save", async () => {
     const rules = { importantFrom: 2, urgencyWindowDays: 7, noDueDate: "urgent" } as const;
     await store().setRules("team-a", rules);
-    expect(await store().rules("team-a")).toEqual(rules);
+    expect(await store().rules(["team-a"])).toEqual(new Map([["team-a", rules]]));
     await store().setRules("team-a", { ...rules, urgencyWindowDays: 21 });
-    expect(await store().rules("team-a")).toEqual({ ...rules, urgencyWindowDays: 21 });
-    expect(await store().rules("team-b")).toEqual(DEFAULT_RULES);
+    expect(await store().rules(["team-a", "team-b"])).toEqual(
+      new Map([
+        ["team-a", { ...rules, urgencyWindowDays: 21 }],
+        ["team-b", DEFAULT_RULES],
+      ]),
+    );
   });
 
-  it("refuses rules the matrix couldn't use", async () => {
-    const failed = store().setRules("team-a", { ...DEFAULT_RULES, urgencyWindowDays: 0 });
+  it.each([
+    { urgencyWindowDays: 0 },
+    // GraphQL's Int couldn't send these back.
+    { urgencyWindowDays: 1.5 },
+    { importantFrom: 2.5 as 2 },
+  ])("refuses rules the board couldn't use: %o", async (bad) => {
+    const failed = store().setRules("team-a", { ...DEFAULT_RULES, ...bad });
     // Drizzle wraps D1's error.
     await expect(failed).rejects.toMatchObject({
       cause: { message: expect.stringContaining("CHECK constraint failed") },
@@ -42,14 +51,14 @@ describe("Store", () => {
     expect(await store().overrides([])).toEqual(new Map());
   });
 
-  it("looks up more issues than D1 binds in one statement", async () => {
-    const ids = Array.from({ length: 250 }, (_, i) => `issue-${i}`);
+  it("looks up more issues than D1 binds parameters in one statement", async () => {
+    const ids = Array.from({ length: 2_500 }, (_, i) => `issue-${i}`);
     await store().setOverride("issue-0", "do");
-    await store().setOverride("issue-249", "drop");
+    await store().setOverride("issue-2499", "drop");
     expect(await store().overrides(ids)).toEqual(
       new Map([
         ["issue-0", "do"],
-        ["issue-249", "drop"],
+        ["issue-2499", "drop"],
       ]),
     );
   });

@@ -1,0 +1,14 @@
+// The Previews' staging database, for `wrangler d1 migrations apply` (scripts/preview.sh).
+// Wrangler migrates top-level bindings only, so it's declared here as well as under `previews`
+// in wrangler.jsonc. Both must name the same database.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "linear-weather-preview",
+      "database_id": "1eece4f3-d0c2-4d9d-8456-7a3bc1ad1e78",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

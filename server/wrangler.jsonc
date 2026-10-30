@@ -12,5 +12,18 @@
     { "binding": "DB", "database_name": "linear-weather", "migrations_dir": "migrations" }
   ],
   // LINEAR_API_KEY is an optional dev shortcut, typed in src/env.d.ts.
-  "secrets": { "required": ["LINEAR_CLIENT_ID", "LINEAR_CLIENT_SECRET", "LINEAR_WEBHOOK_SECRET"] }
+  "secrets": { "required": ["LINEAR_CLIENT_ID", "LINEAR_CLIENT_SECRET", "LINEAR_WEBHOOK_SECRET"] },
+  // Worker Previews (each non-main branch) don't inherit the bindings above. They share a staging
+  // database and session store, so unmerged code never touches production data. Secrets come
+  // from `wrangler preview base-config secret put`. scripts/preview.sh migrates the database.
+  "previews": {
+    "kv_namespaces": [{ "binding": "SESSIONS", "id": "a1b9058f31e0424598eaaa73ac85e7db" }],
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "linear-weather-preview",
+        "database_id": "1eece4f3-d0c2-4d9d-8456-7a3bc1ad1e78"
+      }
+    ]
+  }
 }

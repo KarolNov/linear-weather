@@ -63,13 +63,100 @@ describe("POST /graphql", () => {
     },
   );
 
-  it("keeps the demo read-only, since anyone can open it", async () => {
-    const res = await query(
-      "http://localhost/graphql?demo=true",
-      'mutation { overrideQuadrant(issueId: "demo-issue-avg-1", quadrant: DROP) { __typename } }',
-    );
-    expect(await res.json()).toEqual({
-      data: { overrideQuadrant: { __typename: "Unauthorized" } },
+  describe("in the demo", () => {
+    const demo = "http://localhost/graphql?demo=true";
+    const placed = `{ team(id: "demo-team-avengers") {
+      rules { urgencyWindowDays }
+      people { matrix { drop { id quadrantSource } } }
+    } }`;
+    const dropAvg1 = `mutation {
+      overrideQuadrant(issueId: "demo-issue-avg-1", quadrant: DROP) {
+        __typename
+        ... on OverrideSuccess { issue { quadrant quadrantSource } }
+      }
+    }`;
+    const widenWindow = `mutation {
+      updateQuadrantRules(
+        teamId: "demo-team-avengers"
+        input: { importantFrom: 3, urgencyWindowDays: 30, noDueDate: NOT_URGENT }
+      ) { __typename }
+    }`;
+
+    /** A visitor's browser: it keeps the cookies the server sets and sends them back. */
+    function browser(bindings: Env = env) {
+      let cookie = "";
+      return async (source: string) => {
+        const res = await app.request(
+          demo,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json", cookie },
+            body: JSON.stringify({ query: source }),
+          },
+          bindings,
+        );
+        const set = res.headers.get("set-cookie");
+        if (set) cookie = set.split(";")[0] ?? "";
+        return { res, body: (await res.json()) as { data: Record<string, unknown> } };
+      };
+    }
+
+    /** What the board shows: the demo's rules, and which issues were dropped by hand. */
+    function board(data: Record<string, unknown>) {
+      const { team } = data as {
+        team: {
+          rules: { urgencyWindowDays: number };
+          people: { matrix: { drop: { id: string; quadrantSource: string }[] } }[];
+        };
+      };
+      const dropped = team.people.flatMap(({ matrix }) =>
+        matrix.drop.filter((issue) => issue.quadrantSource === "OVERRIDE").map(({ id }) => id),
+      );
+      return { window: team.rules.urgencyWindowDays, dropped };
+    }
+
+    it("lets a visitor change the board, keeping it in their browser across reloads", async () => {
+      const visit = browser();
+      expect((await visit(dropAvg1)).body.data).toEqual({
+        overrideQuadrant: {
+          __typename: "OverrideSuccess",
+          issue: { quadrant: "DROP", quadrantSource: "OVERRIDE" },
+        },
+      });
+      expect((await visit(widenWindow)).body.data).toEqual({
+        updateQuadrantRules: { __typename: "UpdateRulesSuccess" },
+      });
+      expect(board((await visit(placed)).body.data)).toEqual({
+        window: 30,
+        dropped: ["demo-issue-avg-1"],
+      });
+    });
+
+    it("keeps each visitor's changes from every other visitor", async () => {
+      await browser()(dropAvg1);
+      expect(board((await browser()(placed)).body.data)).toEqual({ window: 14, dropped: [] });
+    });
+
+    it("sets no cookie when nothing changed", async () => {
+      const { res } = await browser()(placed);
+      expect(res.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("never touches D1, queries or mutations", async () => {
+      // Placements falls back to the defaults when D1 fails, so record use rather than throw.
+      const used: string[] = [];
+      const watched = new Proxy(env.DB, {
+        get: (target, property) => {
+          used.push(String(property));
+          return Reflect.get(target, property);
+        },
+      });
+      const visit = browser({ ...env, DB: watched });
+      for (const source of [dropAvg1, widenWindow, placed]) {
+        expect((await visit(source)).body).not.toHaveProperty("errors");
+      }
+      expect(board((await visit(placed)).body.data).dropped).toEqual(["demo-issue-avg-1"]);
+      expect(used).toEqual([]);
     });
   });
 

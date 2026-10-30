@@ -20,9 +20,10 @@ import type { Team, TeamIssue, Viewer, Workspace } from "./workspace";
 export interface GraphQLContext {
   /** Linear as the signed-in user sees it; null when nobody is signed in. */
   workspace: () => Promise<Workspace | null>;
-  /** The mocked workspace anyone can open with `?demo=true`. Read-only, so nobody spoils it. */
-  demo: boolean;
-  /** Each team's rules and the issues placed by hand, from our own database. */
+  /**
+   * Each team's rules and the issues placed by hand: from our own database, or for the demo,
+   * from the visitor's browser.
+   */
   placements: Placements;
   /** The day issues are placed against. UTC, so near midnight a PM elsewhere may be a day off. */
   today: CalendarDate;
@@ -364,8 +365,7 @@ const ErrorRef = builder.interfaceRef<Failure>("Error").implement({
 });
 
 const UnauthorizedRef = builder.objectRef<Unauthorized>("Unauthorized").implement({
-  description:
-    "Not signed in, the Linear session was revoked, or this is the demo, which nobody may change.",
+  description: "Not signed in, or the Linear session was revoked.",
   interfaces: [ErrorRef],
   fields: () => ({}),
 });
@@ -440,7 +440,7 @@ const OverrideResultRef = builder.unionType("OverrideResult", {
 });
 
 /**
- * Runs a mutation for a signed-in user, turning the failures a client should handle into
+ * Runs a mutation for a signed-in user or a demo visitor, turning the failures a client should handle into
  * results. Anything else still throws.
  */
 async function attempt<T>(
@@ -448,7 +448,6 @@ async function attempt<T>(
   work: (workspace: Workspace) => Promise<T>,
 ): Promise<T | Unauthorized | LinearRateLimited> {
   const unauthorized = (message: string): Unauthorized => ({ __typename: "Unauthorized", message });
-  if (context.demo) return unauthorized("The demo can't be changed. Sign in with Linear to try.");
   const workspace = await context.workspace();
   if (!workspace) return unauthorized("Sign in with Linear first.");
   try {

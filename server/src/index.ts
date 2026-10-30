@@ -1,7 +1,10 @@
 import { GraphQLError } from "graphql";
 import { createLogger, createYoga, maskError, type YogaLogger } from "graphql-yoga";
 import { Hono } from "hono";
+import { generateCookie, getCookie } from "hono/cookie";
 import { auth } from "./auth";
+import { DEMO_COOKIE, DEMO_COOKIE_MAX_AGE } from "./db/demo-cookie";
+import { DemoStore } from "./db/demo-store";
 import { Store } from "./db/store";
 import {
   LinearAuthError,
@@ -12,7 +15,7 @@ import {
 import { DemoLinear } from "./linear/demo";
 import { Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
-import { type AppContext, discardSession, linearAuthorization } from "./session";
+import { type AppContext, cookieOptions, discardSession, linearAuthorization } from "./session";
 import { Workspace } from "./workspace";
 
 const yoga = createYoga<GraphQLContext>({
@@ -28,7 +31,7 @@ const yoga = createYoga<GraphQLContext>({
 export const app = new Hono<{ Bindings: Env }>()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/auth", auth)
-  .on(["GET", "POST"], "/graphql", (c) => {
+  .on(["GET", "POST"], "/graphql", async (c) => {
     // A cross-site form can POST urlencoded or multipart bodies without a CORS preflight, which
     // Yoga would run as a mutation. The session cookie is SameSite, but a dev API key needs no
     // cookie at all, so only take what a form can't send.
@@ -37,14 +40,27 @@ export const app = new Hono<{ Bindings: Env }>()
     }
     // Resolved on first use, so queries that don't touch Linear skip the session lookup.
     let workspace: Promise<Workspace | null> | undefined;
-    return yoga.fetch(c.req.raw, {
-      demo: isDemo(c),
+    // The demo never touches D1: each visitor's changes live in their own cookie.
+    const demo = isDemo(c) ? DemoStore.fromCookie(getCookie(c, DEMO_COOKIE)) : null;
+    const response = await yoga.fetch(c.req.raw, {
       workspace: () =>
         (workspace ??= linearSource(c).then((linear) => linear && new Workspace(linear))),
-      placements: new Placements(new Store(c.env.DB)),
+      placements: new Placements(demo ?? new Store(c.env.DB)),
       today: new Date().toISOString().slice(0, 10),
     });
+    if (!demo?.changed) return response;
+    const headers = new Headers(response.headers);
+    headers.append("set-cookie", demoCookie(c, demo));
+    return new Response(response.body, { status: response.status, headers });
   });
+
+/** Keeps the visitor's demo changes in their browser. */
+function demoCookie(c: AppContext, demo: DemoStore): string {
+  return generateCookie(DEMO_COOKIE, demo.cookie(), {
+    ...cookieOptions(c),
+    maxAge: DEMO_COOKIE_MAX_AGE,
+  });
+}
 
 /**
  * Linear's errors that clients can act on, as GraphQL errors with a code: the rate limit, with

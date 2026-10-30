@@ -23,7 +23,6 @@ function run(
   variables: Record<string, unknown> = {},
   {
     signedIn = true,
-    demo = false,
     linear = new DemoLinear({ today }) as LinearSource,
     store = new Store(env.DB) as PlacementStore,
     log = undefined as ((message: string, error: unknown) => void) | undefined,
@@ -32,7 +31,6 @@ function run(
   const workspace = signedIn ? new Workspace(linear) : null;
   const contextValue: GraphQLContext = {
     workspace: async () => workspace,
-    demo,
     placements: new Placements(store, log),
     today,
   };
@@ -320,11 +318,6 @@ describe("mutations", () => {
   it.each([
     { case: "signed out", options: { signedIn: false }, message: "Sign in with Linear first." },
     {
-      case: "in the demo",
-      options: { demo: true },
-      message: "The demo can't be changed. Sign in with Linear to try.",
-    },
-    {
       case: "with a revoked Linear session",
       options: { linear: failingWith(new LinearAuthError("revoked")) },
       message: "Linear rejected the session; sign in again.",
@@ -458,20 +451,6 @@ describe("mutations", () => {
     });
     expect(await new Store(env.DB).overrides(["someone-elses"])).toEqual(new Map());
   });
-
-  it("won't place issues in the demo", async () => {
-    const result = await run(
-      `mutation { clearOverride(issueId: "demo-issue-avg-1") { ${placement} } }`,
-      {},
-      { demo: true },
-    );
-    expect(result.data).toEqual({
-      clearOverride: {
-        __typename: "Unauthorized",
-        message: "The demo can't be changed. Sign in with Linear to try.",
-      },
-    });
-  });
 });
 
 /** A Linear that fails every request this way. */
@@ -506,7 +485,6 @@ describe("Linear requests per query", () => {
       variableValues: variables,
       contextValue: {
         workspace: async () => workspace,
-        demo: false,
         placements: new Placements(new Store(env.DB)),
         today,
       } satisfies GraphQLContext,

@@ -1,70 +1,80 @@
+import { generateCookie } from "hono/cookie";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_RULES } from "../domain/quadrant";
+import { DEFAULT_RULES, MAX_URGENCY_WINDOW_DAYS } from "../domain/quadrant";
+import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssues } from "../linear/demo";
+import { DEMO_COOKIE, DEMO_COOKIE_OPTIONS, decodeDemo, MAX_COOKIE_LENGTH } from "./demo-cookie";
 import { DemoStore } from "./demo-store";
 
 const strict = { importantFrom: 2, urgencyWindowDays: 7, noDueDate: "urgent" } as const;
+const team = DEMO_TEAM.id;
+const [first, second] = ["demo-issue-avg-1", "demo-issue-avg-2"];
 
 describe("DemoStore", () => {
   it("starts from the defaults without a cookie", async () => {
     const store = DemoStore.fromCookie(undefined);
-    expect(await store.rules(["team"])).toEqual(new Map([["team", DEFAULT_RULES]]));
-    expect(await store.overrides(["issue"])).toEqual(new Map());
+    expect(await store.rules([team])).toEqual(new Map([[team, DEFAULT_RULES]]));
+    expect(await store.overrides([first])).toEqual(new Map());
     expect(store.changed).toBe(false);
   });
 
   it("reads back what it wrote to its cookie", async () => {
     const before = DemoStore.fromCookie(undefined);
-    await before.setRules("team", strict);
-    await before.setOverride("issue-1", "drop");
-    await before.setOverride("issue-2", "do");
-    await before.clearOverride("issue-2");
+    await before.setRules(team, strict);
+    await before.setOverride(first, "drop");
+    await before.setOverride(second, "do");
+    await before.clearOverride(second);
     expect(before.changed).toBe(true);
+    expect(before.cookie()).toBe("1~avengers.2.7.0~avg-1.3");
 
     const after = DemoStore.fromCookie(before.cookie());
-    expect(await after.rules(["team", "other"])).toEqual(
+    expect(await after.rules([team, DEMO_OPS_TEAM.id])).toEqual(
       new Map([
-        ["team", strict],
-        ["other", DEFAULT_RULES],
+        [team, strict],
+        [DEMO_OPS_TEAM.id, DEFAULT_RULES],
       ]),
     );
-    expect(await after.overrides(["issue-1", "issue-2"])).toEqual(new Map([["issue-1", "drop"]]));
+    expect(await after.overrides([first, second])).toEqual(new Map([[first, "drop"]]));
   });
 
   it("hasn't changed after clearing an issue that was never placed", async () => {
     const store = DemoStore.fromCookie(undefined);
-    await store.clearOverride("issue");
+    await store.clearOverride(first);
     expect(store.changed).toBe(false);
   });
 
-  it("drops whatever in the cookie isn't valid rules or a quadrant", async () => {
-    const cookie = JSON.stringify({
-      rules: {
-        ok: strict,
-        zero: { ...strict, urgencyWindowDays: 0 },
-        priority: { ...strict, importantFrom: 0 },
-        text: { ...strict, urgencyWindowDays: "7" },
-        undated: { ...strict, noDueDate: "sometimes" },
-        missing: { importantFrom: 2 },
-        array: [2, 7, "urgent"],
-      },
-      overrides: { ok: "schedule", bad: "later", number: 1, nothing: null },
+  it("fits the whole demo in one cookie: every issue placed, every team's rules changed", async () => {
+    const store = DemoStore.fromCookie(undefined);
+    for (const { id } of [DEMO_TEAM, DEMO_OPS_TEAM]) {
+      await store.setRules(id, { ...strict, urgencyWindowDays: MAX_URGENCY_WINDOW_DAYS });
+      for (const issue of demoIssues("2026-10-18", id)) await store.setOverride(issue.id, "drop");
+    }
+    const cookie = generateCookie(DEMO_COOKIE, store.cookie(), {
+      ...DEMO_COOKIE_OPTIONS,
+      secure: true,
     });
-    const store = DemoStore.fromCookie(cookie);
-    const teams = ["ok", "zero", "priority", "text", "undated", "missing", "array"];
-    expect(await store.rules(teams)).toEqual(
-      new Map(teams.map((id) => [id, id === "ok" ? strict : DEFAULT_RULES])),
+    expect(cookie.length).toBeLessThanOrEqual(MAX_COOKIE_LENGTH);
+    expect(decodeDemo(store.cookie()).overrides.size).toBe(
+      demoIssues("2026-10-18", DEMO_TEAM.id).length +
+        demoIssues("2026-10-18", DEMO_OPS_TEAM.id).length,
     );
-    expect(await store.overrides(["ok", "bad", "number", "nothing"])).toEqual(
-      new Map([["ok", "schedule"]]),
-    );
+  });
+});
+
+describe("decodeDemo", () => {
+  it("drops whatever in the cookie isn't valid rules or a quadrant", () => {
+    const rules = ["ok.2.7.0", "zero.2.0.0", "priority.0.7.0", "frac.2.7.5.0", "undated.2.7.2"];
+    const overrides = ["ok.1", "big.4", "word.do", "Upper.1", "extra.1.1", "none"];
+    const saved = decodeDemo(`1~${rules.join("!")}~${overrides.join("!")}`);
+    expect(saved.rules).toEqual(new Map([["demo-team-ok", strict]]));
+    expect(saved.overrides).toEqual(new Map([["demo-issue-ok", "schedule"]]));
   });
 
   it.each([
-    ["not JSON", "{"],
-    ["not an object", "[1,2]"],
-    ["too long", JSON.stringify({ overrides: { x: "do" }, pad: "x".repeat(5000) })],
-  ])("ignores a cookie that's %s", async (_case, cookie) => {
-    const store = DemoStore.fromCookie(cookie);
-    expect(await store.overrides(["x"])).toEqual(new Map());
+    ["empty", ""],
+    ["from another version", "2~avengers.2.7.0~avg-1.3"],
+    ["not ours", '{"overrides":{"demo-issue-avg-1":"drop"}}'],
+    ["too long", `1~~avg-1.3!${"x".repeat(MAX_COOKIE_LENGTH)}`],
+  ])("reads a cookie that's %s as nothing saved", (_case, cookie) => {
+    expect(decodeDemo(cookie)).toEqual({ rules: new Map(), overrides: new Map() });
   });
 });

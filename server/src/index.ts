@@ -3,7 +3,8 @@ import { createLogger, createYoga, maskError, type YogaLogger } from "graphql-yo
 import { Hono } from "hono";
 import { generateCookie, getCookie } from "hono/cookie";
 import { auth } from "./auth";
-import { DEMO_COOKIE, DemoStore } from "./db/demo-store";
+import { DEMO_COOKIE, DEMO_COOKIE_OPTIONS } from "./db/demo-cookie";
+import { DemoStore } from "./db/demo-store";
 import { Store } from "./db/store";
 import {
   LinearAuthError,
@@ -53,15 +54,9 @@ export const app = new Hono<{ Bindings: Env }>()
     return new Response(response.body, { status: response.status, headers });
   });
 
-/** Keeps the visitor's demo changes for a year, or until they clear the site's data. */
+/** Keeps the visitor's demo changes in their browser. */
 function demoCookie(c: AppContext, demo: DemoStore): string {
-  return generateCookie(DEMO_COOKIE, demo.cookie(), {
-    httpOnly: true,
-    secure: isHttps(c),
-    sameSite: "Lax",
-    path: "/",
-    maxAge: 365 * 24 * 60 * 60,
-  });
+  return generateCookie(DEMO_COOKIE, demo.cookie(), { ...DEMO_COOKIE_OPTIONS, secure: isHttps(c) });
 }
 
 /**

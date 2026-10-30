@@ -17,8 +17,9 @@ import {
   type Quadrant,
   type QuadrantRules,
 } from "../domain/quadrant";
+import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssues } from "../linear/demo";
 
-/** What the demo keeps for a visitor: whatever differs from the defaults. */
+/** What the demo keeps for a visitor: the rules and quadrants they set. */
 export interface DemoSaved {
   rules: Map<string, QuadrantRules>;
   overrides: Map<string, Quadrant>;
@@ -26,13 +27,8 @@ export interface DemoSaved {
 
 export const DEMO_COOKIE = "lw_demo";
 
-export const DEMO_COOKIE_OPTIONS = {
-  httpOnly: true,
-  sameSite: "Lax",
-  path: "/",
-  // A year, or until the visitor clears the site's data.
-  maxAge: 365 * 24 * 60 * 60,
-} as const;
+/** A year, or until the visitor clears the site's data. */
+export const DEMO_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
 
 /** Browsers keep at most 4096 bytes a cookie, so anything longer was never ours. */
 export const MAX_COOKIE_LENGTH = 4096;
@@ -42,23 +38,29 @@ const TEAM_PREFIX = "demo-team-";
 const ISSUE_PREFIX = "demo-issue-";
 /** An id without its prefix: nothing that could be mistaken for a separator. */
 const SHORT_ID = /^[a-z0-9-]+$/;
+/**
+ * The demo's own teams and issues. Nothing else is read back, so a cookie can't carry more than
+ * the whole demo. Issue ids don't depend on the day.
+ */
+const TEAM_IDS = new Set([DEMO_TEAM.id, DEMO_OPS_TEAM.id]);
+const ISSUE_IDS = new Set(
+  [...TEAM_IDS].flatMap((team) => demoIssues("2000-01-01", team)).map(({ id }) => id),
+);
 
 export function encodeDemo({ rules, overrides }: DemoSaved): string {
-  const teams = [...rules].flatMap(([teamId, { importantFrom, urgencyWindowDays, noDueDate }]) => {
-    const id = shorten(teamId, TEAM_PREFIX);
-    return id === null
-      ? []
-      : [`${id}.${importantFrom}.${urgencyWindowDays}.${NO_DUE_DATE.indexOf(noDueDate)}`];
-  });
-  const issues = [...overrides].flatMap(([issueId, quadrant]) => {
-    const id = shorten(issueId, ISSUE_PREFIX);
-    return id === null ? [] : [`${id}.${QUADRANTS.indexOf(quadrant)}`];
-  });
+  const teams = [...rules].map(
+    ([teamId, { importantFrom, urgencyWindowDays, noDueDate }]) =>
+      `${shorten(teamId, TEAM_PREFIX)}.${importantFrom}.${urgencyWindowDays}.${NO_DUE_DATE.indexOf(noDueDate)}`,
+  );
+  const issues = [...overrides].map(
+    ([issueId, quadrant]) => `${shorten(issueId, ISSUE_PREFIX)}.${QUADRANTS.indexOf(quadrant)}`,
+  );
   return [VERSION, teams.join("!"), issues.join("!")].join("~");
 }
 
 /**
- * What a visitor's cookie says, keeping only valid rules and quadrants. A cookie that isn't ours
+ * What a visitor's cookie says, keeping only valid rules and quadrants for the demo's own teams
+ * and issues. A cookie that isn't ours
  * at all, or from another version, reads as nothing saved.
  */
 export function decodeDemo(value: string | undefined): DemoSaved {
@@ -68,7 +70,7 @@ export function decodeDemo(value: string | undefined): DemoSaved {
   if (version !== VERSION) return saved;
   for (const [id, importantFrom, urgencyWindowDays, noDueDate] of fields(teams, 4)) {
     const undated = NO_DUE_DATE[index(noDueDate)];
-    if (!undated || !SHORT_ID.test(id ?? "")) continue;
+    if (!undated || !TEAM_IDS.has(TEAM_PREFIX + id)) continue;
     const { rules } = parseRules({
       importantFrom: Number(importantFrom),
       urgencyWindowDays: Number(urgencyWindowDays),
@@ -78,18 +80,19 @@ export function decodeDemo(value: string | undefined): DemoSaved {
   }
   for (const [id, quadrant] of fields(issues, 2)) {
     const placed = QUADRANTS[index(quadrant)];
-    if (placed && SHORT_ID.test(id ?? "")) saved.overrides.set(ISSUE_PREFIX + id, placed);
+    if (placed && ISSUE_IDS.has(ISSUE_PREFIX + id)) saved.overrides.set(ISSUE_PREFIX + id, placed);
   }
   return saved;
 }
 
 /**
- * The id without its prefix, or null when it can't go in the cookie. Mutations only reach the
- * demo's own teams and issues, which all fit.
+ * The id without its prefix. Mutations only reach the demo's own teams and issues, which all fit,
+ * so one that doesn't throws rather than answer success and quietly not save it.
  */
-function shorten(id: string, prefix: string): string | null {
-  const short = id.startsWith(prefix) ? id.slice(prefix.length) : null;
-  return short !== null && SHORT_ID.test(short) ? short : null;
+function shorten(id: string, prefix: string): string {
+  const short = id.startsWith(prefix) ? id.slice(prefix.length) : "";
+  if (!SHORT_ID.test(short)) throw new Error(`The demo cookie can't hold the id ${id}`);
+  return short;
 }
 
 /** A list's entries, each split into its fields; entries with more or fewer are dropped. */

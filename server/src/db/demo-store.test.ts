@@ -2,7 +2,7 @@ import { generateCookie } from "hono/cookie";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_RULES, MAX_URGENCY_WINDOW_DAYS } from "../domain/quadrant";
 import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssues } from "../linear/demo";
-import { DEMO_COOKIE, DEMO_COOKIE_OPTIONS, decodeDemo, MAX_COOKIE_LENGTH } from "./demo-cookie";
+import { DEMO_COOKIE, DEMO_COOKIE_MAX_AGE, decodeDemo, MAX_COOKIE_LENGTH } from "./demo-cookie";
 import { DemoStore } from "./demo-store";
 
 const strict = { importantFrom: 2, urgencyWindowDays: 7, noDueDate: "urgent" } as const;
@@ -36,6 +36,18 @@ describe("DemoStore", () => {
     expect(await after.overrides([first, second])).toEqual(new Map([[first, "drop"]]));
   });
 
+  it("keeps nothing for rules set back to the defaults", async () => {
+    const store = DemoStore.fromCookie("1~avengers.2.7.0~");
+    await store.setRules(team, DEFAULT_RULES);
+    expect(store.cookie()).toBe("1~~");
+  });
+
+  it("won't answer success for an id its cookie can't hold", async () => {
+    const store = DemoStore.fromCookie(undefined);
+    await store.setOverride("demo-issue-AVG_1", "drop");
+    expect(() => store.cookie()).toThrow("can't hold");
+  });
+
   it("hasn't changed after clearing an issue that was never placed", async () => {
     const store = DemoStore.fromCookie(undefined);
     await store.clearOverride(first);
@@ -49,8 +61,11 @@ describe("DemoStore", () => {
       for (const issue of demoIssues("2026-10-18", id)) await store.setOverride(issue.id, "drop");
     }
     const cookie = generateCookie(DEMO_COOKIE, store.cookie(), {
-      ...DEMO_COOKIE_OPTIONS,
+      httpOnly: true,
       secure: true,
+      sameSite: "Lax",
+      path: "/",
+      maxAge: DEMO_COOKIE_MAX_AGE,
     });
     expect(cookie.length).toBeLessThanOrEqual(MAX_COOKIE_LENGTH);
     expect(decodeDemo(store.cookie()).overrides.size).toBe(
@@ -61,12 +76,19 @@ describe("DemoStore", () => {
 });
 
 describe("decodeDemo", () => {
-  it("drops whatever in the cookie isn't valid rules or a quadrant", () => {
-    const rules = ["ok.2.7.0", "zero.2.0.0", "priority.0.7.0", "frac.2.7.5.0", "undated.2.7.2"];
-    const overrides = ["ok.1", "big.4", "word.do", "Upper.1", "extra.1.1", "none"];
+  it("drops whatever in the cookie isn't valid rules or a quadrant for the demo", () => {
+    const rules = [
+      "avengers.2.7.0",
+      "ops.2.0.0",
+      "ops.0.7.0",
+      "ops.2.7.5.0",
+      "ops.2.7.2",
+      "x.2.7.0",
+    ];
+    const overrides = ["avg-1.1", "avg-2.4", "avg-3.do", "AVG-4.1", "avg-5.1.1", "avg-6", "x-1.1"];
     const saved = decodeDemo(`1~${rules.join("!")}~${overrides.join("!")}`);
-    expect(saved.rules).toEqual(new Map([["demo-team-ok", strict]]));
-    expect(saved.overrides).toEqual(new Map([["demo-issue-ok", "schedule"]]));
+    expect(saved.rules).toEqual(new Map([[team, strict]]));
+    expect(saved.overrides).toEqual(new Map([[first, "schedule"]]));
   });
 
   it.each([

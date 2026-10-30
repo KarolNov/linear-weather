@@ -2,8 +2,9 @@
 // demo workspace is shared, so writes keyed by its fixed ids would reach every visitor. Each
 // request starts from the visitor's cookie, and a response that changed anything sets it again.
 // A cookie rather than localStorage, because the board renders on the server: it arrives with
-// the page load, and the client doesn't need to know it's in the demo. The cookie's format is in
-// demo-cookie.ts.
+// the page load. The client still has to call /graphql with `?demo=true`, and send mutations one
+// at a time: two in flight start from the same cookie, and the last response wins. The cookie's
+// format is in demo-cookie.ts.
 
 import type { Overrides } from "../domain/matrix";
 import { DEFAULT_RULES, type Quadrant, type QuadrantRules } from "../domain/quadrant";
@@ -47,7 +48,12 @@ export class DemoStore implements PlacementStore {
   }
 
   async setRules(teamId: string, rules: QuadrantRules): Promise<void> {
-    this.savedRules.set(teamId, rules);
+    // Back to the defaults is nothing to keep.
+    const defaults = (Object.keys(DEFAULT_RULES) as (keyof QuadrantRules)[]).every(
+      (key) => rules[key] === DEFAULT_RULES[key],
+    );
+    if (defaults) this.savedRules.delete(teamId);
+    else this.savedRules.set(teamId, rules);
     this.changed = true;
   }
 

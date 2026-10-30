@@ -440,7 +440,7 @@ const OverrideResultRef = builder.unionType("OverrideResult", {
 });
 
 /**
- * Runs a mutation for a signed-in user, turning the failures a client should handle into
+ * Runs a mutation for a signed-in user or a demo visitor, turning the failures a client should handle into
  * results. Anything else still throws.
  */
 async function attempt<T>(

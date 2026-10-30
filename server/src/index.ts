@@ -3,7 +3,7 @@ import { createLogger, createYoga, maskError, type YogaLogger } from "graphql-yo
 import { Hono } from "hono";
 import { generateCookie, getCookie } from "hono/cookie";
 import { auth } from "./auth";
-import { DEMO_COOKIE, DEMO_COOKIE_OPTIONS } from "./db/demo-cookie";
+import { DEMO_COOKIE, DEMO_COOKIE_MAX_AGE } from "./db/demo-cookie";
 import { DemoStore } from "./db/demo-store";
 import { Store } from "./db/store";
 import {
@@ -15,7 +15,7 @@ import {
 import { DemoLinear } from "./linear/demo";
 import { Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
-import { type AppContext, discardSession, isHttps, linearAuthorization } from "./session";
+import { type AppContext, cookieOptions, discardSession, linearAuthorization } from "./session";
 import { Workspace } from "./workspace";
 
 const yoga = createYoga<GraphQLContext>({
@@ -56,7 +56,10 @@ export const app = new Hono<{ Bindings: Env }>()
 
 /** Keeps the visitor's demo changes in their browser. */
 function demoCookie(c: AppContext, demo: DemoStore): string {
-  return generateCookie(DEMO_COOKIE, demo.cookie(), { ...DEMO_COOKIE_OPTIONS, secure: isHttps(c) });
+  return generateCookie(DEMO_COOKIE, demo.cookie(), {
+    ...cookieOptions(c),
+    maxAge: DEMO_COOKIE_MAX_AGE,
+  });
 }
 
 /**

@@ -18,13 +18,12 @@ export type LinearAuthorization = string;
 export async function startSession(c: AppContext, tokens: TokenSet): Promise<void> {
   const id = randomToken();
   await save(c.env, id, tokens);
-  setCookie(c, COOKIE, id, {
-    httpOnly: true,
-    secure: isHttps(c),
-    sameSite: "Lax",
-    path: "/",
-    maxAge: SESSION_TTL_SECONDS,
-  });
+  setCookie(c, COOKIE, id, { ...cookieOptions(c), maxAge: SESSION_TTL_SECONDS });
+}
+
+/** How this app's cookies are scoped: the session's, and the demo's. */
+export function cookieOptions(c: AppContext) {
+  return { httpOnly: true, secure: isHttps(c), sameSite: "Lax", path: "/" } as const;
 }
 
 /** Ends the session and returns its tokens so the caller can revoke them. */

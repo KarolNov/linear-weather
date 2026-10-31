@@ -1,5 +1,7 @@
+import { renderToString } from "preact-render-to-string";
 import { describe, expect, it, vi } from "vitest";
-import type { BoardData, BoardIssue, Matrix, Rules } from "./board";
+import type { BoardData, BoardIssue, Matrix, Rules, Suggestion } from "./board";
+import { RebalancePanel } from "./RebalancePanel";
 import { app, type Bindings } from "./worker";
 
 const avengers = { id: "t-avg", name: "Avengers", key: "AVG" };
@@ -60,10 +62,46 @@ function boardData(viewer: unknown, team: BoardData["team"] = defaultTeam) {
 
 const defaultRules: Rules = { importantFrom: 3, urgencyWindowDays: 14, noDueDate: "NOT_URGENT" };
 
+const wanda = { id: "u-wanda", name: "Wanda Maximoff", avatarUrl: null };
+
+const nowMove: Suggestion = {
+  issue: {
+    id: "i-11",
+    identifier: "AVG-11",
+    title: "Rotate the Quinjet's keys",
+    url: "https://linear.app/shield/issue/AVG-11",
+    quadrant: "DELEGATE",
+    becomesUrgentOn: "2026-10-18",
+  },
+  from: tony,
+  to: wanda,
+  week: null,
+  toWeather: "SUNNY",
+  reason: "Tony Stark goes from 2.75× to 2.5× the team average, Wanda Maximoff from 0.0× to 0.25×",
+};
+
+const forecastMove: Suggestion = {
+  issue: {
+    id: "i-7",
+    identifier: "AVG-7",
+    title: "Brief the new recruits",
+    url: "https://linear.app/shield/issue/AVG-7",
+    quadrant: "SCHEDULE",
+    becomesUrgentOn: "2026-11-03",
+  },
+  from: tony,
+  to: wanda,
+  week: 3,
+  toWeather: "CLOUDY",
+  reason: "Tony Stark goes from 2.0× to 1.5× the team average, Wanda Maximoff from 0.5× to 1.0×",
+};
+
 const defaultTeam: BoardData["team"] = {
   ...avengers,
   rules: defaultRules,
   weather: { kind: "STORM", reason: "Tony Stark is in a storm" },
+  rebalanceNow: [nowMove],
+  rebalanceForecast: [forecastMove],
   people: [
     {
       ...tony,
@@ -212,6 +250,44 @@ describe("web worker", () => {
     );
   });
 
+  it("offers rebalancing, counting the moves it would suggest", async () => {
+    const { bindings } = serverReturning(fury);
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain("Rebalance · 2");
+  });
+
+  it("lists moves for now and for the forecast, each with the taker's weather after", () => {
+    const panel = renderToString(
+      <RebalancePanel
+        teamName="Avengers"
+        rebalanceNow={[nowMove]}
+        rebalanceForecast={[forecastMove]}
+        onClose={() => {}}
+      />,
+    );
+    expect(panel).toContain("Rebalancing Avengers");
+    expect(panel).toContain('href="https://linear.app/shield/issue/AVG-11"');
+    expect(panel).toContain("Delegate");
+    expect(panel).toContain('aria-label="Wanda Maximoff would be: Sunny now."');
+    expect(panel).toContain("Tony Stark goes from 2.75× to 2.5× the team average");
+    // A forecast move says when the issue turns urgent, and which week's storm it heads off.
+    expect(panel).toContain("urgent Nov 3");
+    expect(panel).toContain('aria-label="Wanda Maximoff would be: Partly cloudy in week 3."');
+  });
+
+  it("says when there's nothing to move", () => {
+    const panel = renderToString(
+      <RebalancePanel
+        teamName="Avengers"
+        rebalanceNow={[]}
+        rebalanceForecast={[]}
+        onClose={() => {}}
+      />,
+    );
+    expect(panel).toContain("Nothing to move:");
+    expect(panel).toContain("Nothing to move ahead of time");
+  });
+
   it("doesn't mark issues the rules placed", async () => {
     const { bindings } = serverReturning(fury);
     const page = await (await app.request("/", {}, bindings)).text();
@@ -235,6 +311,8 @@ describe("web worker", () => {
       ...avengers,
       rules: defaultRules,
       weather: { kind: "SUNNY" as const, reason: "Nothing urgent anywhere" },
+      rebalanceNow: [],
+      rebalanceForecast: [],
       people: [
         {
           ...tony,

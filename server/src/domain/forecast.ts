@@ -117,15 +117,15 @@ export function forecast<I extends MatrixIssue>(
 const URGENT: ReadonlySet<Quadrant> = new Set(["do", "delegate"]);
 
 /** The first day an issue counts as urgent in the forecast, or null if it never will. */
-function urgentFrom(issue: Placed<MatrixIssue>, today: CalendarDate): CalendarDate | null {
+export function urgentFrom(issue: Placed<MatrixIssue>, today: CalendarDate): CalendarDate | null {
   if (issue.quadrantSource === "override") return URGENT.has(issue.quadrant) ? today : null;
   return issue.becomesUrgentOn;
 }
 
-type UrgentFrom = (issue: Placed<MatrixIssue>) => CalendarDate | null;
+export type UrgentFrom = (issue: Placed<MatrixIssue>) => CalendarDate | null;
 
 /** A matrix as it should stand on `on`: work due before then is done, unless already overdue. */
-function project<I extends MatrixIssue>(
+export function project<I extends MatrixIssue>(
   matrix: Matrix<I>,
   from: UrgentFrom,
   today: CalendarDate,

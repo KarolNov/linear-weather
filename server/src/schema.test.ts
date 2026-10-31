@@ -317,6 +317,51 @@ describe("schema", () => {
     expect(wanda?.forecast.map((w) => w.weather.kind)).toEqual(["FOG", "FOG", "FOG", "FOG"]);
   });
 
+  it("suggests moves that even out urgent load, now and before forecast storms", async () => {
+    type Suggestion = {
+      issue: { identifier: string; quadrant: string };
+      from: { name: string };
+      to: { name: string };
+      week: number | null;
+      fromWeather: string;
+      toWeather: string;
+      reason: string;
+    };
+    const fields =
+      "issue { identifier quadrant } from { name } to { name } week fromWeather toWeather reason";
+    const { team } = await data<{ team: { now: Suggestion[]; forecast: Suggestion[] } }>(`{
+      team {
+        now: rebalanceSuggestions(horizon: NOW) { ${fields} }
+        forecast: rebalanceSuggestions(horizon: FORECAST) { ${fields} }
+      }
+    }`);
+    // Tony carries most of today's urgent work; Wanda, with nothing urgent, takes the first.
+    expect(team.now[0]).toEqual({
+      issue: { identifier: "AVG-11", quadrant: "DELEGATE" },
+      from: { name: "Tony Stark" },
+      to: { name: "Wanda Maximoff" },
+      week: null,
+      // Still a storm: his overdue work stays with him.
+      fromWeather: "STORM",
+      toWeather: "SUNNY",
+      reason:
+        "Tony Stark goes from 2.75× to 2.5× the team average, Wanda Maximoff from 0.0× to 0.25×",
+    });
+    expect(team.now.every(({ week }) => week === null)).toBe(true);
+    // Forecast moves only work not urgent yet, ahead of the week it would storm.
+    expect(team.forecast[0]).toMatchObject({
+      issue: { identifier: "AVG-33", quadrant: "SCHEDULE" },
+      from: { name: "Bruce Banner" },
+      to: { name: "Wanda Maximoff" },
+      week: 1,
+    });
+    expect(
+      team.forecast.every(
+        ({ issue }) => issue.quadrant === "SCHEDULE" || issue.quadrant === "DROP",
+      ),
+    ).toBe(true);
+  });
+
   it("is signed out without a session: no viewer, and an error for Linear data", async () => {
     const result = await run("{ viewer { name } teams { name } }", {}, { signedIn: false });
     expect(result.data).toEqual({ viewer: null, teams: null });

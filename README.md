@@ -98,6 +98,12 @@ type ForecastWeek {   # the urgent load expected by the week's last day
   turningUrgent: [Issue!]!  summary: String!   # "3 High-priority issues become urgent"
 }
 type TeamForecast { weeks: [ForecastWeek!]!  worst: ForecastWeek! }
+enum Horizon { NOW FORECAST }
+type Suggestion {     # "Move AVG-11 (Delegate) from Tony → Wanda (☀️ now)"
+  issue: Issue!  from: User!  to: User!
+  week: Int           # FORECAST: the week it heads a storm off in
+  fromWeather: WeatherKind!  toWeather: WeatherKind!  reason: String!
+}
 
 type User {           # teamId defaults to the team it was reached through
   matrix(teamId: ID): Matrix!
@@ -109,6 +115,7 @@ type Team {
   loadMetric: LoadMetric!                 # POINTS if every urgent issue is estimated, else ISSUES
   weather(metric: LoadMetric): Weather!   # how evenly urgent load is spread
   forecast(weeks: Int! = 4, metric: LoadMetric): TeamForecast!   # worst: the team's score
+  rebalanceSuggestions(horizon: Horizon!, weeks: Int! = 4, metric: LoadMetric): [Suggestion!]!
 }
 type Query { today: Date!  viewer: User  teams: [Team]  team(id: ID): Team }
 
@@ -132,6 +139,16 @@ interface Error { message: String! }   # every failure above implements it
 - **Undated work never turns urgent.** Someone holding it with nothing urgent projected is 🌫️ fog, a nudge to set dates.
 
 The team's `worst` week is the most lopsided one (storm, then rain, then fog, then cloudy), the earliest of equals.
+
+### Rebalancing
+
+`Team.rebalanceSuggestions(horizon:)` lists moves that would bring everyone's urgent load within the weather's thresholds, in the order to make them (`server/src/domain/rebalance.ts`). It's greedy: while someone is under rain or in a storm by load, the busiest person hands the least busy one issue, the one that leaves the two closest, and the weather is read again.
+
+- **`NOW`** moves work that is urgent today.
+- **`FORECAST`** heads storms off before they arrive. In the earliest overloaded week, it moves work that isn't urgent yet but will be by then. An issue weighs on every week from when it turns urgent until it's due, so a move has to even out the giver's and taker's load across all those weeks together (their sum of squares has to drop). Otherwise, easing week 3 could bury the taker in week 2, and the next round would send the issue back.
+- **What doesn't move:** overdue work, since moving it only moves the storm. Nobody running late takes on more, and nobody whose load can't be measured does either. Each issue moves at most once, and only if it narrows the gap, so the list always ends.
+
+The two horizons are worked out separately: the forecast doesn't assume today's moves were made.
 
 ### Mutations and their errors
 
@@ -241,6 +258,6 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 
 ## Status
 
-🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why.
+🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** lists suggested moves for now and for the coming weeks (applying them in Linear is #16).
 # linear-weather
 Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

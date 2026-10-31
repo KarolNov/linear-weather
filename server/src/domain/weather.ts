@@ -56,7 +56,7 @@ export function weatherFor(
 }
 
 /** A load as a multiple of the average, to hundredths. */
-function ratioOf(load: number, teamAverage: number): number {
+export function ratioOf(load: number, teamAverage: number): number {
   return Math.round((load / teamAverage) * 100) / 100;
 }
 
@@ -238,7 +238,7 @@ function plural(n: number, unit: string): string {
 }
 
 /** A ratio as weatherFor reads it: to hundredths, e.g. "1.0×", "1.2×" or "3.07×". */
-function times(ratio: number): string {
+export function times(ratio: number): string {
   return `${Number.isInteger(ratio) ? ratio.toFixed(1) : ratio}×`;
 }
 

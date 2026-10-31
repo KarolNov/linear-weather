@@ -68,6 +68,29 @@ export interface ForecastWeek {
   turningUrgent: { identifier: string }[];
 }
 
+/** Hand one issue from one person to another, to even out urgent load. */
+export interface Suggestion {
+  issue: Pick<BoardIssue, "id" | "identifier" | "title" | "url"> & {
+    quadrant: "DO" | "SCHEDULE" | "DELEGATE" | "DROP";
+    /** When it turns urgent: today for work urgent now. */
+    becomesUrgentOn: CalendarDate | null;
+  };
+  from: Person;
+  to: Person;
+  /** For the forecast, the week (from 1) the move heads a storm off in. Null for now. */
+  week: number | null;
+  /** The taker's weather after the move, now or in that week. */
+  toWeather: WeatherKind;
+  /** E.g. "Ana goes from 2.1× to 1.4× the team average, Ben from 0.5× to 1.1×". */
+  reason: string;
+}
+
+/** Moves for today's storms, and for the ones the forecast sees coming. */
+export interface Rebalance {
+  rebalanceNow: Suggestion[];
+  rebalanceForecast: Suggestion[];
+}
+
 /** Issues by quadrant, each most pressing first. */
 export type Matrix = Record<Quadrant, BoardIssue[]> & { counts: Record<Quadrant, number> };
 
@@ -100,7 +123,7 @@ export interface Board {
    * The team asked for, else the viewer's default, with its rules and weather. Null when there
    * are no teams.
    */
-  team: (Team & { rules: Rules; weather: Weather }) | null;
+  team: (Team & Rebalance & { rules: Rules; weather: Weather }) | null;
   /** The team's people, then its unassigned issues if it has any. */
   people: PersonMatrix[];
 }
@@ -126,6 +149,8 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
   key
   rules { importantFrom urgencyWindowDays noDueDate }
   weather { kind reason }
+  rebalanceNow: rebalanceSuggestions(horizon: NOW) { ...Suggestion }
+  rebalanceForecast: rebalanceSuggestions(horizon: FORECAST) { ...Suggestion }
   people {
     id
     name
@@ -135,6 +160,15 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
     matrix { ${MATRIX_FIELDS} }
   }
   unassigned { ${MATRIX_FIELDS} }
+}
+
+fragment Suggestion on Suggestion {
+  issue { id identifier title url quadrant becomesUrgentOn }
+  from { id name avatarUrl }
+  to { id name avatarUrl }
+  week
+  toWeather
+  reason
 }
 
 fragment BoardIssue on Issue {
@@ -161,12 +195,13 @@ export const BOARD_QUERY = `query Board($teamId: ID) {
 ${TEAM_BOARD_FRAGMENTS}`;
 
 /** A team as the TeamBoard fragment has it. */
-export type TeamBoardData = Team & {
-  rules: Rules;
-  weather: Weather;
-  people: (Person & { matrix: Matrix; weather: Weather; forecast: ForecastWeek[] })[];
-  unassigned: Matrix;
-};
+export type TeamBoardData = Team &
+  Rebalance & {
+    rules: Rules;
+    weather: Weather;
+    people: (Person & { matrix: Matrix; weather: Weather; forecast: ForecastWeek[] })[];
+    unassigned: Matrix;
+  };
 
 /** BOARD_QUERY's `data`. */
 export interface BoardData {
@@ -236,5 +271,10 @@ export function describeDue(dueDate: CalendarDate, today: CalendarDate) {
  * doesn't read as the weather now.
  */
 export function describeWeek(endsOn: CalendarDate): string {
-  return `By ${shortDate.format(Date.parse(endsOn))}`;
+  return `By ${describeDay(endsOn)}`;
+}
+
+/** A date as the board shows it in passing, e.g. "Oct 24". UTC, like `describeDue`. */
+export function describeDay(date: CalendarDate): string {
+  return shortDate.format(Date.parse(date));
 }

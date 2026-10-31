@@ -43,9 +43,12 @@ export interface RuleProblem {
   message: string;
 }
 
-/** The team's board after the change, or why nothing changed. */
+/**
+ * The team's board after the change, or why nothing changed. Saved with a null team means the
+ * board couldn't be read back afterwards.
+ */
 export type MutationResult =
-  | { ok: true; team: TeamBoardData }
+  | { ok: true; team: TeamBoardData | null }
   | { ok: false; message: string; problems: RuleProblem[] };
 
 /** What a mutation field answers, whichever union member it is. */
@@ -84,13 +87,20 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
         body: JSON.stringify({ query, variables }),
       });
       if (!res.ok) throw new Error(`server responded ${res.status}`);
-      const { data, errors } = (await res.json()) as {
+      const { data, errors = [] } = (await res.json()) as {
         data?: Record<string, MutationPayload> | null;
-        errors?: { message: string }[];
+        errors?: { message: string; path?: (string | number)[] }[];
       };
       const payload = data && Object.values(data)[0];
-      if (!payload || errors?.length) {
-        throw new Error(errors?.map((e) => e.message).join("; ") || "no data");
+      // The change is made before the board is read back, so an error below the mutation's own
+      // field means it was saved and only the board failed to load, e.g. Linear's rate limit.
+      // That error nulls everything up to `data`, so there's no board to redraw from.
+      if (errors.some((e) => (e.path?.length ?? 0) > 1)) {
+        console.error(`Saved, but couldn't read the board back: ${errors.map((e) => e.message)}`);
+        return { ok: true, team: payload?.team ?? null };
+      }
+      if (!payload || errors.length > 0) {
+        throw new Error(errors.map((e) => e.message).join("; ") || "no data");
       }
       if (payload.team) return { ok: true, team: payload.team };
       return {
@@ -100,7 +110,7 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
       };
     } catch (error) {
       console.error(`Couldn't save a change to the board: ${error}`);
-      return { ok: false, message: "Couldn't save that just now. Please try again.", problems: [] };
+      return { ok: false, message: "Something went wrong. Please try again.", problems: [] };
     }
   }
 

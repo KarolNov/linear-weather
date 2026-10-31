@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import {
   Alert,
   Avatar,
@@ -22,6 +22,7 @@ import {
   QUADRANTS,
   type Quadrant,
   type Rules,
+  type TeamBoardData,
   teamBoard,
   total,
   type Viewer,
@@ -134,9 +135,27 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
       return next;
     });
 
-  const showAnswer = (answer: Parameters<typeof teamBoard>[0]) => {
-    // A change answers with its issue's team, which is this one unless the issue just moved.
-    if (answer.id === team?.id) setTeamBoard(teamBoard(answer));
+  // The issue whose move button gets the keyboard back once the board redraws. A moved card
+  // lands in another quadrant's list, so the button that had focus is gone.
+  const [refocus, setRefocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (refocus === null) return;
+    setRefocus(null);
+    // Only when the move left focus nowhere, so a PM who went on to something else keeps it.
+    if (document.activeElement && document.activeElement !== document.body) return;
+    document.querySelector<HTMLElement>(`[data-move-trigger="${CSS.escape(refocus)}"]`)?.focus();
+  }, [refocus]);
+
+  /** Redraws the board from a saved change's answer; false, with a notice, when it can't. */
+  const showAnswer = (answer: TeamBoardData | null) => {
+    // A move answers with its issue's team, which isn't this one if the issue changed team in
+    // Linear since the page loaded.
+    if (!answer || answer.id !== team?.id) {
+      setFailure("That's saved, but the board can't show it yet. Reload the page to see it.");
+      return false;
+    }
+    setTeamBoard(teamBoard(answer));
+    return true;
   };
   const place = async (issue: BoardIssue, to: Quadrant | null) => {
     const markPending = (on: boolean) =>
@@ -150,11 +169,12 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
     setFailure(null);
     const result = await client.placeIssue(issue.id, to);
     markPending(false);
+    setRefocus(issue.id);
     if (!result.ok) {
       setFailure(`Couldn't move ${issue.identifier}. ${result.message}`);
       return;
     }
-    showAnswer(result.team);
+    if (!showAnswer(result.team)) return;
     setStatus(
       to
         ? `Moved ${issue.identifier} to ${quadrantInfo[to].name}.`
@@ -165,8 +185,7 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
     if (!team) throw new Error("no team to save rules for");
     setFailure(null);
     const result = await client.updateRules(team.id, rules);
-    if (result.ok) {
-      showAnswer(result.team);
+    if (result.ok && showAnswer(result.team)) {
       setStatus("Rules saved. The board is sorted by them now.");
     }
     return result;

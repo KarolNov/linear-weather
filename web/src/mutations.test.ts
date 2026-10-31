@@ -106,8 +106,23 @@ describe("board client", () => {
     vi.spyOn(console, "error").mockImplementationOnce(() => {});
     expect(await boardClient(false, fetch).placeIssue("i-1", "do")).toEqual({
       ok: false,
-      message: "Couldn't save that just now. Please try again.",
+      message: "Something went wrong. Please try again.",
       problems: [],
+    });
+  });
+
+  it("says it's saved when only reading the board back failed", async () => {
+    // Linear failing on the team's issues, after the override was written, nulls up to `data`.
+    const fetch = vi.fn(async () =>
+      Response.json({
+        data: null,
+        errors: [{ message: "Rate limited.", path: ["overrideQuadrant", "team", "people"] }],
+      }),
+    );
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    expect(await boardClient(false, fetch).placeIssue("i-1", "do")).toEqual({
+      ok: true,
+      team: null,
     });
   });
 });

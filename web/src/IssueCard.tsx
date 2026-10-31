@@ -128,6 +128,8 @@ function MoveMenu({ issue, quadrant, open, onOpenChange, onPlace, disabled }: Mo
       <button
         ref={trigger}
         type="button"
+        // How the board finds it again after a move redraws the card in another list.
+        data-move-trigger={issue.id}
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         disabled={disabled}

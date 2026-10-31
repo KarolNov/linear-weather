@@ -40,9 +40,10 @@ export function PersonMatrix({
   pending,
   xstyle,
 }: PersonMatrixProps) {
-  const [picked, setOnly] = useState<Quadrant | null>(null);
-  // A quadrant the PM just moved the last issue out of shows every quadrant again.
-  const only = picked !== null && matrix.counts[picked] > 0 ? picked : null;
+  const [only, setOnly] = useState<Quadrant | null>(null);
+  // A quadrant the PM just moved the last issue out of shows every quadrant again, and stays
+  // unpicked, so moving an issue back in later doesn't hide the rest.
+  if (only !== null && matrix.counts[only] === 0) setOnly(null);
   const details = useRef<HTMLDetailsElement>(null);
   const body = useRef<HTMLDivElement>(null);
   // The <details> stays open while its list slides shut, so `open` lags `expanded` on the way down.

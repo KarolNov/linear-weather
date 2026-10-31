@@ -2,14 +2,19 @@ import { env } from "cloudflare:workers";
 import { graphql } from "graphql";
 import { describe, expect, it } from "vitest";
 // The web app keeps its queries by its components; checking them here catches schema drift.
-import { BOARD_QUERY } from "../../web/src/board";
+import {
+  BOARD_QUERY,
+  QUADRANTS,
+  type TeamBoardData,
+  MAX_URGENCY_WINDOW_DAYS as WEB_MAX_URGENCY_WINDOW_DAYS,
+} from "../../web/src/board";
 import {
   CLEAR_OVERRIDE_MUTATION,
   OVERRIDE_MUTATION,
   UPDATE_RULES_MUTATION,
 } from "../../web/src/mutations";
 import { Store } from "./db/store";
-import { DEFAULT_RULES } from "./domain/quadrant";
+import { DEFAULT_RULES, MAX_URGENCY_WINDOW_DAYS } from "./domain/quadrant";
 import { LinearAuthError, LinearRateLimitError, type LinearSource } from "./linear/client";
 import { DEMO_OPS_TEAM, DEMO_TEAM, DemoLinear } from "./linear/demo";
 import { TeamsMembersDocument } from "./linear/generated";
@@ -469,10 +474,23 @@ describe("the web app's board query", () => {
     expect(board.viewer).toMatchObject({ name: "Nick Fury" });
     expect(board.team).toMatchObject({ name: "Avengers" });
   });
-  type Answer = Record<
-    string,
-    { __typename: string; team?: { rules: unknown; people: unknown[] } }
-  >;
+  it("limits the urgency window as the server does", () => {
+    expect(WEB_MAX_URGENCY_WINDOW_DAYS).toBe(MAX_URGENCY_WINDOW_DAYS);
+  });
+
+  type Answer = Record<string, { __typename: string; team?: TeamBoardData }>;
+
+  /** Where an issue sits on a TeamBoard answer, and who put it there. */
+  function placement(team: TeamBoardData | undefined, issueId: string) {
+    const matrices = team ? [...team.people.map((p) => p.matrix), team.unassigned] : [];
+    for (const matrix of matrices) {
+      for (const quadrant of QUADRANTS) {
+        const issue = matrix[quadrant].find((i) => i.id === issueId);
+        if (issue) return { quadrant, source: issue.quadrantSource };
+      }
+    }
+    return null;
+  }
 
   it("changes the rules and answers with the team's board", async () => {
     const rules = { importantFrom: 1, urgencyWindowDays: 7, noDueDate: "URGENT" };
@@ -491,11 +509,15 @@ describe("the web app's board query", () => {
       quadrant: "DROP",
     });
     expect(overrideQuadrant?.__typename).toBe("OverrideSuccess");
-    expect(overrideQuadrant?.team?.people.length).toBeGreaterThan(0);
+    expect(placement(overrideQuadrant?.team, "demo-issue-avg-1")).toEqual({
+      quadrant: "drop",
+      source: "OVERRIDE",
+    });
     const { clearOverride } = await data<Answer>(CLEAR_OVERRIDE_MUTATION, {
       issueId: "demo-issue-avg-1",
     });
     expect(clearOverride?.__typename).toBe("OverrideSuccess");
+    expect(placement(clearOverride?.team, "demo-issue-avg-1")).toMatchObject({ source: "RULE" });
   });
 });
 

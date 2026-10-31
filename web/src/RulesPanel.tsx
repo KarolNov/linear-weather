@@ -141,7 +141,8 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
           <Button type="submit" disabled={saving}>
             {saving ? "Saving…" : "Save rules"}
           </Button>
-          <Button variant="quiet" onClick={onClose}>
+          {/* Once sent, the save can't be called back, so Cancel waits for it. */}
+          <Button variant="quiet" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
         </div>

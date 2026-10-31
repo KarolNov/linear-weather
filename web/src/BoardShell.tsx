@@ -311,8 +311,8 @@ const weatherLegend: [Weather, string][] = [
   ["sun", "lighter urgent load than the team average"],
   ["partly", "about average"],
   ["rain", "busier than most"],
-  ["storm", "overloaded, time to rebalance"],
-  ["fog", "lots of work with no due date"],
+  ["storm", "overloaded or overdue, time to rebalance"],
+  ["fog", "can't tell yet: undated or unestimated work"],
 ];
 
 const styles = stylex.create({

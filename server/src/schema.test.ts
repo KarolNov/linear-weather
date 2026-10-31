@@ -169,21 +169,22 @@ describe("schema", () => {
         people { name weather { kind load reason } }
       }
     }`);
-    // The Avengers estimate, so load is in points: (17 + 2 + 17 + 7 + 45 + 0) / 6, Thor left out.
-    expect(team.loadMetric).toBe("POINTS");
+    // Some urgent Avengers issues aren't estimated, so load is in issues:
+    // (6 + 1 + 4 + 2 + 11 + 0) / 6 = 4, Thor left out.
+    expect(team.loadMetric).toBe("ISSUES");
     expect(Object.fromEntries(team.people.map((p) => [p.name, p.weather]))).toEqual({
-      "Bruce Banner": {
-        kind: "CLOUDY",
-        load: 17,
-        reason: "17 urgent points, 1.2× the team average",
+      "Bruce Banner": { kind: "RAIN", load: 6, reason: "6 urgent issues, 1.5× the team average" },
+      "Clint Barton": {
+        kind: "SUNNY",
+        load: 1,
+        reason: "1 urgent issue, 0.25× the team average",
       },
-      "Clint Barton": { kind: "SUNNY", load: 2, reason: "2 urgent points, 0.1× the team average" },
       "Natasha Romanoff": {
         kind: "STORM",
-        load: 17,
-        reason: "17 urgent points, 1.2× the team average; 1 issue overdue",
+        load: 4,
+        reason: "4 urgent issues, 1.0× the team average; 1 issue overdue",
       },
-      "Steve Rogers": { kind: "SUNNY", load: 7, reason: "7 urgent points, 0.5× the team average" },
+      "Steve Rogers": { kind: "SUNNY", load: 2, reason: "2 urgent issues, 0.5× the team average" },
       "Thor Odinson": {
         kind: "FOG",
         load: null,
@@ -191,8 +192,8 @@ describe("schema", () => {
       },
       "Tony Stark": {
         kind: "STORM",
-        load: 45,
-        reason: "45 urgent points, 3.1× the team average; 3 issues overdue",
+        load: 11,
+        reason: "11 urgent issues, 2.75× the team average; 3 issues overdue",
       },
       "Wanda Maximoff": { kind: "SUNNY", load: 0, reason: "Nothing urgent" },
     });
@@ -202,17 +203,34 @@ describe("schema", () => {
     });
   });
 
-  it("counts weather in issues when asked", async () => {
+  it("counts weather in points when asked, leaving out anyone with unestimated urgent work", async () => {
     const { team } = await data<{
-      team: { weather: { metric: string }; people: { name: string; weather: { load: number } }[] };
+      team: {
+        weather: { metric: string };
+        people: { name: string; weather: { kind: string; load: number | null } }[];
+      };
     }>(`{
       team {
-        weather(metric: ISSUES) { metric }
-        people { name weather(metric: ISSUES) { load } }
+        weather(metric: POINTS) { metric }
+        people { name weather(metric: POINTS) { kind load } }
       }
     }`);
-    expect(team.weather.metric).toBe("ISSUES");
-    expect(team.people.find((p) => p.name === "Tony Stark")?.weather.load).toBe(11);
+    expect(team.weather.metric).toBe("POINTS");
+    const byName = Object.fromEntries(team.people.map((p) => [p.name, p.weather]));
+    expect(byName["Bruce Banner"]).toEqual({ kind: "FOG", load: null });
+    expect(byName["Natasha Romanoff"]).toEqual({ kind: "STORM", load: 17 });
+  });
+
+  it("is fog for someone outside the team", async () => {
+    const { team } = await data<{
+      team: { people: { name: string; weather: { kind: string; reason: string } }[] };
+    }>(`query ($ops: ID) { team { people { name weather(teamId: $ops) { kind reason } } } }`, {
+      ops: DEMO_OPS_TEAM.id,
+    });
+    expect(team.people.find((p) => p.name === "Wanda Maximoff")?.weather).toEqual({
+      kind: "FOG",
+      reason: "Not on this team",
+    });
   });
 
   it("is signed out without a session: no viewer, and an error for Linear data", async () => {

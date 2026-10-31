@@ -100,7 +100,7 @@ type User {           # teamId defaults to the team it was reached through
 }
 type Team {
   rules: QuadrantRules!  people: [User!]!  unassigned: Matrix!
-  loadMetric: LoadMetric!                 # POINTS if any open issue is estimated, else ISSUES
+  loadMetric: LoadMetric!                 # POINTS if every urgent issue is estimated, else ISSUES
   weather(metric: LoadMetric): Weather!   # how evenly urgent load is spread
 }
 type Query { today: Date!  viewer: User  teams: [Team]  team(id: ID): Team }

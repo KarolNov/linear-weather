@@ -54,6 +54,17 @@ describe("weatherFor", () => {
 
   it("is sunny for everyone when nobody has anything urgent", () => {
     expect(weatherFor(0, 0, false)).toBe("sunny");
+    expect(weatherFor(0, null, false)).toBe("sunny");
+  });
+
+  it("is fog with nobody to compare with", () => {
+    expect(weatherFor(40, null, false)).toBe("fog");
+  });
+
+  it("reads the ratio to hundredths, as the reason shows it", () => {
+    // 1.504 shows as 1.5×, which isn't over 1.5.
+    expect(weatherFor(15.04, 10, false)).toBe("rain");
+    expect(weatherFor(12.54, 10, false)).toBe("cloudy");
   });
 
   it("takes other thresholds", () => {
@@ -65,18 +76,22 @@ describe("weatherFor", () => {
 });
 
 describe("loadMetricFor", () => {
-  it("counts points when the team estimates, issues when it doesn't", () => {
-    expect(loadMetricFor([{ ...undated, estimate: null }, later])).toBe("points");
-    expect(loadMetricFor([{ ...undated, estimate: null }])).toBe("issues");
+  it("counts points only when every urgent issue is estimated", () => {
+    expect(loadMetricFor([matrixOf(doIssue(3)), matrixOf(delegateIssue(1), later)])).toBe("points");
+    expect(loadMetricFor([matrixOf(doIssue(3)), matrixOf(doIssue(null))])).toBe("issues");
     expect(loadMetricFor([])).toBe("issues");
+  });
+
+  it("ignores estimates on work that isn't urgent", () => {
+    expect(loadMetricFor([matrixOf(doIssue(null), later)])).toBe("issues");
   });
 });
 
 describe("urgentLoad", () => {
   it("adds up Do and Delegate only, by points or by count", () => {
     const matrix = matrixOf(doIssue(3), delegateIssue(5), later);
-    expect(urgentLoad(matrix, "points", TODAY)).toEqual({ load: 8, overdue: 0 });
-    expect(urgentLoad(matrix, "issues", TODAY)).toEqual({ load: 2, overdue: 0 });
+    expect(urgentLoad(matrix, "points", TODAY)).toEqual({ load: 8, urgent: 2, overdue: 0 });
+    expect(urgentLoad(matrix, "issues", TODAY)).toEqual({ load: 2, urgent: 2, overdue: 0 });
   });
 
   it("counts overdue urgent issues, Do and Delegate alike", () => {
@@ -95,13 +110,10 @@ describe("urgentLoad", () => {
     expect(urgentLoad(moved, "issues", TODAY).overdue).toBe(1);
   });
 
-  it("counts only the estimated issues when some urgent work is unestimated", () => {
-    expect(urgentLoad(matrixOf(doIssue(3), doIssue(null)), "points", TODAY).load).toBe(3);
-  });
-
-  it("can't measure points when no urgent issue is estimated", () => {
-    expect(urgentLoad(matrixOf(doIssue(null)), "points", TODAY)).toEqual({
+  it("can't measure points when any urgent issue is unestimated, rather than undercount", () => {
+    expect(urgentLoad(matrixOf(doIssue(3), doIssue(null)), "points", TODAY)).toEqual({
       load: null,
+      urgent: 2,
       overdue: 0,
       unknown: "unestimated",
     });
@@ -116,6 +128,14 @@ describe("urgentLoad", () => {
     // Dated work that isn't urgent yet: nothing on now, and that's known.
     expect(urgentLoad(matrixOf(later), "issues", TODAY).load).toBe(0);
     expect(urgentLoad(matrixOf(), "issues", TODAY).load).toBe(0);
+  });
+
+  it("measures urgent work estimated at 0 points, undated work or not", () => {
+    expect(urgentLoad(matrixOf(doIssue(0), undated), "points", TODAY)).toEqual({
+      load: 0,
+      urgent: 1,
+      overdue: 0,
+    });
   });
 });
 
@@ -202,10 +222,45 @@ describe("teamWeather", () => {
     });
   });
 
+  it("says when urgent work is estimated at 0 points", () => {
+    const { people } = teamWeather(
+      [
+        { name: "A", matrix: matrixOf(doIssue(0), doIssue(0)) },
+        { name: "B", matrix: matrixOf(doIssue(2)) },
+      ],
+      "points",
+      TODAY,
+    );
+    expect(people[0]).toMatchObject({
+      kind: "sunny",
+      reason: "2 urgent issues, estimated at 0 points",
+    });
+  });
+
+  it("is fog when only one person can be measured: nobody to compare with", () => {
+    const { people, team } = teamWeather(
+      [
+        { name: "Tony", matrix: matrixOf(doIssue(40)) },
+        { name: "Thor", matrix: matrixOf(undated) },
+      ],
+      "points",
+      TODAY,
+    );
+    expect(people[0]).toMatchObject({
+      kind: "fog",
+      teamAverage: null,
+      reason: "40 urgent points, nobody else to compare with",
+    });
+    expect(team).toMatchObject({
+      kind: "fog",
+      reason: "Only one person's urgent load can be measured",
+    });
+  });
+
   it("is sunny with nothing urgent anywhere, and fog when nobody can be measured", () => {
     expect(
       teamWeather([{ name: "A", matrix: matrixOf(later) }], "issues", TODAY).team,
-    ).toMatchObject({ kind: "sunny", teamAverage: 0 });
+    ).toMatchObject({ kind: "sunny", reason: "Nothing urgent on anyone's plate" });
     const foggy = teamWeather([{ name: "A", matrix: matrixOf(undated) }], "issues", TODAY);
     expect(foggy.team).toMatchObject({ kind: "fog", load: null, teamAverage: null });
     expect(teamWeather([], "issues", TODAY).team.kind).toBe("fog");

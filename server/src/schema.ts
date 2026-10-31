@@ -13,9 +13,9 @@ import {
   type RuleProblem,
 } from "./domain/quadrant";
 import {
+  DEFAULT_THRESHOLDS,
   type LoadMetric,
   loadMetricFor,
-  personWeather,
   teamWeather,
   type Weather,
 } from "./domain/weather";
@@ -46,19 +46,64 @@ type UserModel = (Viewer | Assignee) & { teamId?: string };
 
 type IssueModel = Matrix<TeamIssue>[Quadrant][number];
 
-/** The matrix of some of a team's open issues, by the team's rules and any hand placements. */
-async function teamMatrix(
+/** Work a request's resolvers share, by key, so each piece is done once per request. */
+const perRequest = new WeakMap<GraphQLContext, Map<string, Promise<unknown>>>();
+
+function once<T>(context: GraphQLContext, key: string, load: () => Promise<T>): Promise<T> {
+  let byKey = perRequest.get(context);
+  if (!byKey) {
+    byKey = new Map();
+    perRequest.set(context, byKey);
+  }
+  let result = byKey.get(key) as Promise<T> | undefined;
+  if (!result) {
+    result = load();
+    byKey.set(key, result);
+  }
+  return result;
+}
+
+/** After a write: what this request worked out before it may no longer hold. */
+function forgetWork(context: GraphQLContext): void {
+  perRequest.delete(context);
+}
+
+/**
+ * The matrix of one assignee's open issues in a team (null for the unassigned ones), by the
+ * team's rules and any hand placements.
+ */
+function teamMatrix(
   context: GraphQLContext,
   teamId: string,
-  pick: (byAssignee: Map<string | null, TeamIssue[]>) => TeamIssue[] | undefined,
+  assigneeId: string | null,
 ): Promise<Matrix<TeamIssue>> {
-  const { byAssignee } = await (await signedIn(context)).teamWork(teamId);
-  const issues = pick(byAssignee) ?? [];
-  const [rules, overrides] = await Promise.all([
-    context.placements.rules(teamId),
-    context.placements.overrides(issues),
-  ]);
-  return buildMatrix(issues, rules, context.today, overrides);
+  return once(context, `matrix:${teamId}:${assigneeId}`, async () => {
+    const { byAssignee } = await (await signedIn(context)).teamWork(teamId);
+    const issues = byAssignee.get(assigneeId) ?? [];
+    const [rules, overrides] = await Promise.all([
+      context.placements.rules(teamId),
+      context.placements.overrides(issues),
+    ]);
+    return buildMatrix(issues, rules, context.today, overrides);
+  });
+}
+
+/** Each of a team's people with their matrix. */
+async function peopleMatrices(
+  context: GraphQLContext,
+  teamId: string,
+): Promise<{ person: Assignee; matrix: Matrix<TeamIssue> }[]> {
+  const { people } = await (await signedIn(context)).teamWork(teamId);
+  return Promise.all(
+    people.map(async (person) => ({
+      person,
+      matrix: await teamMatrix(context, teamId, person.id),
+    })),
+  );
+}
+
+async function teamLoadMetric(context: GraphQLContext, teamId: string): Promise<LoadMetric> {
+  return loadMetricFor((await peopleMatrices(context, teamId)).map(({ matrix }) => matrix));
 }
 
 interface TeamWeatherModel {
@@ -67,49 +112,27 @@ interface TeamWeatherModel {
   team: Weather;
 }
 
-/** Each request's team weather, by team and metric: everyone's is worked out together. */
-const weatherLoads = new WeakMap<GraphQLContext, Map<string, Promise<TeamWeatherModel>>>();
-
 /** A team's weather now, counting load in `metric`, else in whatever suits the team. */
-function teamWeatherOf(
+async function teamWeatherOf(
   context: GraphQLContext,
   teamId: string,
   metric: LoadMetric | null | undefined,
 ): Promise<TeamWeatherModel> {
-  let byTeam = weatherLoads.get(context);
-  if (!byTeam) {
-    byTeam = new Map();
-    weatherLoads.set(context, byTeam);
-  }
-  const key = `${teamId}:${metric ?? "auto"}`;
-  let load = byTeam.get(key);
-  if (!load) {
-    load = loadTeamWeather(context, teamId, metric);
-    byTeam.set(key, load);
-  }
-  return load;
-}
-
-async function loadTeamWeather(
-  context: GraphQLContext,
-  teamId: string,
-  asked: LoadMetric | null | undefined,
-): Promise<TeamWeatherModel> {
-  const { people, issues } = await (await signedIn(context)).teamWork(teamId);
-  const metric = asked ?? loadMetricFor(issues);
-  const matrices = await Promise.all(
-    people.map((person) => teamMatrix(context, teamId, (byAssignee) => byAssignee.get(person.id))),
-  );
-  const weather = teamWeather(
-    people.map((person, i) => ({ name: person.name, matrix: matrices[i] as Matrix<TeamIssue> })),
-    metric,
-    context.today,
-  );
-  return {
-    metric,
-    byPerson: new Map(people.map((person, i) => [person.id, weather.people[i] as Weather])),
-    team: weather.team,
-  };
+  if (!metric) return teamWeatherOf(context, teamId, await teamLoadMetric(context, teamId));
+  // Everyone's is worked out together, once per metric.
+  return once(context, `weather:${teamId}:${metric}`, async () => {
+    const people = await peopleMatrices(context, teamId);
+    const weather = teamWeather(
+      people.map(({ person, matrix }) => ({ name: person.name, matrix })),
+      metric,
+      context.today,
+    );
+    return {
+      metric,
+      byPerson: new Map(people.map(({ person }, i) => [person.id, weather.people[i] as Weather])),
+      team: weather.team,
+    };
+  });
 }
 
 async function signedIn(context: GraphQLContext): Promise<Workspace> {
@@ -162,17 +185,23 @@ const NoDueDateEnum = builder.enumType("NoDueDate", {
 const WeatherKindEnum = builder.enumType("WeatherKind", {
   description: "How heavy urgent (Do + Delegate) load is, against the team's average.",
   values: {
-    SUNNY: { value: "sunny", description: "Below average: room for more." },
+    SUNNY: {
+      value: "sunny",
+      description: `Nothing urgent, or under ${DEFAULT_THRESHOLDS.sunnyBelow}× the average: room for more.`,
+    },
     CLOUDY: { value: "cloudy", description: "Around average." },
-    RAIN: { value: "rain", description: "Noticeably above average (over 1.25×)." },
+    RAIN: {
+      value: "rain",
+      description: `Noticeably above average (over ${DEFAULT_THRESHOLDS.rainAbove}×).`,
+    },
     STORM: {
       value: "storm",
-      description: "Far above average (over 1.5×), or urgent issues overdue.",
+      description: `Far above average (over ${DEFAULT_THRESHOLDS.stormAbove}×), or urgent issues overdue.`,
     },
     FOG: {
       value: "fog",
       description:
-        "Can't tell: nothing urgent but some work has no due date, or no urgent issue estimated when counting points.",
+        "Can't tell: nothing urgent but some work has no due date; counting points with some urgent issue unestimated; or nobody else on the team to compare with.",
     },
   } as const,
 });
@@ -180,7 +209,10 @@ const WeatherKindEnum = builder.enumType("WeatherKind", {
 const LoadMetricEnum = builder.enumType("LoadMetric", {
   description: "What urgent load is counted in.",
   values: {
-    POINTS: { value: "points", description: "Estimate points. Unestimated issues add nothing." },
+    POINTS: {
+      value: "points",
+      description: "Estimate points. Anyone with an unestimated urgent issue can't be measured.",
+    },
     ISSUES: { value: "issues", description: "Issues, whatever their size." },
   } as const,
 });
@@ -198,10 +230,10 @@ const WeatherRef = builder.objectRef<Weather>("Weather").implement({
     teamAverage: t.exposeFloat("teamAverage", {
       nullable: true,
       description:
-        "The mean urgent load of the team's people whose load could be measured. Null when nobody's could.",
+        "The mean urgent load of the team's people whose load could be measured. Null when fewer than two could: nobody to compare with.",
     }),
     reason: t.exposeString("reason", {
-      description: 'Why, e.g. "13 urgent points, 3.1× the team average; 2 issues overdue".',
+      description: 'Why, e.g. "13 urgent points, 3.07× the team average; 2 issues overdue".',
     }),
   }),
 });
@@ -345,7 +377,7 @@ UserRef.implement({
       resolve: async (user, args, context) => {
         const teamId = args.teamId == null ? user.teamId : String(args.teamId);
         if (!teamId) throw new GraphQLError("Which team? Pass teamId.");
-        return teamMatrix(context, teamId, (byAssignee) => byAssignee.get(user.id));
+        return teamMatrix(context, teamId, user.id);
       },
     }),
     weather: t.field({
@@ -360,15 +392,20 @@ UserRef.implement({
           description: "Defaults to the team's loadMetric.",
         }),
       },
-      resolve: async (user, args, context) => {
+      resolve: async (user, args, context): Promise<Weather> => {
         const teamId = args.teamId == null ? user.teamId : String(args.teamId);
         if (!teamId) throw new GraphQLError("Which team? Pass teamId.");
         const weather = await teamWeatherOf(context, teamId, args.metric);
         const theirs = weather.byPerson.get(user.id);
         if (theirs) return theirs;
-        // Not on the team and holding none of its issues: measured against it all the same.
-        const matrix = await teamMatrix(context, teamId, (byAssignee) => byAssignee.get(user.id));
-        return personWeather(matrix, weather.metric, context.today, weather.team.teamAverage);
+        // Not on the team and holding none of its issues: no load there to measure.
+        return {
+          kind: "fog",
+          metric: weather.metric,
+          load: null,
+          teamAverage: weather.team.teamAverage,
+          reason: "Not on this team",
+        };
       },
     }),
   }),
@@ -396,14 +433,13 @@ TeamRef.implement({
     unassigned: t.field({
       type: MatrixRef,
       description: "The team's open issues nobody is assigned to.",
-      resolve: (team, _args, context) =>
-        teamMatrix(context, team.id, (byAssignee) => byAssignee.get(null)),
+      resolve: (team, _args, context) => teamMatrix(context, team.id, null),
     }),
     loadMetric: t.field({
       type: LoadMetricEnum,
-      description: "What weather counts load in by default: points if any open issue is estimated.",
-      resolve: async (team, _args, context) =>
-        loadMetricFor((await (await signedIn(context)).teamWork(team.id)).issues),
+      description:
+        "What weather counts load in by default: points if every urgent issue its people hold is estimated, else issues.",
+      resolve: (team, _args, context) => teamLoadMetric(context, team.id),
     }),
     weather: t.field({
       type: WeatherRef,
@@ -631,6 +667,7 @@ async function placeByHand(
     context.placements.setOverride(issue.id, quadrant),
     context.placements.rules(issue.team.id),
   ]);
+  forgetWork(context);
   return {
     __typename: "OverrideSuccess",
     issue: place(issue, rules, context.today, quadrant ?? undefined),
@@ -668,6 +705,7 @@ builder.mutationType({
               };
             }
             await context.placements.setRules(team.id, rules);
+            forgetWork(context);
             return { __typename: "UpdateRulesSuccess", team };
           },
         ),

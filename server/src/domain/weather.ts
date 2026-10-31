@@ -1,7 +1,7 @@
 // The weather now: each person's urgent load (Do + Delegate) against the team's average, and
 // how evenly the team's urgent load is spread. Pure, like the rules engine it builds on.
 
-import type { Matrix, MatrixIssue } from "./matrix";
+import { counts, type Matrix, type MatrixIssue, points } from "./matrix";
 import type { CalendarDate } from "./quadrant";
 
 export const WEATHER_KINDS = ["sunny", "cloudy", "rain", "storm", "fog"] as const;
@@ -32,36 +32,49 @@ export const DEFAULT_THRESHOLDS: WeatherThresholds = {
  *
  * - Overdue urgent issues → storm, however light the load: they're already late.
  * - `load` null means it can't be measured → fog.
- * - No urgent load across the team (average 0) → sunny: everyone has room.
+ * - No urgent load → sunny: room for more.
+ * - `teamAverage` null means there's nobody to compare with → fog.
+ *
+ * The ratio is rounded to hundredths first, as the reason shows it, so the same shown ratio
+ * always gives the same weather.
  */
 export function weatherFor(
   load: number | null,
-  teamAverage: number,
+  teamAverage: number | null,
   hasOverdue: boolean,
   thresholds: WeatherThresholds = DEFAULT_THRESHOLDS,
 ): WeatherKind {
   if (hasOverdue) return "storm";
   if (load === null) return "fog";
-  if (teamAverage <= 0) return "sunny";
-  const ratio = load / teamAverage;
+  if (load === 0) return "sunny";
+  if (teamAverage === null) return "fog";
+  const ratio = ratioOf(load, teamAverage);
   if (ratio > thresholds.stormAbove) return "storm";
   if (ratio > thresholds.rainAbove) return "rain";
   if (ratio < thresholds.sunnyBelow) return "sunny";
   return "cloudy";
 }
 
+/** A load as a multiple of the average, to hundredths. */
+function ratioOf(load: number, teamAverage: number): number {
+  return Math.round((load / teamAverage) * 100) / 100;
+}
+
 /**
- * Points when the team estimates, else issues. A team estimates when any of its open issues
- * has an estimate: a team that turned estimates on in Linear but never uses them is better
- * measured by count.
+ * Points when every urgent issue the team's people hold is estimated, else issues. Points
+ * would undercount anyone whose urgent work isn't all estimated, and issues the team never
+ * looks at as urgent (unassigned, or not urgent yet) say nothing about how it measures load.
  */
-export function loadMetricFor(issues: readonly MatrixIssue[]): LoadMetric {
-  return issues.some((issue) => issue.estimate != null) ? "points" : "issues";
+export function loadMetricFor(matrices: readonly Matrix<MatrixIssue>[]): LoadMetric {
+  const urgent = matrices.flatMap((matrix) => [...matrix.do, ...matrix.delegate]);
+  return urgent.length > 0 && urgent.every((issue) => issue.estimate != null) ? "points" : "issues";
 }
 
 export interface Load {
   /** Urgent (Do + Delegate) load in the metric, or null when it can't be measured. */
   load: number | null;
+  /** How many urgent issues there are, whatever the metric. */
+  urgent: number;
   /** How many urgent (Do or Delegate) issues are past their due date. Moving one out of Do by
    * hand doesn't make it any less late. */
   overdue: number;
@@ -71,26 +84,24 @@ export interface Load {
 
 /**
  * A matrix's urgent load. It can't be measured (null) when:
- * - counting points, it has urgent issues but none are estimated; or
- * - it has no urgent load but holds undated issues, so it may be busy rather than idle.
- * Partly estimated urgent work counts the estimated issues only.
+ * - counting points, some urgent issue isn't estimated, so points would undercount; or
+ * - it has nothing urgent but holds undated issues, so it may be busy rather than idle.
  */
 export function urgentLoad(
   matrix: Matrix<MatrixIssue>,
   metric: LoadMetric,
   today: CalendarDate,
 ): Load {
-  const urgent = [...matrix.do, ...matrix.delegate];
-  const overdue = urgent.filter((i) => i.dueDate !== null && i.dueDate < today).length;
-  const estimated = urgent.filter((i) => i.estimate != null);
-  if (metric === "points" && urgent.length > 0 && estimated.length === 0) {
-    return { load: null, overdue, unknown: "unestimated" };
+  const urgentIssues = [...matrix.do, ...matrix.delegate];
+  const urgent = urgentIssues.length;
+  const overdue = urgentIssues.filter((i) => i.dueDate !== null && i.dueDate < today).length;
+  if (metric === "points" && urgentIssues.some((i) => i.estimate == null)) {
+    return { load: null, urgent, overdue, unknown: "unestimated" };
   }
-  const load =
-    metric === "points" ? estimated.reduce((sum, i) => sum + (i.estimate ?? 0), 0) : urgent.length;
   const undated = [...matrix.schedule, ...matrix.drop].some((i) => i.dueDate === null);
-  if (load === 0 && undated) return { load: null, overdue, unknown: "undated" };
-  return { load, overdue };
+  if (urgent === 0 && undated) return { load: null, urgent, overdue, unknown: "undated" };
+  const tally = (metric === "points" ? points : counts)(matrix);
+  return { load: tally.do + tally.delegate, urgent, overdue };
 }
 
 export interface Weather {
@@ -98,9 +109,10 @@ export interface Weather {
   metric: LoadMetric;
   /** A person's urgent load; for a team, its busiest person's. Null when it can't be measured. */
   load: number | null;
-  /** The mean urgent load of the people whose load could be measured. Null when nobody's could. */
+  /** The mean urgent load of the people whose load could be measured. Null when fewer than
+   * two could: nobody to compare with. */
   teamAverage: number | null;
-  /** Why, e.g. "13 urgent points, 3.1× the team average; 2 issues overdue". */
+  /** Why, e.g. "13 urgent points, 3.07× the team average; 2 issues overdue". */
   reason: string;
 }
 
@@ -128,22 +140,11 @@ export function teamWeather(
   const loads = people.map(({ matrix }) => urgentLoad(matrix, metric, today));
   const measured = loads.flatMap(({ load }) => (load === null ? [] : [load]));
   const teamAverage =
-    measured.length === 0 ? null : measured.reduce((sum, load) => sum + load, 0) / measured.length;
+    measured.length < 2 ? null : measured.reduce((sum, load) => sum + load, 0) / measured.length;
 
   const weathers = loads.map((load) => weatherOf(load, teamAverage, metric, thresholds));
 
   return { people: weathers, team: spread(people, weathers, metric, teamAverage) };
-}
-
-/** Someone's weather against a team's average, e.g. someone outside the team. */
-export function personWeather(
-  matrix: Matrix<MatrixIssue>,
-  metric: LoadMetric,
-  today: CalendarDate,
-  teamAverage: number | null,
-  thresholds: WeatherThresholds = DEFAULT_THRESHOLDS,
-): Weather {
-  return weatherOf(urgentLoad(matrix, metric, today), teamAverage, metric, thresholds);
 }
 
 function weatherOf(
@@ -154,7 +155,7 @@ function weatherOf(
 ): Weather {
   const { load, overdue } = measured;
   return {
-    kind: weatherFor(load, teamAverage ?? 0, overdue > 0, thresholds),
+    kind: weatherFor(load, teamAverage, overdue > 0, thresholds),
     metric,
     load,
     teamAverage,
@@ -183,11 +184,15 @@ function spread(
       return { ...base, kind, reason: `${list(who)} ${who.length === 1 ? "is" : "are"} ${verb}` };
     }
   }
-  if (teamAverage === null) {
-    return { ...base, kind: "fog", reason: "Nobody's urgent load can be measured" };
-  }
-  if (teamAverage === 0) {
+  if (busiest === 0) {
     return { ...base, kind: "sunny", reason: "Nothing urgent on anyone's plate" };
+  }
+  if (teamAverage === null) {
+    const reason =
+      busiest === null
+        ? "Nobody's urgent load can be measured"
+        : "Only one person's urgent load can be measured";
+    return { ...base, kind: "fog", reason };
   }
   const roomy = names("sunny");
   return roomy.length === 0
@@ -200,7 +205,7 @@ function spread(
 }
 
 function describeLoad(
-  { load, overdue: late, unknown }: Load,
+  { load, urgent, overdue: late, unknown }: Load,
   teamAverage: number | null,
   metric: LoadMetric,
 ): string {
@@ -208,21 +213,33 @@ function describeLoad(
   if (load === null) {
     const why =
       unknown === "unestimated"
-        ? "no urgent issue is estimated"
+        ? "not every urgent issue is estimated"
         : "nothing urgent, but some work has no due date";
     return overdue ? `${overdue}; ${why}` : `${why[0]?.toUpperCase()}${why.slice(1)}`;
   }
-  if (load === 0 && !overdue) return "Nothing urgent";
-  const amount = plural(load, metric === "points" ? "urgent point" : "urgent issue");
+  if (urgent === 0) return "Nothing urgent";
+  const amount =
+    metric === "issues"
+      ? plural(load, "urgent issue")
+      : load === 0
+        ? `${plural(urgent, "urgent issue")}, estimated at 0 points`
+        : plural(load, "urgent point");
   const vsAverage =
-    teamAverage === null || teamAverage === 0
+    load === 0
       ? ""
-      : `, ${(load / teamAverage).toFixed(1)}× the team average`;
+      : teamAverage === null
+        ? ", nobody else to compare with"
+        : `, ${times(ratioOf(load, teamAverage))} the team average`;
   return `${amount}${vsAverage}${overdue ? `; ${overdue}` : ""}`;
 }
 
 function plural(n: number, unit: string): string {
   return `${Number.isInteger(n) ? n : n.toFixed(1)} ${unit}${n === 1 ? "" : "s"}`;
+}
+
+/** A ratio as weatherFor reads it: to hundredths, e.g. "1.0×", "1.2×" or "3.07×". */
+function times(ratio: number): string {
+  return `${Number.isInteger(ratio) ? ratio.toFixed(1) : ratio}×`;
 }
 
 function list(names: string[]): string {

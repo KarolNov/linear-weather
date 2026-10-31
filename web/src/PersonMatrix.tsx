@@ -6,6 +6,8 @@ import {
   type BoardIssue,
   type CalendarDate,
   total as countIssues,
+  describeWeek,
+  type ForecastWeek,
   type PersonMatrix as Person,
   QUADRANTS,
   type Quadrant,
@@ -33,7 +35,7 @@ export interface PersonMatrixProps {
  * Picking a quadrant opens the list narrowed to it; picking it again shows every quadrant.
  */
 export function PersonMatrix({
-  person: { assignee, matrix, weather },
+  person: { assignee, matrix, weather, forecast },
   today,
   expanded,
   onExpandedChange,
@@ -137,6 +139,8 @@ export function PersonMatrix({
           </span>
         )}
       </header>
+
+      {forecast && forecast.length > 0 && <Forecast name={name} weeks={forecast} />}
 
       <div {...stylex.props(styles.grid)}>
         {QUADRANTS.map((q) => {
@@ -246,6 +250,47 @@ export function PersonMatrix({
   );
 }
 
+/**
+ * The weeks ahead as a strip of small icons. Each explains itself on hover, and on a press for
+ * keyboards, touch and screen readers.
+ */
+function Forecast({ name, weeks }: { name: string; weeks: ForecastWeek[] }) {
+  const [picked, setPicked] = useState<CalendarDate | null>(null);
+  const explain = ({ endsOn, weather, summary, turningUrgent }: ForecastWeek) => {
+    const which = turningUrgent.map((issue) => issue.identifier).join(", ");
+    const news = turningUrgent.length === 0 ? "" : ` ${summary}: ${which}.`;
+    return `${describeWeek(endsOn)}: ${weatherLabels[weatherIcon[weather.kind]]}. ${weather.reason}.${news}`;
+  };
+  const shown = weeks.find((week) => week.endsOn === picked);
+  return (
+    <div>
+      <ol aria-label={`${name}'s forecast`} {...stylex.props(styles.forecast)}>
+        {weeks.map((week) => {
+          const explained = explain(week);
+          return (
+            <li key={week.endsOn} {...stylex.props(styles.weekItem)}>
+              <button
+                type="button"
+                title={explained}
+                aria-label={explained}
+                aria-pressed={week.endsOn === picked}
+                onClick={() => setPicked(week.endsOn === picked ? null : week.endsOn)}
+                {...stylex.props(styles.week)}
+              >
+                <WeatherIcon weather={weatherIcon[week.weather.kind]} size={22} label="" />
+                <span {...stylex.props(styles.weekLabel)}>{describeWeek(week.endsOn)}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <p aria-live="polite" {...stylex.props(styles.weekNews, !shown && styles.weekNewsEmpty)}>
+        {shown ? explain(shown) : ""}
+      </p>
+    </div>
+  );
+}
+
 // Opening a list is frequent, so the stagger is tight and stops after a few cards: a long list
 // shouldn't keep the PM waiting for its tail.
 const CARD_STEP_MS = 20;
@@ -283,6 +328,36 @@ const styles = stylex.create({
   },
   who: { display: "flex", flexDirection: "column", minWidth: 0 },
   weather: { display: "inline-flex", flexShrink: 0, marginInlineStart: "auto" },
+  forecast: {
+    display: "grid",
+    gridAutoColumns: "minmax(0, 1fr)",
+    gridAutoFlow: "column",
+    gap: space.xs,
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  weekItem: { minWidth: 0 },
+  week: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "2px",
+    width: "100%",
+    padding: "2px",
+    borderWidth: 0,
+    borderRadius: radii.sm,
+    backgroundColor: {
+      default: "transparent",
+      [media.hover]: { default: "transparent", ":hover": "rgba(29, 26, 51, 0.06)" },
+    },
+    font: "inherit",
+    cursor: "pointer",
+    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+  },
+  weekLabel: { fontSize: "0.6875rem", color: colors.inkMuted, whiteSpace: "nowrap" },
+  weekNews: { marginTop: space.xs, marginBottom: 0, fontSize: "0.8125rem", color: colors.inkMuted },
+  weekNewsEmpty: { display: "none" },
   name: {
     fontFamily: fonts.display,
     fontSize: "1.0625rem",

@@ -13,7 +13,7 @@ Each developer's assigned issues are sorted into an **Eisenhower matrix** (Do / 
 
   A PM can still override any issue by hand.
 - **Weather (now).** Each person's current urgent load compared with the team average: ☀️ ⛅ 🌧️ ⛈️
-- **Forecast (next weeks).** Due dates show when each issue will turn urgent, so the app can project load week by week: `☀️ ☀️ 🌧️ ⛈️`. Undated work shows up as 🌫️ fog.
+- **Forecast (next weeks).** Due dates show when each issue will turn urgent, so the app can project load week by week: `☀️ ☀️ 🌧️ ⛈️`, with why ("3 High-priority issues become urgent"). Undated work shows up as 🌫️ fog.
 - **Rebalance.** The app suggests reassignments to fix today's storm or the one coming in week 3, and applies them in Linear with one click.
 
 ## Why GraphQL
@@ -93,15 +93,22 @@ type Matrix {         # each list most pressing first
 enum WeatherKind { SUNNY CLOUDY RAIN STORM FOG }
 enum LoadMetric { POINTS ISSUES }
 type Weather { kind: WeatherKind!  metric: LoadMetric!  load: Float  teamAverage: Float  reason: String! }
+type ForecastWeek {   # the urgent load expected by the week's last day
+  startsOn: Date!  endsOn: Date!  weather: Weather!
+  turningUrgent: [Issue!]!  summary: String!   # "3 High-priority issues become urgent"
+}
+type TeamForecast { weeks: [ForecastWeek!]!  worst: ForecastWeek! }
 
 type User {           # teamId defaults to the team it was reached through
   matrix(teamId: ID): Matrix!
   weather(teamId: ID, metric: LoadMetric): Weather!   # urgent load vs the team average
+  forecast(teamId: ID, weeks: Int! = 4, metric: LoadMetric): [ForecastWeek!]!   # 1 to 12 weeks
 }
 type Team {
   rules: QuadrantRules!  people: [User!]!  unassigned: Matrix!
   loadMetric: LoadMetric!                 # POINTS if every urgent issue is estimated, else ISSUES
   weather(metric: LoadMetric): Weather!   # how evenly urgent load is spread
+  forecast(weeks: Int! = 4, metric: LoadMetric): TeamForecast!   # worst: the team's score
 }
 type Query { today: Date!  viewer: User  teams: [Team]  team(id: ID): Team }
 
@@ -114,6 +121,17 @@ union UpdateRulesResult = UpdateRulesSuccess | InvalidRules | TeamNotFound | Una
 union OverrideResult = OverrideSuccess | IssueNotFound | Unauthorized | LinearRateLimited
 interface Error { message: String! }   # every failure above implements it
 ```
+
+### The forecast
+
+`forecast(weeks:)` takes a field argument, so one query can ask for 4 weeks on the board and 12 somewhere else, each with its own alias. (A REST API would need a query string or another endpoint.) Each week projects every matrix to the week's last day (`server/src/domain/forecast.ts`) and reads the weather as it is now, against that week's team average. The projection assumes:
+
+- **Issues turn urgent when their due dates say** (`becomesUrgentOn`), and issues placed by hand stay where they were put.
+- **Work is done by its due date**, so it leaves the load once that's passed. Work that's already overdue has missed its date, so it stays, and keeps the weather stormy, until it's done.
+- **Load is counted in points only if every issue urgent in any week is estimated** (unless `metric` says otherwise), so an unestimated issue arriving later doesn't fog a week.
+- **Undated work never turns urgent.** Someone holding it with nothing urgent projected is 🌫️ fog, a nudge to set dates.
+
+The team's `worst` week is the most lopsided one (storm, then rain, then fog, then cloudy), the earliest of equals.
 
 ### Mutations and their errors
 
@@ -223,6 +241,6 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 
 ## Status
 
-🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too.
+🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why.
 # linear-weather
 Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

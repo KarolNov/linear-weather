@@ -242,7 +242,8 @@ function times(ratio: number): string {
   return `${Number.isInteger(ratio) ? ratio.toFixed(1) : ratio}×`;
 }
 
-function list(names: string[]): string {
+/** E.g. "Ana, Ben and Cy". */
+export function list(names: string[]): string {
   if (names.length <= 2) return names.join(" and ");
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }

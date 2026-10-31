@@ -3,6 +3,13 @@
 
 import SchemaBuilder from "@pothos/core";
 import { GraphQLError } from "graphql";
+import {
+  type ForecastWeek,
+  forecast,
+  isForecastHorizon,
+  MAX_FORECAST_WEEKS,
+  type TeamForecast,
+} from "./domain/forecast";
 import { buildMatrix, counts, type Matrix, place, points } from "./domain/matrix";
 import {
   type CalendarDate,
@@ -135,6 +142,49 @@ async function teamWeatherOf(
   });
 }
 
+/** A team's forecast for `weeks` weeks, counting load in `metric`, else in what suits the weeks. */
+async function teamForecastOf(
+  context: GraphQLContext,
+  teamId: string,
+  weeks: number,
+  metric: LoadMetric | null | undefined,
+): Promise<{ byPerson: Map<string, ForecastWeek<TeamIssue>[]>; team: TeamForecast<TeamIssue> }> {
+  if (!isForecastHorizon(weeks)) {
+    throw new GraphQLError(`A forecast covers 1 to ${MAX_FORECAST_WEEKS} weeks.`, {
+      extensions: { code: "BAD_USER_INPUT" },
+    });
+  }
+  return once(context, `forecast:${teamId}:${metric ?? "auto"}:${weeks}`, async () => {
+    const people = await peopleMatrices(context, teamId);
+    const projected = forecast(
+      people.map(({ person, matrix }) => ({ name: person.name, matrix })),
+      metric ?? null,
+      context.today,
+      weeks,
+    );
+    return {
+      byPerson: new Map(
+        people.map(({ person }, i) => [
+          person.id,
+          projected.people[i] as ForecastWeek<TeamIssue>[],
+        ]),
+      ),
+      team: projected,
+    };
+  });
+}
+
+/** Someone's weather in a team they're not on and hold none of the issues of: nothing to measure. */
+function notOnTeam(team: Weather): Weather {
+  return {
+    kind: "fog",
+    metric: team.metric,
+    load: null,
+    teamAverage: team.teamAverage,
+    reason: "Not on this team",
+  };
+}
+
 async function signedIn(context: GraphQLContext): Promise<Workspace> {
   const workspace = await context.workspace();
   if (!workspace) {
@@ -234,6 +284,21 @@ const WeatherRef = builder.objectRef<Weather>("Weather").implement({
     }),
     reason: t.exposeString("reason", {
       description: 'Why, e.g. "13 urgent points, 3.07× the team average; 2 issues overdue".',
+    }),
+  }),
+});
+
+const ForecastWeekRef = builder.objectRef<ForecastWeek<TeamIssue>>("ForecastWeek");
+
+const TeamForecastRef = builder.objectRef<TeamForecast<TeamIssue>>("TeamForecast").implement({
+  description: "How evenly a team's urgent load is expected to be spread, week by week.",
+  fields: (t) => ({
+    weeks: t.field({ type: [ForecastWeekRef], resolve: (forecast) => forecast.team }),
+    worst: t.field({
+      type: ForecastWeekRef,
+      description:
+        "The most lopsided week (storm, then rain, then fog, then cloudy), the earliest of equals: the team's score over the horizon.",
+      resolve: (forecast) => forecast.worst,
     }),
   }),
 });
@@ -352,6 +417,28 @@ const MatrixRef = builder.objectRef<Matrix<TeamIssue>>("Matrix").implement({
   }),
 });
 
+ForecastWeekRef.implement({
+  description:
+    "One week ahead: the urgent load expected by its last day, assuming issues turn urgent when their due dates say, hand placements stay, and work is done by its due date (work already overdue stays).",
+  fields: (t) => ({
+    startsOn: t.expose("startsOn", { type: "Date", description: "Today for the first week." }),
+    endsOn: t.expose("endsOn", { type: "Date" }),
+    weather: t.expose("weather", {
+      type: WeatherRef,
+      description: "Against that week's projected team average.",
+    }),
+    turningUrgent: t.expose("turningUrgent", {
+      type: [IssueRef],
+      description: "Issues that turn urgent during the week (not those urgent already).",
+    }),
+    summary: t.exposeString("summary", {
+      description: 'What turns urgent, e.g. "3 High-priority issues become urgent".',
+    }),
+  }),
+});
+
+const FORECAST_WEEKS = 4;
+
 UserRef.implement({
   description: "A Linear user.",
   fields: (t) => ({
@@ -398,14 +485,40 @@ UserRef.implement({
         const weather = await teamWeatherOf(context, teamId, args.metric);
         const theirs = weather.byPerson.get(user.id);
         if (theirs) return theirs;
-        // Not on the team and holding none of its issues: no load there to measure.
-        return {
-          kind: "fog",
-          metric: weather.metric,
-          load: null,
-          teamAverage: weather.team.teamAverage,
-          reason: "Not on this team",
-        };
+        return notOnTeam(weather.team);
+      },
+    }),
+    forecast: t.field({
+      type: [ForecastWeekRef],
+      description:
+        "Their weather in a team for the weeks ahead, as dated issues turn urgent. The first week starts today.",
+      args: {
+        teamId: t.arg.id({
+          description: "Defaults to the team this user was reached through, e.g. Team.people.",
+        }),
+        weeks: t.arg.int({
+          required: true,
+          defaultValue: FORECAST_WEEKS,
+          description: `1 to ${MAX_FORECAST_WEEKS}.`,
+        }),
+        metric: t.arg({
+          type: LoadMetricEnum,
+          description:
+            "Defaults to POINTS if every issue urgent in any of the weeks is estimated, else ISSUES.",
+        }),
+      },
+      resolve: async (user, args, context) => {
+        const teamId = args.teamId == null ? user.teamId : String(args.teamId);
+        if (!teamId) throw new GraphQLError("Which team? Pass teamId.");
+        const projected = await teamForecastOf(context, teamId, args.weeks, args.metric);
+        const theirs = projected.byPerson.get(user.id);
+        if (theirs) return theirs;
+        return projected.team.team.map((week) => ({
+          ...week,
+          weather: notOnTeam(week.weather),
+          turningUrgent: [],
+          summary: "Not on this team",
+        }));
       },
     }),
   }),
@@ -450,6 +563,25 @@ TeamRef.implement({
       },
       resolve: async (team, args, context) =>
         (await teamWeatherOf(context, team.id, args.metric)).team,
+    }),
+    forecast: t.field({
+      type: TeamForecastRef,
+      description:
+        "How evenly urgent load is expected to be spread in the weeks ahead, and the worst week.",
+      args: {
+        weeks: t.arg.int({
+          required: true,
+          defaultValue: FORECAST_WEEKS,
+          description: `1 to ${MAX_FORECAST_WEEKS}.`,
+        }),
+        metric: t.arg({
+          type: LoadMetricEnum,
+          description:
+            "Defaults to POINTS if every issue urgent in any of the weeks is estimated, else ISSUES.",
+        }),
+      },
+      resolve: async (team, args, context) =>
+        (await teamForecastOf(context, team.id, args.weeks, args.metric)).team,
     }),
   }),
 });

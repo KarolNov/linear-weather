@@ -59,7 +59,13 @@ function boardData(viewer: unknown, team: BoardData["team"] = defaultTeam) {
 
 const defaultTeam: BoardData["team"] = {
   ...avengers,
-  people: [{ ...tony, matrix: tonysMatrix }],
+  people: [
+    {
+      ...tony,
+      matrix: tonysMatrix,
+      weather: { kind: "STORM" as const, reason: "4 urgent points" },
+    },
+  ],
   unassigned,
 };
 
@@ -153,7 +159,13 @@ describe("web worker", () => {
   it("says nobody has open issues when every member's matrix is empty", async () => {
     const quiet = {
       ...avengers,
-      people: [{ ...tony, matrix: emptyMatrix }],
+      people: [
+        {
+          ...tony,
+          matrix: emptyMatrix,
+          weather: { kind: "SUNNY" as const, reason: "Nothing urgent" },
+        },
+      ],
       unassigned: emptyMatrix,
     };
     const { bindings } = serverReturning(fury, () =>

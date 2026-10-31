@@ -128,10 +128,10 @@ async function fetchBoard(
 
     const { team, teams, today } = data;
     const people: Board["people"] = team
-      ? team.people.map(({ matrix, ...assignee }) => ({ assignee, matrix }))
+      ? team.people.map(({ matrix, weather, ...assignee }) => ({ assignee, matrix, weather }))
       : [];
     if (team && total(team.unassigned) > 0)
-      people.push({ assignee: null, matrix: team.unassigned });
+      people.push({ assignee: null, matrix: team.unassigned, weather: null });
     const board: Board = {
       today,
       teams,

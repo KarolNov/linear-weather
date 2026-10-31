@@ -39,6 +39,15 @@ export interface BoardIssue {
   placementReason: string;
 }
 
+/** How heavy someone's urgent load is now, against the team's average. */
+export type WeatherKind = "SUNNY" | "CLOUDY" | "RAIN" | "STORM" | "FOG";
+
+export interface Weather {
+  kind: WeatherKind;
+  /** Why, e.g. "13 urgent points, 3.1× the team average". */
+  reason: string;
+}
+
 /** Issues by quadrant, each most pressing first. */
 export type Matrix = Record<Quadrant, BoardIssue[]> & { counts: Record<Quadrant, number> };
 
@@ -46,6 +55,8 @@ export interface PersonMatrix {
   /** Null for the team's unassigned issues. */
   assignee: Person | null;
   matrix: Matrix;
+  /** Null for the unassigned issues: nobody's load. */
+  weather: Weather | null;
 }
 
 export interface Board {
@@ -77,7 +88,7 @@ export const BOARD_QUERY = `query Board($teamId: ID) {
     id
     name
     key
-    people { id name avatarUrl matrix { ${MATRIX_FIELDS} } }
+    people { id name avatarUrl weather { kind reason } matrix { ${MATRIX_FIELDS} } }
     unassigned { ${MATRIX_FIELDS} }
   }
 }
@@ -99,7 +110,9 @@ export interface BoardData {
   today: CalendarDate;
   viewer: Viewer | null;
   teams: Team[] | null;
-  team: (Team & { people: (Person & { matrix: Matrix })[]; unassigned: Matrix }) | null;
+  team:
+    | (Team & { people: (Person & { matrix: Matrix; weather: Weather })[]; unassigned: Matrix })
+    | null;
 }
 
 /** The number of issues in a matrix. */

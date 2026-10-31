@@ -12,6 +12,13 @@ import {
   type QuadrantRules,
   type RuleProblem,
 } from "./domain/quadrant";
+import {
+  type LoadMetric,
+  loadMetricFor,
+  personWeather,
+  teamWeather,
+  type Weather,
+} from "./domain/weather";
 import { LinearAuthError, LinearRateLimitError } from "./linear/client";
 import type { Assignee } from "./linear/team-issues";
 import type { Placements } from "./placements";
@@ -52,6 +59,57 @@ async function teamMatrix(
     context.placements.overrides(issues),
   ]);
   return buildMatrix(issues, rules, context.today, overrides);
+}
+
+interface TeamWeatherModel {
+  metric: LoadMetric;
+  byPerson: Map<string, Weather>;
+  team: Weather;
+}
+
+/** Each request's team weather, by team and metric: everyone's is worked out together. */
+const weatherLoads = new WeakMap<GraphQLContext, Map<string, Promise<TeamWeatherModel>>>();
+
+/** A team's weather now, counting load in `metric`, else in whatever suits the team. */
+function teamWeatherOf(
+  context: GraphQLContext,
+  teamId: string,
+  metric: LoadMetric | null | undefined,
+): Promise<TeamWeatherModel> {
+  let byTeam = weatherLoads.get(context);
+  if (!byTeam) {
+    byTeam = new Map();
+    weatherLoads.set(context, byTeam);
+  }
+  const key = `${teamId}:${metric ?? "auto"}`;
+  let load = byTeam.get(key);
+  if (!load) {
+    load = loadTeamWeather(context, teamId, metric);
+    byTeam.set(key, load);
+  }
+  return load;
+}
+
+async function loadTeamWeather(
+  context: GraphQLContext,
+  teamId: string,
+  asked: LoadMetric | null | undefined,
+): Promise<TeamWeatherModel> {
+  const { people, issues } = await (await signedIn(context)).teamWork(teamId);
+  const metric = asked ?? loadMetricFor(issues);
+  const matrices = await Promise.all(
+    people.map((person) => teamMatrix(context, teamId, (byAssignee) => byAssignee.get(person.id))),
+  );
+  const weather = teamWeather(
+    people.map((person, i) => ({ name: person.name, matrix: matrices[i] as Matrix<TeamIssue> })),
+    metric,
+    context.today,
+  );
+  return {
+    metric,
+    byPerson: new Map(people.map((person, i) => [person.id, weather.people[i] as Weather])),
+    team: weather.team,
+  };
 }
 
 async function signedIn(context: GraphQLContext): Promise<Workspace> {
@@ -99,6 +157,50 @@ const NoDueDateEnum = builder.enumType("NoDueDate", {
     URGENT: { value: "urgent" },
     NOT_URGENT: { value: "notUrgent" },
   } as const,
+});
+
+const WeatherKindEnum = builder.enumType("WeatherKind", {
+  description: "How heavy urgent (Do + Delegate) load is, against the team's average.",
+  values: {
+    SUNNY: { value: "sunny", description: "Below average: room for more." },
+    CLOUDY: { value: "cloudy", description: "Around average." },
+    RAIN: { value: "rain", description: "Noticeably above average (over 1.25×)." },
+    STORM: { value: "storm", description: "Far above average (over 1.5×), or Do issues overdue." },
+    FOG: {
+      value: "fog",
+      description:
+        "Can't tell: nothing urgent but undated work, or no urgent issue estimated when counting points.",
+    },
+  } as const,
+});
+
+const LoadMetricEnum = builder.enumType("LoadMetric", {
+  description: "What urgent load is counted in.",
+  values: {
+    POINTS: { value: "points", description: "Estimate points. Unestimated issues add nothing." },
+    ISSUES: { value: "issues", description: "Issues, whatever their size." },
+  } as const,
+});
+
+const WeatherRef = builder.objectRef<Weather>("Weather").implement({
+  description: "The weather now: urgent (Do + Delegate) load against the team's average.",
+  fields: (t) => ({
+    kind: t.expose("kind", { type: WeatherKindEnum }),
+    metric: t.expose("metric", { type: LoadMetricEnum }),
+    load: t.exposeFloat("load", {
+      nullable: true,
+      description:
+        "A person's urgent load; for a team, its busiest person's. Null when it can't be measured.",
+    }),
+    teamAverage: t.exposeFloat("teamAverage", {
+      nullable: true,
+      description:
+        "The mean urgent load of the team's people whose load could be measured. Null when nobody's could.",
+    }),
+    reason: t.exposeString("reason", {
+      description: 'Why, e.g. "13 urgent points, 3.1× the team average; 2 Do issues overdue".',
+    }),
+  }),
 });
 
 const QuadrantRulesRef = builder.objectRef<QuadrantRules>("QuadrantRules").implement({
@@ -243,6 +345,29 @@ UserRef.implement({
         return teamMatrix(context, teamId, (byAssignee) => byAssignee.get(user.id));
       },
     }),
+    weather: t.field({
+      type: WeatherRef,
+      description: "Their urgent load in a team now, against the team's average.",
+      args: {
+        teamId: t.arg.id({
+          description: "Defaults to the team this user was reached through, e.g. Team.people.",
+        }),
+        metric: t.arg({
+          type: LoadMetricEnum,
+          description: "Defaults to the team's loadMetric.",
+        }),
+      },
+      resolve: async (user, args, context) => {
+        const teamId = args.teamId == null ? user.teamId : String(args.teamId);
+        if (!teamId) throw new GraphQLError("Which team? Pass teamId.");
+        const weather = await teamWeatherOf(context, teamId, args.metric);
+        const theirs = weather.byPerson.get(user.id);
+        if (theirs) return theirs;
+        // Not on the team and holding none of its issues: measured against it all the same.
+        const matrix = await teamMatrix(context, teamId, (byAssignee) => byAssignee.get(user.id));
+        return personWeather(matrix, weather.metric, context.today, weather.team.teamAverage);
+      },
+    }),
   }),
 });
 
@@ -270,6 +395,22 @@ TeamRef.implement({
       description: "The team's open issues nobody is assigned to.",
       resolve: (team, _args, context) =>
         teamMatrix(context, team.id, (byAssignee) => byAssignee.get(null)),
+    }),
+    loadMetric: t.field({
+      type: LoadMetricEnum,
+      description: "What weather counts load in by default: points if any open issue is estimated.",
+      resolve: async (team, _args, context) =>
+        loadMetricFor((await (await signedIn(context)).teamWork(team.id)).issues),
+    }),
+    weather: t.field({
+      type: WeatherRef,
+      description:
+        "How evenly urgent load is spread now: as stormy or rainy as the worst person; else sunny when everyone is around the average, cloudy when some have room while others carry it.",
+      args: {
+        metric: t.arg({ type: LoadMetricEnum, description: "Defaults to the team's loadMetric." }),
+      },
+      resolve: async (team, args, context) =>
+        (await teamWeatherOf(context, team.id, args.metric)).team,
     }),
   }),
 });

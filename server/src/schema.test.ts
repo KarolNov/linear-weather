@@ -145,6 +145,62 @@ describe("schema", () => {
     });
   });
 
+  it("gives each person their weather against the team's average, and the team its spread", async () => {
+    const { team } = await data<{
+      team: {
+        loadMetric: string;
+        weather: { kind: string; reason: string };
+        people: { name: string; weather: { kind: string; load: number | null; reason: string } }[];
+      };
+    }>(`{
+      team {
+        loadMetric
+        weather { kind reason }
+        people { name weather { kind load reason } }
+      }
+    }`);
+    // The Avengers estimate, so load is in points: (17 + 2 + 17 + 7 + 45 + 0) / 6, Thor left out.
+    expect(team.loadMetric).toBe("POINTS");
+    expect(Object.fromEntries(team.people.map((p) => [p.name, p.weather]))).toEqual({
+      "Bruce Banner": {
+        kind: "CLOUDY",
+        load: 17,
+        reason: "17 urgent points, 1.2× the team average",
+      },
+      "Clint Barton": { kind: "SUNNY", load: 2, reason: "2 urgent points, 0.1× the team average" },
+      "Natasha Romanoff": {
+        kind: "STORM",
+        load: 17,
+        reason: "17 urgent points, 1.2× the team average; 1 Do issue overdue",
+      },
+      "Steve Rogers": { kind: "SUNNY", load: 7, reason: "7 urgent points, 0.5× the team average" },
+      "Thor Odinson": { kind: "FOG", load: null, reason: "Nothing urgent, only undated work" },
+      "Tony Stark": {
+        kind: "STORM",
+        load: 45,
+        reason: "45 urgent points, 3.1× the team average; 3 Do issues overdue",
+      },
+      "Wanda Maximoff": { kind: "SUNNY", load: 0, reason: "Nothing urgent" },
+    });
+    expect(team.weather).toEqual({
+      kind: "STORM",
+      reason: "Natasha Romanoff and Tony Stark are in a storm",
+    });
+  });
+
+  it("counts weather in issues when asked", async () => {
+    const { team } = await data<{
+      team: { weather: { metric: string }; people: { name: string; weather: { load: number } }[] };
+    }>(`{
+      team {
+        weather(metric: ISSUES) { metric }
+        people { name weather(metric: ISSUES) { load } }
+      }
+    }`);
+    expect(team.weather.metric).toBe("ISSUES");
+    expect(team.people.find((p) => p.name === "Tony Stark")?.weather.load).toBe(11);
+  });
+
   it("is signed out without a session: no viewer, and an error for Linear data", async () => {
     const result = await run("{ viewer { name } teams { name } }", {}, { signedIn: false });
     expect(result.data).toEqual({ viewer: null, teams: null });

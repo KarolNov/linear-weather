@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { Avatar, Card } from "ui";
+import { Avatar, Card, type Weather as IconWeather, WeatherIcon, weatherLabels } from "ui";
 import { colors, fonts, media, motion, radii, space } from "ui/tokens.stylex";
 import {
   type CalendarDate,
@@ -8,6 +8,7 @@ import {
   type PersonMatrix as Person,
   QUADRANTS,
   type Quadrant,
+  type WeatherKind,
 } from "./board";
 import { IssueCard } from "./IssueCard";
 import { entrance } from "./motion";
@@ -27,7 +28,7 @@ export interface PersonMatrixProps {
  * Picking a quadrant opens the list narrowed to it; picking it again shows every quadrant.
  */
 export function PersonMatrix({
-  person: { assignee, matrix },
+  person: { assignee, matrix, weather },
   today,
   expanded,
   onExpandedChange,
@@ -116,6 +117,15 @@ export function PersonMatrix({
             {total === 0 ? "Nothing open" : `${total} open ${total === 1 ? "issue" : "issues"}`}
           </span>
         </div>
+        {weather && (
+          <span title={weather.reason} {...stylex.props(styles.weather)}>
+            <WeatherIcon
+              weather={ICON[weather.kind]}
+              size={36}
+              label={`${weatherLabels[ICON[weather.kind]]}: ${weather.reason}`}
+            />
+          </span>
+        )}
       </header>
 
       <div {...stylex.props(styles.grid)}>
@@ -224,6 +234,14 @@ export function PersonMatrix({
   );
 }
 
+const ICON: Record<WeatherKind, IconWeather> = {
+  SUNNY: "sun",
+  CLOUDY: "partly",
+  RAIN: "rain",
+  STORM: "storm",
+  FOG: "fog",
+};
+
 // Opening a list is frequent, so the stagger is tight and stops after a few cards: a long list
 // shouldn't keep the PM waiting for its tail.
 const CARD_STEP_MS = 20;
@@ -256,6 +274,7 @@ const styles = stylex.create({
     fontWeight: 700,
   },
   who: { display: "flex", flexDirection: "column", minWidth: 0 },
+  weather: { display: "inline-flex", flexShrink: 0, marginInlineStart: "auto" },
   name: {
     fontFamily: fonts.display,
     fontSize: "1.0625rem",

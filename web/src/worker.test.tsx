@@ -63,6 +63,7 @@ const defaultRules: Rules = { importantFrom: 3, urgencyWindowDays: 14, noDueDate
 const defaultTeam: BoardData["team"] = {
   ...avengers,
   rules: defaultRules,
+  weather: { kind: "STORM", reason: "Tony Stark is in a storm" },
   people: [
     {
       ...tony,
@@ -148,6 +149,15 @@ describe("web worker", () => {
     expect(page).toContain("No date");
   });
 
+  it("shows the team's weather and why, and lets it set the sky and the browser's chrome", async () => {
+    const { bindings } = serverReturning(fury);
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain('aria-label="Team weather: Storm."');
+    expect(page).toContain("Tony Stark is in a storm");
+    expect(page).toContain('data-weather="storm"');
+    expect(page).toContain('<meta name="theme-color" content="#2a2843" />');
+  });
+
   it("marks issues placed by hand, saying where the rules would put them", async () => {
     const reason = "Placed by hand; the rules say Drop (Low priority, no due date)";
     const pinned = {
@@ -197,6 +207,7 @@ describe("web worker", () => {
     const quiet = {
       ...avengers,
       rules: defaultRules,
+      weather: { kind: "SUNNY" as const, reason: "Nothing urgent anywhere" },
       people: [
         {
           ...tony,

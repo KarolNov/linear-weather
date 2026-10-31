@@ -72,6 +72,18 @@ describe("board client", () => {
     expect(await next).toEqual({ ok: true, team });
   });
 
+  it("asks for the team's weather back with each answer, so the sky can follow a change", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json({ data: { overrideQuadrant: { __typename: "OverrideSuccess", team } } }),
+    );
+    await boardClient(false, fetch).placeIssue("i-1", "do");
+    await boardClient(false, fetch).updateRules("t-avg", rules);
+    for (const call of fetch.mock.calls) {
+      // The team's own weather, not only each person's.
+      expect(sent(call).query).toContain("\n  weather { kind reason }\n");
+    }
+  });
+
   it("hands back what the server said was wrong, field by field", async () => {
     const problems = [{ field: "urgencyWindowDays", message: "1 to 365 whole days." }];
     const fetch = vi.fn(async () =>

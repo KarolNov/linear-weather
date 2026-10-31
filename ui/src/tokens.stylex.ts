@@ -1,8 +1,8 @@
 import * as stylex from "@stylexjs/stylex";
 
-// The palette is a sky: a sunset for the sign-in page, a soft dawn behind the board, and one
-// colour per kind of weather. Quadrant colours reuse the weather ones so the board reads the
-// same way the forecast does: Do is a storm warning, Drop is fog.
+// The palette is a sky: a sunset for the sign-in page, a dawn behind the board that turns with
+// the team's weather, and one colour per kind of weather. Quadrant colours reuse the weather ones
+// so the board reads the same way the forecast does: Do is a storm warning, Drop is fog.
 
 export const colors = stylex.defineVars({
   ink: "#1d1a33",
@@ -34,6 +34,13 @@ export const gradients = stylex.defineVars({
   sunset:
     "linear-gradient(180deg, #1f1747 0%, #46246b 28%, #9b3c78 52%, #e8665a 72%, #ffb35c 90%, #ffd98a 100%)",
   dawn: "linear-gradient(180deg, #cfe2ff 0%, #e9e4ff 45%, #ffe6d6 80%, #fff3e4 100%)",
+  // The board's skies, one per team weather. Rain and fog stay light enough for ink on top;
+  // the storm is dark, so text on it turns light. Each one's top colour is `skyTops`'.
+  sunny:
+    "radial-gradient(60vmax 40vmax at 85% 0%, rgba(255, 214, 130, 0.55), transparent 70%), linear-gradient(180deg, #b9d8ff 0%, #dcebff 45%, #fff0dc 85%, #fff6e8 100%)",
+  rain: "linear-gradient(180deg, #8e9ab3 0%, #a9b3c7 40%, #c7cdd9 80%, #d8dce4 100%)",
+  storm: "linear-gradient(180deg, #2a2843 0%, #3d3a5a 40%, #565271 80%, #67637f 100%)",
+  fog: "linear-gradient(180deg, #d3d6df 0%, #dfe1e7 45%, #e9e9ec 80%, #efeeef 100%)",
   accent: "linear-gradient(135deg, #ffb35c 0%, #ff7a45 55%, #e8507a 100%)",
 });
 

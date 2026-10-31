@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { Avatar, Card, type Weather as IconWeather, WeatherIcon, weatherLabels } from "ui";
+import { Avatar, Card, WeatherIcon, weatherLabels } from "ui";
 import { colors, fonts, media, motion, radii, space } from "ui/tokens.stylex";
 import {
   type BoardIssue,
@@ -9,11 +9,11 @@ import {
   type PersonMatrix as Person,
   QUADRANTS,
   type Quadrant,
-  type WeatherKind,
 } from "./board";
 import { IssueCard } from "./IssueCard";
 import { entrance } from "./motion";
 import { quadrantFill, quadrantInfo } from "./quadrants";
+import { weatherIcon } from "./weather";
 
 export interface PersonMatrixProps {
   person: Person;
@@ -130,9 +130,9 @@ export function PersonMatrix({
         {weather && (
           <span title={weather.reason} {...stylex.props(styles.weather)}>
             <WeatherIcon
-              weather={ICON[weather.kind]}
+              weather={weatherIcon[weather.kind]}
               size={36}
-              label={`${weatherLabels[ICON[weather.kind]]}: ${weather.reason}`}
+              label={`${weatherLabels[weatherIcon[weather.kind]]}: ${weather.reason}`}
             />
           </span>
         )}
@@ -245,14 +245,6 @@ export function PersonMatrix({
     </Card>
   );
 }
-
-const ICON: Record<WeatherKind, IconWeather> = {
-  SUNNY: "sun",
-  CLOUDY: "partly",
-  RAIN: "rain",
-  STORM: "storm",
-  FOG: "fog",
-};
 
 // Opening a list is frequent, so the stagger is tight and stops after a few cards: a long list
 // shouldn't keep the PM waiting for its tail.

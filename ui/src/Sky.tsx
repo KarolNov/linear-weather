@@ -1,17 +1,37 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren } from "preact";
+import { useEffect, useRef } from "preact/hooks";
+import type { Rain } from "./rain";
 import { colors, fonts, gradients } from "./tokens.stylex";
+import type { Weather } from "./WeatherIcon";
 
 export interface SkyProps {
   /** "sunset" for the sign-in page, "dawn" (calmer, lighter) behind the board. */
   time?: "sunset" | "dawn";
+  /**
+   * The weather the dawn sky shows: clear for sun, more clouds for partly cloudy, grey with rain,
+   * dark with lightning for a storm, hazy for fog. A change eases from one sky to the next.
+   */
+  weather?: Weather;
   children: ComponentChildren;
 }
+
+/** The top of each dawn sky, for browser chrome that should match it. */
+export const skyTops: Record<Weather, string> = {
+  sun: "#b9d8ff",
+  partly: "#cfe2ff",
+  rain: "#8e9ab3",
+  storm: "#2a2843",
+  fog: "#d3d6df",
+};
+
+const WEATHERS: Weather[] = ["sun", "partly", "rain", "storm", "fog"];
 
 type Depth = "far" | "mid" | "near";
 
 // Spread across the sky by negative delays, so the page opens mid-drift. Nearer clouds are
-// bigger, sharper and faster, which gives the sky some depth.
+// bigger, sharper and faster, which gives the sky some depth. A clear sky keeps only the
+// first; the rest fade in as the weather turns.
 const clouds: { top: string; width: string; seconds: number; offset: number; depth: Depth }[] = [
   { top: "6%", width: "clamp(180px, 22vw, 340px)", seconds: 150, offset: 0.2, depth: "far" },
   { top: "30%", width: "clamp(140px, 16vw, 260px)", seconds: 170, offset: 0.65, depth: "far" },
@@ -21,35 +41,138 @@ const clouds: { top: string; width: string; seconds: number; offset: number; dep
 ];
 
 /** A full-page sky with clouds drifting across it behind its content. */
-export function Sky({ time = "sunset", children }: SkyProps) {
-  const sunset = time === "sunset";
+export function Sky({ time = "sunset", weather = "partly", children }: SkyProps) {
+  if (time === "sunset") return <SunsetSky>{children}</SunsetSky>;
+  const wet = weather === "rain" || weather === "storm";
+  const tint = weather === "storm" ? styles.bodyStorm : weather === "rain" ? styles.bodyRain : null;
+  const rainCanvas = useRain(wet ? (weather === "storm" ? "storm" : "rain") : null);
   return (
-    <div {...stylex.props(styles.sky, sunset ? styles.sunset : styles.dawn)}>
-      <div aria-hidden="true" {...stylex.props(styles.scenery, !sunset && styles.pinned)}>
+    <div
+      data-weather={weather}
+      {...stylex.props(styles.sky, styles.dawn, weather === "storm" && styles.inkOnStorm)}
+    >
+      <div aria-hidden="true" {...stylex.props(styles.scenery, styles.pinned)}>
         <CloudFilter />
-        {sunset && <div {...stylex.props(styles.stars)} />}
-        {clouds.map((cloud) => (
-          <div
-            key={cloud.top}
-            {...stylex.props(
-              styles.travel,
-              styles.place(cloud.top, cloud.width, cloud.seconds, -cloud.seconds * cloud.offset),
-            )}
-          >
-            <div {...stylex.props(styles.billow, styles[cloud.depth])}>
-              <div {...stylex.props(styles.body, sunset ? styles.bodyDusk : styles.bodyDay)}>
-                <div {...stylex.props(styles.puff, styles.puffLeft)} />
-                <div {...stylex.props(styles.puff, styles.puffTop)} />
-                <div {...stylex.props(styles.puff, styles.puffRight)} />
-                <div {...stylex.props(styles.base)} />
-              </div>
-              <div {...stylex.props(styles.underside, sunset ? styles.lit : styles.shaded)} />
-            </div>
-          </div>
+        {/* Every sky is there, and only the weather's shows, so a change can cross-fade. */}
+        {WEATHERS.map((w) => (
+          <div key={w} {...stylex.props(styles.layer, skies[w], w !== weather && styles.hidden)} />
         ))}
-        {sunset && <div {...stylex.props(styles.haze)} />}
+        {clouds.map((cloud, i) => (
+          <Cloud
+            key={cloud.top}
+            cloud={cloud}
+            tint={tint}
+            hidden={weather === "sun" && i > 0}
+            body={styles.bodyDay}
+            underside={weather === "storm" ? styles.shadedStorm : styles.shaded}
+          />
+        ))}
+        <div {...stylex.props(styles.layer, styles.motion, !wet && styles.hidden)}>
+          <canvas ref={rainCanvas} {...stylex.props(styles.rain)} />
+        </div>
+        <div {...stylex.props(styles.layer, styles.motion, weather !== "storm" && styles.hidden)}>
+          <div {...stylex.props(styles.lightning)} />
+        </div>
+        <div {...stylex.props(styles.layer, styles.fogHaze, weather !== "fog" && styles.hidden)}>
+          <div {...stylex.props(styles.mist, styles.mistHigh)} />
+          <div {...stylex.props(styles.mist, styles.mistLow)} />
+        </div>
       </div>
       <div {...stylex.props(styles.content)}>{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Rain on the returned canvas while `intensity` is set. The drawing code loads only then, after
+ * the page is up, so a dry sky never fetches it; until it arrives the grey sky says rain alone.
+ * Nothing loads with reduced motion. Easing off, it keeps falling while its layer fades out.
+ */
+function useRain(intensity: "rain" | "storm" | null) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const rain = useRef<Rain | null>(null);
+  useEffect(() => {
+    if (!intensity) {
+      if (!rain.current) return;
+      // Turning wet again before the fade ends clears this, and the same rain carries on.
+      const timer = setTimeout(() => {
+        rain.current?.stop();
+        rain.current = null;
+      }, TURN_MS);
+      return () => clearTimeout(timer);
+    }
+    if (rain.current) {
+      rain.current.setIntensity(intensity);
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let cancelled = false;
+    import("./rain").then(({ startRain }) => {
+      if (cancelled || !canvas.current) return;
+      rain.current = startRain(canvas.current, intensity);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [intensity]);
+  // Off the page entirely, say signing out mid-storm: stop at once.
+  useEffect(() => () => rain.current?.stop(), []);
+  return canvas;
+}
+
+function SunsetSky({ children }: { children: ComponentChildren }) {
+  return (
+    <div {...stylex.props(styles.sky, styles.sunset)}>
+      <div aria-hidden="true" {...stylex.props(styles.scenery)}>
+        <CloudFilter />
+        <div {...stylex.props(styles.stars)} />
+        {clouds.map((cloud) => (
+          <Cloud
+            key={cloud.top}
+            cloud={cloud}
+            tint={null}
+            hidden={false}
+            body={styles.bodyDusk}
+            underside={styles.lit}
+          />
+        ))}
+        <div {...stylex.props(styles.haze)} />
+      </div>
+      <div {...stylex.props(styles.content)}>{children}</div>
+    </div>
+  );
+}
+
+function Cloud({
+  cloud,
+  tint,
+  hidden,
+  body,
+  underside,
+}: {
+  cloud: (typeof clouds)[number];
+  tint: stylex.StyleXStyles | null;
+  hidden: boolean;
+  body: stylex.StyleXStyles;
+  underside: stylex.StyleXStyles;
+}) {
+  return (
+    <div
+      {...stylex.props(
+        styles.travel,
+        styles.place(cloud.top, cloud.width, cloud.seconds, -cloud.seconds * cloud.offset),
+        hidden && styles.hidden,
+      )}
+    >
+      <div {...stylex.props(styles.billow, styles[cloud.depth])}>
+        <div {...stylex.props(styles.body, body, tint)}>
+          <div {...stylex.props(styles.puff, styles.puffLeft)} />
+          <div {...stylex.props(styles.puff, styles.puffTop)} />
+          <div {...stylex.props(styles.puff, styles.puffRight)} />
+          <div {...stylex.props(styles.base)} />
+        </div>
+        <div {...stylex.props(styles.underside, underside)} />
+      </div>
     </div>
   );
 }
@@ -89,7 +212,31 @@ const twinkle = stylex.keyframes({
   "50%": { opacity: 0.9 },
 });
 
+// Rare and soft: a board the PM keeps open all day shouldn't strobe. Two quick flickers, then a
+// long quiet.
+const flash = stylex.keyframes({
+  "0%, 88%, 100%": { opacity: 0 },
+  "89%": { opacity: 0.22 },
+  "90%": { opacity: 0.04 },
+  "91.5%": { opacity: 0.16 },
+  "93%": { opacity: 0 },
+});
+
+// Wisps of mist: fractal noise stretched sideways, white where the noise is dense and clear
+// where it's thin. Stitched, so the tile repeats without a seam as it drifts.
+const MIST_TILE = 900;
+const mistTexture =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='450' preserveAspectRatio='none'%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0035 0.011' numOctaves='4' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 2.2 0 0 0 -0.75'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E\")";
+
+const drift = stylex.keyframes({
+  from: { transform: "translateX(0)" },
+  to: { transform: `translateX(-${MIST_TILE}px)` },
+});
+
 const REDUCED_MOTION = "@media (prefers-reduced-motion: reduce)";
+// Long enough to notice the sky turning, short enough that the board doesn't wait on it.
+const TURN_MS = 1600;
+const TURN = `${TURN_MS}ms`;
 
 const styles = stylex.create({
   sky: {
@@ -103,12 +250,85 @@ const styles = stylex.create({
     WebkitFontSmoothing: "antialiased",
   },
   sunset: { backgroundImage: gradients.sunset, color: colors.inkOnSky },
-  dawn: { backgroundImage: gradients.dawn, backgroundAttachment: "fixed", color: colors.ink },
+  // The weather's own layer paints the sky; this is what shows before the layers do.
+  dawn: {
+    backgroundImage: gradients.dawn,
+    backgroundAttachment: "fixed",
+    color: colors.ink,
+    transitionProperty: "color",
+    transitionDuration: TURN,
+  },
+  // Text straight on the storm turns light. Cards and controls bring their own surfaces.
+  inkOnStorm: { color: colors.inkOnSky },
   scenery: { position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none" },
-  // The board's height changes as issue lists open and shut. Pinned to the viewport like the
-  // gradient behind it, the clouds stay put instead of sliding with the page.
+  // The board's height changes as issue lists open and shut. Pinned to the viewport, the sky
+  // and its clouds stay put instead of sliding with the page.
   pinned: { position: "fixed" },
   content: { position: "relative" },
+
+  layer: {
+    position: "absolute",
+    inset: 0,
+    opacity: 1,
+    transitionProperty: "opacity, visibility",
+    transitionDuration: TURN,
+    transitionTimingFunction: "ease-in-out",
+  },
+  // Faded out, then out of the way, so hidden rain and lightning aren't painted.
+  hidden: { opacity: 0, visibility: "hidden" },
+  rain: { position: "absolute", inset: 0, width: "100%", height: "100%" },
+  lightning: {
+    position: "absolute",
+    inset: 0,
+    opacity: 0,
+    backgroundImage:
+      "radial-gradient(80vmax 50vmax at 30% 10%, rgba(236, 232, 255, 0.9), transparent 70%)",
+    animationName: flash,
+    animationDuration: "11s",
+    animationIterationCount: "infinite",
+  },
+  // Rain and lightning only move, so with reduced motion they aren't there at all.
+  motion: { display: { default: "block", [REDUCED_MOTION]: "none" } },
+  // Over the clouds, so they blur into it.
+  // Over the clouds, so they fade into it: a veil thickest near the ground, then wisps of
+  // mist drifting through it at two depths.
+  fogHaze: {
+    backgroundImage:
+      "linear-gradient(to top, rgba(239, 238, 240, 0.85), rgba(226, 228, 234, 0.55) 55%, rgba(214, 217, 225, 0.3))",
+  },
+  // Only transforms animate, so each texture is drawn once and slid on the GPU. With reduced
+  // motion the mist holds still.
+  mist: {
+    position: "absolute",
+    left: 0,
+    width: `calc(100% + ${MIST_TILE}px)`,
+    backgroundImage: mistTexture,
+    // Stretched to the layer's height and repeated only sideways: no seam across the sky.
+    backgroundSize: `${MIST_TILE}px 100%`,
+    backgroundRepeat: "repeat-x",
+    willChange: "transform",
+    animationName: drift,
+    animationTimingFunction: "linear",
+    animationIterationCount: "infinite",
+    animationPlayState: { default: "running", [REDUCED_MOTION]: "paused" },
+  },
+  // Far mist: high in the sky, fainter and slower.
+  mistHigh: {
+    top: 0,
+    height: "60%",
+    opacity: 0.55,
+    animationDuration: "160s",
+    maskImage: "linear-gradient(to bottom, transparent, #000 35%, #000 70%, transparent)",
+  },
+  // Near mist: low, thick and quicker. Started half a tile on, so it doesn't mirror the far one.
+  mistLow: {
+    bottom: 0,
+    height: "65%",
+    opacity: 0.9,
+    animationDuration: "90s",
+    animationDelay: "-45s",
+    maskImage: "linear-gradient(to top, #000 45%, transparent)",
+  },
 
   stars: {
     position: "absolute",
@@ -154,6 +374,9 @@ const styles = stylex.create({
     animationTimingFunction: "linear",
     animationIterationCount: "infinite",
     animationPlayState: { default: "running", [REDUCED_MOTION]: "paused" },
+    transitionProperty: "opacity, visibility",
+    transitionDuration: TURN,
+    transitionTimingFunction: "ease-in-out",
   },
   place: (top: string, width: string, seconds: number, delay: number) => ({
     top,
@@ -173,8 +396,16 @@ const styles = stylex.create({
   mid: { opacity: 0.72, filter: "blur(2px)", animationDuration: "15s" },
   near: { opacity: 0.88, animationDuration: "12s" },
 
-  body: { position: "absolute", inset: 0, filter: "url(#lw-cloud) blur(4px)" },
+  body: {
+    position: "absolute",
+    inset: 0,
+    filter: "url(#lw-cloud) blur(4px)",
+    transitionProperty: "color",
+    transitionDuration: TURN,
+  },
   bodyDay: { color: "rgba(255, 255, 255, 0.95)" },
+  bodyRain: { color: "rgba(214, 219, 231, 0.95)" },
+  bodyStorm: { color: "rgba(98, 94, 128, 0.95)" },
   // Lit from below by a sun that's already set: dusky on top, glowing at the base.
   bodyDusk: { color: "rgba(196, 140, 190, 0.75)" },
   puff: {
@@ -202,7 +433,18 @@ const styles = stylex.create({
     height: "30%",
     borderRadius: "50%",
     filter: "url(#lw-cloud-underside) blur(6px)",
+    transitionProperty: "background-color",
+    transitionDuration: TURN,
   },
   shaded: { backgroundColor: "rgba(150, 162, 196, 0.45)" },
+  shadedStorm: { backgroundColor: "rgba(30, 28, 50, 0.55)" },
   lit: { backgroundColor: "rgba(255, 176, 120, 0.7)" },
+});
+
+const skies = stylex.create({
+  sun: { backgroundImage: gradients.sunny },
+  partly: { backgroundImage: gradients.dawn },
+  rain: { backgroundImage: gradients.rain },
+  storm: { backgroundImage: gradients.storm },
+  fog: { backgroundImage: gradients.fog },
 });

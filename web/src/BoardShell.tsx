@@ -23,6 +23,7 @@ import {
   type Quadrant,
   type Rules,
   type TeamBoardData,
+  type Weather as TeamWeather,
   teamBoard,
   total,
   type Viewer,
@@ -33,6 +34,7 @@ import { PersonMatrix } from "./PersonMatrix";
 import { quadrantFill, quadrantInfo } from "./quadrants";
 import { RulesPanel } from "./RulesPanel";
 import { TeamPicker } from "./TeamPicker";
+import { weatherIcon } from "./weather";
 
 export interface BoardShellProps {
   viewer: Viewer;
@@ -45,8 +47,11 @@ export interface BoardShellProps {
 
 /** The signed-in board: pick a team, see each person's matrix. */
 export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps) {
+  // The team and its people as the last change left them. Each change answers with the whole
+  // team's board, so it's replaced rather than patched. Kept here because the sky follows it.
+  const [shown, setShown] = useState(() => board && { team: board.team, people: board.people });
   return (
-    <Sky time="dawn">
+    <Sky time="dawn" weather={shown?.team ? weatherIcon[shown.team.weather.kind] : undefined}>
       <header {...stylex.props(styles.header)}>
         <div {...stylex.props(styles.brand)}>
           <Logo compactOnPhones />
@@ -72,7 +77,11 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
       </header>
 
       <main {...stylex.props(styles.main)}>
-        {board ? <TeamBoard board={board} demo={demo} /> : <BoardUnavailable error={boardError} />}
+        {board && shown ? (
+          <TeamBoard board={board} shown={shown} onAnswer={setShown} demo={demo} />
+        ) : (
+          <BoardUnavailable error={boardError} />
+        )}
 
         <div {...stylex.props(styles.legends, entrance.board, entrance.delay(LEGEND_DELAY_MS))}>
           <Card as="section">
@@ -107,14 +116,20 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
   );
 }
 
-function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
-  const { teams, today } = board;
-  // The team and its people as the last change left them. Each change answers with the whole
-  // team's board, so it's replaced rather than patched.
-  const [{ team, people }, setTeamBoard] = useState(() => ({
-    team: board.team,
-    people: board.people,
-  }));
+type Shown = Pick<Board, "team" | "people">;
+
+function TeamBoard({
+  board: { teams, today },
+  shown: { team, people },
+  onAnswer,
+  demo,
+}: {
+  board: Board;
+  shown: Shown;
+  /** Shows a saved change's answer: the team's whole board. */
+  onAnswer: (answer: Shown) => void;
+  demo?: boolean;
+}) {
   const client = useMemo(() => boardClient(Boolean(demo)), [demo]);
   const [editingRules, setEditingRules] = useState(false);
   // Issues whose move hasn't answered yet.
@@ -154,7 +169,7 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
       setFailure("That's saved, but the board can't show it yet. Reload the page to see it.");
       return false;
     }
-    setTeamBoard(teamBoard(answer));
+    onAnswer(teamBoard(answer));
     return true;
   };
   const place = async (issue: BoardIssue, to: Quadrant | null) => {
@@ -209,11 +224,12 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
           <h1 id="team-name" {...stylex.props(styles.title)}>
             {team.name}
           </h1>
-          <p {...stylex.props(styles.muted)}>
+          <p {...stylex.props(styles.subtitle)}>
             {withIssues.length === 0
               ? "Nobody on this team has open issues."
               : "Open issues by person, soonest due first."}
           </p>
+          <TeamForecast weather={team.weather} />
         </div>
         <div {...stylex.props(styles.controls)}>
           {withIssues.length > 0 && (
@@ -283,6 +299,17 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
   );
 }
 
+/** The team's weather now and why, on a chip of its own so it reads on every sky. */
+function TeamForecast({ weather }: { weather: TeamWeather }) {
+  const icon = weatherIcon[weather.kind];
+  return (
+    <p {...stylex.props(styles.forecast)}>
+      <WeatherIcon weather={icon} size={28} label={`Team weather: ${weatherLabels[icon]}.`} />
+      <span>{weather.reason}</span>
+    </p>
+  );
+}
+
 function BoardUnavailable({ error }: { error?: BoardError }) {
   const resetAt = error?.kind === "rate_limited" && error.resetAt ? new Date(error.resetAt) : null;
   return (
@@ -326,6 +353,8 @@ const styles = stylex.create({
     gap: space.sm,
     paddingBlock: space.sm,
     paddingInline: { default: space.md, "@media (min-width: 768px)": space.xl },
+    // Set here, not inherited: the storm sky turns text on it light, and this bar stays light.
+    color: colors.ink,
     backgroundColor: "rgba(255, 255, 255, 0.55)",
     backdropFilter: "blur(16px) saturate(1.4)",
     borderBottom: `1px solid ${colors.border}`,
@@ -362,6 +391,25 @@ const styles = stylex.create({
     lineHeight: 1.1,
   },
   lead: { maxWidth: "40rem", fontSize: "1.0625rem", lineHeight: 1.55, color: colors.inkMuted },
+  // Straight on the sky, so muted by fading whatever colour the sky gives text.
+  subtitle: { opacity: 0.8 },
+  forecast: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: space.xs,
+    marginTop: space.sm,
+    paddingBlock: space.xxs,
+    paddingInlineStart: space.xxs,
+    paddingInlineEnd: space.md,
+    borderRadius: radii.pill,
+    color: colors.ink,
+    backgroundColor: colors.surface,
+    border: `1px solid ${colors.border}`,
+    backdropFilter: "blur(16px)",
+    fontSize: "0.9375rem",
+    fontWeight: 600,
+    lineHeight: 1.3,
+  },
   board: { display: "flex", flexDirection: "column", gap: space.lg },
   boardHeader: {
     display: "flex",

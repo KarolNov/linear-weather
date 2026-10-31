@@ -233,6 +233,90 @@ describe("schema", () => {
     });
   });
 
+  it("forecasts each person's weather week by week, and the team's worst week", async () => {
+    type Week = {
+      startsOn: string;
+      weather: { kind: string; load: number | null };
+      summary: string;
+      turningUrgent: { identifier: string }[];
+    };
+    const { team } = await data<{
+      team: {
+        forecast: { weeks: { weather: { kind: string } }[]; worst: { startsOn: string } };
+        people: { name: string; forecast: Week[] }[];
+      };
+    }>(`{
+      team {
+        forecast { weeks { weather { kind } } worst { startsOn } }
+        people {
+          name
+          forecast { startsOn weather { kind load } summary turningUrgent { identifier } }
+        }
+      }
+    }`);
+    const byName = Object.fromEntries(team.people.map((p) => [p.name, p.forecast]));
+    const bruce = byName["Bruce Banner"] ?? [];
+    expect(bruce.map((w) => w.startsOn)).toEqual([
+      "2026-10-18",
+      "2026-10-25",
+      "2026-11-01",
+      "2026-11-08",
+    ]);
+    // Three more turn urgent this week, then his work comes due and leaves.
+    expect(bruce.map((w) => [w.weather.kind, w.weather.load])).toEqual([
+      ["STORM", 9],
+      ["STORM", 5],
+      ["RAIN", 3],
+      ["SUNNY", 0],
+    ]);
+    expect(bruce[0]?.turningUrgent.map((i) => i.identifier)).toEqual([
+      "AVG-31",
+      "AVG-32",
+      "AVG-33",
+    ]);
+    expect(bruce[0]?.summary).toBe(
+      "1 Urgent-priority issue, 1 High-priority issue and 1 Medium-priority issue become urgent",
+    );
+    // Clint's one dated issue comes due; what's left has no date.
+    expect(byName["Clint Barton"]?.map((w) => w.weather.kind)).toEqual([
+      "SUNNY",
+      "FOG",
+      "FOG",
+      "FOG",
+    ]);
+    expect(team.forecast.weeks.map((w) => w.weather.kind)).toEqual([
+      "STORM",
+      "STORM",
+      "STORM",
+      "STORM",
+    ]);
+    expect(team.forecast.worst.startsOn).toBe("2026-10-18");
+  });
+
+  it("forecasts as far ahead as asked, within limits", async () => {
+    const { team } = await data<{ team: { people: { forecast: unknown[] }[] } }>(
+      "{ team { people { forecast(weeks: 2) { startsOn } } } }",
+    );
+    expect(team.people[0]?.forecast).toHaveLength(2);
+    const result = await run("{ team { forecast(weeks: 13) { worst { startsOn } } } }");
+    expect(result.errors?.map((e) => [e.message, e.extensions])).toEqual([
+      ["A forecast covers 1 to 12 weeks.", { code: "BAD_USER_INPUT" }],
+    ]);
+  });
+
+  it("forecasts fog for someone outside the team", async () => {
+    const { team } = await data<{
+      team: { people: { name: string; forecast: { weather: { kind: string } }[] }[] };
+    }>(
+      `query ($ops: ID) { team { people { name forecast(teamId: $ops) { weather { kind } } } } }`,
+      {
+        ops: DEMO_OPS_TEAM.id,
+      },
+    );
+    const wanda = team.people.find((p) => p.name === "Wanda Maximoff");
+    expect(wanda?.forecast.map((w) => w.weather.kind)).toEqual(["FOG", "FOG", "FOG", "FOG"]);
+  });
+
   it("is signed out without a session: no viewer, and an error for Linear data", async () => {
     const result = await run("{ viewer { name } teams { name } }", {}, { signedIn: false });
     expect(result.data).toEqual({ viewer: null, teams: null });

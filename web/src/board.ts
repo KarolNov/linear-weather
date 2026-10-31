@@ -53,6 +53,16 @@ export interface Weather {
   reason: string;
 }
 
+/** One week ahead: the weather expected by its end, and what turns urgent during it. */
+export interface ForecastWeek {
+  /** Today for the first week, then every 7 days. */
+  startsOn: CalendarDate;
+  weather: Weather;
+  /** E.g. "3 High-priority issues become urgent". */
+  summary: string;
+  turningUrgent: { identifier: string }[];
+}
+
 /** Issues by quadrant, each most pressing first. */
 export type Matrix = Record<Quadrant, BoardIssue[]> & { counts: Record<Quadrant, number> };
 
@@ -74,6 +84,8 @@ export interface PersonMatrix {
   matrix: Matrix;
   /** Null for the unassigned issues: nobody's load. */
   weather: Weather | null;
+  /** The weeks ahead, this one first. Null for the unassigned issues. */
+  forecast: ForecastWeek[] | null;
 }
 
 export interface Board {
@@ -105,7 +117,14 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
   name
   key
   rules { importantFrom urgencyWindowDays noDueDate }
-  people { id name avatarUrl weather { kind reason } matrix { ${MATRIX_FIELDS} } }
+  people {
+    id
+    name
+    avatarUrl
+    weather { kind reason }
+    forecast { startsOn weather { kind reason } summary turningUrgent { identifier } }
+    matrix { ${MATRIX_FIELDS} }
+  }
   unassigned { ${MATRIX_FIELDS} }
 }
 
@@ -135,7 +154,7 @@ ${TEAM_BOARD_FRAGMENTS}`;
 /** A team as the TeamBoard fragment has it. */
 export type TeamBoardData = Team & {
   rules: Rules;
-  people: (Person & { matrix: Matrix; weather: Weather })[];
+  people: (Person & { matrix: Matrix; weather: Weather; forecast: ForecastWeek[] })[];
   unassigned: Matrix;
 };
 
@@ -153,12 +172,15 @@ export function teamBoard({
   unassigned,
   ...team
 }: TeamBoardData): Pick<Board, "team" | "people"> {
-  const matrices: PersonMatrix[] = people.map(({ matrix, weather, ...assignee }) => ({
+  const matrices: PersonMatrix[] = people.map(({ matrix, weather, forecast, ...assignee }) => ({
     assignee,
     matrix,
     weather,
+    forecast,
   }));
-  if (total(unassigned) > 0) matrices.push({ assignee: null, matrix: unassigned, weather: null });
+  if (total(unassigned) > 0) {
+    matrices.push({ assignee: null, matrix: unassigned, weather: null, forecast: null });
+  }
   return { team, people: matrices };
 }
 
@@ -197,4 +219,9 @@ export function describeDue(dueDate: CalendarDate, today: CalendarDate) {
           ? `in ${days} days`
           : `${-days} ${days === -1 ? "day" : "days"} late`;
   return { text: `${date} · ${relative}`, overdue: days < 0, today: days === 0 };
+}
+
+/** A forecast week as the strip labels it: "This week", then the date it starts, e.g. "Oct 25". */
+export function describeWeek(startsOn: CalendarDate, today: CalendarDate): string {
+  return startsOn === today ? "This week" : shortDate.format(Date.parse(startsOn));
 }

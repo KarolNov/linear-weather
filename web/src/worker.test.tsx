@@ -68,6 +68,20 @@ const defaultTeam: BoardData["team"] = {
       ...tony,
       matrix: tonysMatrix,
       weather: { kind: "STORM" as const, reason: "4 urgent points" },
+      forecast: [
+        {
+          startsOn: "2026-10-18",
+          weather: { kind: "STORM" as const, reason: "4 urgent points" },
+          summary: "Nothing new turns urgent",
+          turningUrgent: [],
+        },
+        {
+          startsOn: "2026-10-25",
+          weather: { kind: "RAIN" as const, reason: "5 urgent points" },
+          summary: "1 High-priority issue becomes urgent",
+          turningUrgent: [{ identifier: "AVG-7" }],
+        },
+      ],
     },
   ],
   unassigned,
@@ -161,6 +175,7 @@ describe("web worker", () => {
             do: [issue({ quadrantSource: "OVERRIDE", placementReason: reason })],
           },
           weather: { kind: "CLOUDY" as const, reason: "1 urgent issue" },
+          forecast: [],
         },
       ],
       unassigned: emptyMatrix,
@@ -173,6 +188,16 @@ describe("web worker", () => {
     expect(page).toContain(`title="${reason}"`);
     expect(page).toContain("Move AVG-1");
     expect(page).toContain("Sorting rules");
+  });
+
+  it("shows each person's forecast, saying what turns urgent each week", async () => {
+    const { bindings } = serverReturning(fury);
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain(`aria-label="Tony Stark's forecast"`);
+    expect(page).toContain("This week: Storm. 4 urgent points.");
+    expect(page).toContain(
+      "Oct 25: Rain. 5 urgent points. 1 High-priority issue becomes urgent: AVG-7.",
+    );
   });
 
   it("doesn't mark issues the rules placed", async () => {
@@ -202,6 +227,7 @@ describe("web worker", () => {
           ...tony,
           matrix: emptyMatrix,
           weather: { kind: "SUNNY" as const, reason: "Nothing urgent" },
+          forecast: [],
         },
       ],
       unassigned: emptyMatrix,

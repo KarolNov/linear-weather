@@ -6,6 +6,8 @@ import {
   type BoardIssue,
   type CalendarDate,
   total as countIssues,
+  describeWeek,
+  type ForecastWeek,
   type PersonMatrix as Person,
   QUADRANTS,
   type Quadrant,
@@ -33,7 +35,7 @@ export interface PersonMatrixProps {
  * Picking a quadrant opens the list narrowed to it; picking it again shows every quadrant.
  */
 export function PersonMatrix({
-  person: { assignee, matrix, weather },
+  person: { assignee, matrix, weather, forecast },
   today,
   expanded,
   onExpandedChange,
@@ -137,6 +139,8 @@ export function PersonMatrix({
           </span>
         )}
       </header>
+
+      {forecast && <Forecast name={name} weeks={forecast} today={today} />}
 
       <div {...stylex.props(styles.grid)}>
         {QUADRANTS.map((q) => {
@@ -246,6 +250,36 @@ export function PersonMatrix({
   );
 }
 
+/** The weeks ahead as a strip of small icons, each explained on hover and to screen readers. */
+function Forecast({
+  name,
+  weeks,
+  today,
+}: {
+  name: string;
+  weeks: ForecastWeek[];
+  today: CalendarDate;
+}) {
+  return (
+    <ol aria-label={`${name}'s forecast`} {...stylex.props(styles.forecast)}>
+      {weeks.map(({ startsOn, weather, summary, turningUrgent }) => {
+        const when = describeWeek(startsOn, today);
+        const which = turningUrgent.map((issue) => issue.identifier).join(", ");
+        const news = turningUrgent.length === 0 ? "" : ` ${summary}: ${which}.`;
+        const explained = `${when}: ${weatherLabels[ICON[weather.kind]]}. ${weather.reason}.${news}`;
+        return (
+          <li key={startsOn} title={explained} {...stylex.props(styles.week)}>
+            <WeatherIcon weather={ICON[weather.kind]} size={22} label={explained} />
+            <span aria-hidden="true" {...stylex.props(styles.weekLabel)}>
+              {when}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 const ICON: Record<WeatherKind, IconWeather> = {
   SUNNY: "sun",
   CLOUDY: "partly",
@@ -291,6 +325,17 @@ const styles = stylex.create({
   },
   who: { display: "flex", flexDirection: "column", minWidth: 0 },
   weather: { display: "inline-flex", flexShrink: 0, marginInlineStart: "auto" },
+  forecast: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(0, 1fr))",
+    gridAutoFlow: "column",
+    gap: space.xs,
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  week: { display: "flex", flexDirection: "column", alignItems: "center", gap: "2px", minWidth: 0 },
+  weekLabel: { fontSize: "0.6875rem", color: colors.inkMuted, whiteSpace: "nowrap" },
   name: {
     fontFamily: fonts.display,
     fontSize: "1.0625rem",

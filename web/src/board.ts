@@ -35,7 +35,12 @@ export interface BoardIssue {
   priority: number;
   estimate: number | null;
   state: { name: string };
-  /** Why it's in its quadrant, e.g. "High priority, due in 3 days". */
+  /** Placed by the team's rules, or by hand (and then it stays put whatever the rules say). */
+  quadrantSource: "RULE" | "OVERRIDE";
+  /**
+   * Why it's in its quadrant, e.g. "High priority, due in 3 days". Placed by hand, it says where
+   * the rules would put it.
+   */
   placementReason: string;
 }
 
@@ -51,6 +56,18 @@ export interface Weather {
 /** Issues by quadrant, each most pressing first. */
 export type Matrix = Record<Quadrant, BoardIssue[]> & { counts: Record<Quadrant, number> };
 
+/** How a team sorts issues into quadrants. */
+export interface Rules {
+  /** Lowest Linear priority that still counts as important: 1 Urgent … 4 Low. */
+  importantFrom: number;
+  /** Urgent when due in fewer than this many days, or overdue. */
+  urgencyWindowDays: number;
+  noDueDate: "URGENT" | "NOT_URGENT";
+}
+
+/** The longest urgency window the server accepts (`MAX_URGENCY_WINDOW_DAYS`). */
+export const MAX_URGENCY_WINDOW_DAYS = 365;
+
 export interface PersonMatrix {
   /** Null for the team's unassigned issues. */
   assignee: Person | null;
@@ -62,8 +79,8 @@ export interface PersonMatrix {
 export interface Board {
   today: CalendarDate;
   teams: Team[];
-  /** The team asked for, else the viewer's default. Null when there are no teams. */
-  team: Team | null;
+  /** The team asked for, else the viewer's default, with its rules. Null when there are no teams. */
+  team: (Team & { rules: Rules }) | null;
   /** The team's people, then its unassigned issues if it has any. */
   people: PersonMatrix[];
 }
@@ -79,18 +96,17 @@ const MATRIX_FIELDS = `
   drop { ...BoardIssue }
 `;
 
-/** Who is signed in and their board, in one request. `$teamId` falls back to their team. */
-export const BOARD_QUERY = `query Board($teamId: ID) {
-  today
-  viewer { name avatarUrl organization { name } }
-  teams { id name key }
-  team(id: $teamId) {
-    id
-    name
-    key
-    people { id name avatarUrl weather { kind reason } matrix { ${MATRIX_FIELDS} } }
-    unassigned { ${MATRIX_FIELDS} }
-  }
+/**
+ * One team's part of the board. The page loads it, and every mutation asks for it back, so the
+ * board can redraw from the answer.
+ */
+export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
+  id
+  name
+  key
+  rules { importantFrom urgencyWindowDays noDueDate }
+  people { id name avatarUrl weather { kind reason } matrix { ${MATRIX_FIELDS} } }
+  unassigned { ${MATRIX_FIELDS} }
 }
 
 fragment BoardIssue on Issue {
@@ -102,17 +118,48 @@ fragment BoardIssue on Issue {
   priority
   estimate
   state { name }
+  quadrantSource
   placementReason
 }`;
+
+/** Who is signed in and their board, in one request. `$teamId` falls back to their team. */
+export const BOARD_QUERY = `query Board($teamId: ID) {
+  today
+  viewer { name avatarUrl organization { name } }
+  teams { id name key }
+  team(id: $teamId) { ...TeamBoard }
+}
+
+${TEAM_BOARD_FRAGMENTS}`;
+
+/** A team as the TeamBoard fragment has it. */
+export type TeamBoardData = Team & {
+  rules: Rules;
+  people: (Person & { matrix: Matrix; weather: Weather })[];
+  unassigned: Matrix;
+};
 
 /** BOARD_QUERY's `data`. */
 export interface BoardData {
   today: CalendarDate;
   viewer: Viewer | null;
   teams: Team[] | null;
-  team:
-    | (Team & { people: (Person & { matrix: Matrix; weather: Weather })[]; unassigned: Matrix })
-    | null;
+  team: TeamBoardData | null;
+}
+
+/** The board's team and people from the TeamBoard fragment. Unassigned issues come last, if any. */
+export function teamBoard({
+  people,
+  unassigned,
+  ...team
+}: TeamBoardData): Pick<Board, "team" | "people"> {
+  const matrices: PersonMatrix[] = people.map(({ matrix, weather, ...assignee }) => ({
+    assignee,
+    matrix,
+    weather,
+  }));
+  if (total(unassigned) > 0) matrices.push({ assignee: null, matrix: unassigned, weather: null });
+  return { team, people: matrices };
 }
 
 /** The number of issues in a matrix. */

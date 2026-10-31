@@ -123,7 +123,7 @@ Each mutation answers with a union: what it did, or one of the failures a client
 - **The demo's changes stay in the visitor's browser.** Anyone can open `?demo=true`, so its mutations never reach D1: rules and overrides go in a compact `lw_demo` cookie (`server/src/db/demo-store.ts`, format in `demo-cookie.ts`), which every `?demo=true` request reads and any that changes something sets again. A cookie rather than localStorage, because the board renders on the server. The client still calls `/graphql?demo=true`, and sends mutations one at a time, since two in flight start from the same cookie and the last response wins. Clearing site data resets the demo.
 - **Derived fields follow on their own.** A success hands back the team (and, for overrides, the issue), and everything on them is derived when read. After `updateQuadrantRules`, `team { people { matrix { counts } } }` in the same response is already sorted by the new rules, with no code written for it. Writes go through the request's `Placements`, so nothing later in the response reads what was cached before.
 
-The web Worker loads a page with one query (`BOARD_QUERY` in `web/src/board.ts`), and a server test runs that exact query against the schema so the two can't drift apart. Within a request each team's members and issues are fetched from Linear once and shared by every resolver that needs them (`server/src/workspace.ts`). Two per-request [DataLoaders](https://github.com/graphql/dataloader) batch the lookups, one for team members and one for open issues, so every team resolved in the same tick shares one Linear query of each kind.
+The web Worker loads a page with one query (`BOARD_QUERY` in `web/src/board.ts`), and a server test runs that exact query against the schema so the two can't drift apart. The board's mutations (`web/src/mutations.ts`) are tested the same way. Each asks for the team's board back through the same `TeamBoard` fragment the page loads with, so after a rules change or a move the browser redraws from the answer and never works out a quadrant itself. Within a request each team's members and issues are fetched from Linear once and shared by every resolver that needs them (`server/src/workspace.ts`). Two per-request [DataLoaders](https://github.com/graphql/dataloader) batch the lookups, one for team members and one for open issues, so every team resolved in the same tick shares one Linear query of each kind.
 
 ### N+1, measured
 
@@ -223,6 +223,6 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 
 ## Status
 
-🌦️ Read-only board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. Rules and overrides are stored, but setting them waits for the mutations (#11).
+🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too.
 # linear-weather
 Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

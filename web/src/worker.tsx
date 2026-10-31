@@ -7,7 +7,7 @@ import {
   type Board,
   type BoardData,
   type BoardError,
-  total,
+  teamBoard,
   type Viewer,
 } from "./board";
 
@@ -127,17 +127,7 @@ async function fetchBoard(
     }
 
     const { team, teams, today } = data;
-    const people: Board["people"] = team
-      ? team.people.map(({ matrix, weather, ...assignee }) => ({ assignee, matrix, weather }))
-      : [];
-    if (team && total(team.unassigned) > 0)
-      people.push({ assignee: null, matrix: team.unassigned, weather: null });
-    const board: Board = {
-      today,
-      teams,
-      team: team && { id: team.id, name: team.name, key: team.key },
-      people,
-    };
+    const board: Board = { today, teams, ...(team ? teamBoard(team) : { team: null, people: [] }) };
     return { viewer: data.viewer, board };
   } catch (error) {
     console.error(`Couldn't load the board: ${error}`);

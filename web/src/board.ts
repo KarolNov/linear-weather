@@ -44,6 +44,15 @@ export interface BoardIssue {
   placementReason: string;
 }
 
+/** How heavy someone's urgent load is now, against the team's average. */
+export type WeatherKind = "SUNNY" | "CLOUDY" | "RAIN" | "STORM" | "FOG";
+
+export interface Weather {
+  kind: WeatherKind;
+  /** Why, e.g. "13 urgent points, 3.1× the team average". */
+  reason: string;
+}
+
 /** Issues by quadrant, each most pressing first. */
 export type Matrix = Record<Quadrant, BoardIssue[]> & { counts: Record<Quadrant, number> };
 
@@ -63,6 +72,8 @@ export interface PersonMatrix {
   /** Null for the team's unassigned issues. */
   assignee: Person | null;
   matrix: Matrix;
+  /** Null for the unassigned issues: nobody's load. */
+  weather: Weather | null;
 }
 
 export interface Board {
@@ -94,7 +105,7 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
   name
   key
   rules { importantFrom urgencyWindowDays noDueDate }
-  people { id name avatarUrl matrix { ${MATRIX_FIELDS} } }
+  people { id name avatarUrl weather { kind reason } matrix { ${MATRIX_FIELDS} } }
   unassigned { ${MATRIX_FIELDS} }
 }
 
@@ -124,7 +135,7 @@ ${TEAM_BOARD_FRAGMENTS}`;
 /** A team as the TeamBoard fragment has it. */
 export type TeamBoardData = Team & {
   rules: Rules;
-  people: (Person & { matrix: Matrix })[];
+  people: (Person & { matrix: Matrix; weather: Weather })[];
   unassigned: Matrix;
 };
 
@@ -142,8 +153,12 @@ export function teamBoard({
   unassigned,
   ...team
 }: TeamBoardData): Pick<Board, "team" | "people"> {
-  const matrices: PersonMatrix[] = people.map(({ matrix, ...assignee }) => ({ assignee, matrix }));
-  if (total(unassigned) > 0) matrices.push({ assignee: null, matrix: unassigned });
+  const matrices: PersonMatrix[] = people.map(({ matrix, weather, ...assignee }) => ({
+    assignee,
+    matrix,
+    weather,
+  }));
+  if (total(unassigned) > 0) matrices.push({ assignee: null, matrix: unassigned, weather: null });
   return { team, people: matrices };
 }
 

@@ -155,6 +155,84 @@ describe("schema", () => {
     });
   });
 
+  it("gives each person their weather against the team's average, and the team its spread", async () => {
+    const { team } = await data<{
+      team: {
+        loadMetric: string;
+        weather: { kind: string; reason: string };
+        people: { name: string; weather: { kind: string; load: number | null; reason: string } }[];
+      };
+    }>(`{
+      team {
+        loadMetric
+        weather { kind reason }
+        people { name weather { kind load reason } }
+      }
+    }`);
+    // Some urgent Avengers issues aren't estimated, so load is in issues:
+    // (6 + 1 + 4 + 2 + 11 + 0) / 6 = 4, Thor left out.
+    expect(team.loadMetric).toBe("ISSUES");
+    expect(Object.fromEntries(team.people.map((p) => [p.name, p.weather]))).toEqual({
+      "Bruce Banner": { kind: "RAIN", load: 6, reason: "6 urgent issues, 1.5× the team average" },
+      "Clint Barton": {
+        kind: "SUNNY",
+        load: 1,
+        reason: "1 urgent issue, 0.25× the team average",
+      },
+      "Natasha Romanoff": {
+        kind: "STORM",
+        load: 4,
+        reason: "4 urgent issues, 1.0× the team average; 1 issue overdue",
+      },
+      "Steve Rogers": { kind: "SUNNY", load: 2, reason: "2 urgent issues, 0.5× the team average" },
+      "Thor Odinson": {
+        kind: "FOG",
+        load: null,
+        reason: "Nothing urgent, but some work has no due date",
+      },
+      "Tony Stark": {
+        kind: "STORM",
+        load: 11,
+        reason: "11 urgent issues, 2.75× the team average; 3 issues overdue",
+      },
+      "Wanda Maximoff": { kind: "SUNNY", load: 0, reason: "Nothing urgent" },
+    });
+    expect(team.weather).toEqual({
+      kind: "STORM",
+      reason: "Natasha Romanoff and Tony Stark are in a storm",
+    });
+  });
+
+  it("counts weather in points when asked, leaving out anyone with unestimated urgent work", async () => {
+    const { team } = await data<{
+      team: {
+        weather: { metric: string };
+        people: { name: string; weather: { kind: string; load: number | null } }[];
+      };
+    }>(`{
+      team {
+        weather(metric: POINTS) { metric }
+        people { name weather(metric: POINTS) { kind load } }
+      }
+    }`);
+    expect(team.weather.metric).toBe("POINTS");
+    const byName = Object.fromEntries(team.people.map((p) => [p.name, p.weather]));
+    expect(byName["Bruce Banner"]).toEqual({ kind: "FOG", load: null });
+    expect(byName["Natasha Romanoff"]).toEqual({ kind: "STORM", load: 17 });
+  });
+
+  it("is fog for someone outside the team", async () => {
+    const { team } = await data<{
+      team: { people: { name: string; weather: { kind: string; reason: string } }[] };
+    }>(`query ($ops: ID) { team { people { name weather(teamId: $ops) { kind reason } } } }`, {
+      ops: DEMO_OPS_TEAM.id,
+    });
+    expect(team.people.find((p) => p.name === "Wanda Maximoff")?.weather).toEqual({
+      kind: "FOG",
+      reason: "Not on this team",
+    });
+  });
+
   it("is signed out without a session: no viewer, and an error for Linear data", async () => {
     const result = await run("{ viewer { name } teams { name } }", {}, { signedIn: false });
     expect(result.data).toEqual({ viewer: null, teams: null });

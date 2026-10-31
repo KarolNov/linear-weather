@@ -63,7 +63,13 @@ const defaultRules: Rules = { importantFrom: 3, urgencyWindowDays: 14, noDueDate
 const defaultTeam: BoardData["team"] = {
   ...avengers,
   rules: defaultRules,
-  people: [{ ...tony, matrix: tonysMatrix }],
+  people: [
+    {
+      ...tony,
+      matrix: tonysMatrix,
+      weather: { kind: "STORM" as const, reason: "4 urgent points" },
+    },
+  ],
   unassigned,
 };
 
@@ -154,6 +160,7 @@ describe("web worker", () => {
             counts: { ...emptyMatrix.counts, do: 1 },
             do: [issue({ quadrantSource: "OVERRIDE", placementReason: reason })],
           },
+          weather: { kind: "CLOUDY" as const, reason: "1 urgent issue" },
         },
       ],
       unassigned: emptyMatrix,
@@ -190,7 +197,13 @@ describe("web worker", () => {
     const quiet = {
       ...avengers,
       rules: defaultRules,
-      people: [{ ...tony, matrix: emptyMatrix }],
+      people: [
+        {
+          ...tony,
+          matrix: emptyMatrix,
+          weather: { kind: "SUNNY" as const, reason: "Nothing urgent" },
+        },
+      ],
       unassigned: emptyMatrix,
     };
     const { bindings } = serverReturning(fury, () =>

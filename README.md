@@ -90,8 +90,19 @@ type Matrix {         # each list most pressing first
   counts: QuadrantCounts!  points: QuadrantPoints!
 }
 
-type User { matrix(teamId: ID): Matrix! }   # defaults to the team it was reached through
-type Team { rules: QuadrantRules!  people: [User!]!  unassigned: Matrix! }
+enum WeatherKind { SUNNY CLOUDY RAIN STORM FOG }
+enum LoadMetric { POINTS ISSUES }
+type Weather { kind: WeatherKind!  metric: LoadMetric!  load: Float  teamAverage: Float  reason: String! }
+
+type User {           # teamId defaults to the team it was reached through
+  matrix(teamId: ID): Matrix!
+  weather(teamId: ID, metric: LoadMetric): Weather!   # urgent load vs the team average
+}
+type Team {
+  rules: QuadrantRules!  people: [User!]!  unassigned: Matrix!
+  loadMetric: LoadMetric!                 # POINTS if every urgent issue is estimated, else ISSUES
+  weather(metric: LoadMetric): Weather!   # how evenly urgent load is spread
+}
 type Query { today: Date!  viewer: User  teams: [Team]  team(id: ID): Team }
 
 type Mutation {

@@ -44,12 +44,15 @@ export interface BoardIssue {
   placementReason: string;
 }
 
-/** How heavy someone's urgent load is now, against the team's average. */
+/**
+ * How heavy someone's urgent load is now, against the team's average. For a team, how evenly
+ * it's spread: as bad as its worst person, cloudy when some have room while others carry it.
+ */
 export type WeatherKind = "SUNNY" | "CLOUDY" | "RAIN" | "STORM" | "FOG";
 
 export interface Weather {
   kind: WeatherKind;
-  /** Why, e.g. "13 urgent points, 3.1× the team average". */
+  /** Why, e.g. "13 urgent points, 3.1× the team average" or "Tony Stark is in a storm". */
   reason: string;
 }
 
@@ -91,8 +94,11 @@ export interface PersonMatrix {
 export interface Board {
   today: CalendarDate;
   teams: Team[];
-  /** The team asked for, else the viewer's default, with its rules. Null when there are no teams. */
-  team: (Team & { rules: Rules }) | null;
+  /**
+   * The team asked for, else the viewer's default, with its rules and weather. Null when there
+   * are no teams.
+   */
+  team: (Team & { rules: Rules; weather: Weather }) | null;
   /** The team's people, then its unassigned issues if it has any. */
   people: PersonMatrix[];
 }
@@ -117,6 +123,7 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
   name
   key
   rules { importantFrom urgencyWindowDays noDueDate }
+  weather { kind reason }
   people {
     id
     name
@@ -154,6 +161,7 @@ ${TEAM_BOARD_FRAGMENTS}`;
 /** A team as the TeamBoard fragment has it. */
 export type TeamBoardData = Team & {
   rules: Rules;
+  weather: Weather;
   people: (Person & { matrix: Matrix; weather: Weather; forecast: ForecastWeek[] })[];
   unassigned: Matrix;
 };

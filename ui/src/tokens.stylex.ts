@@ -1,8 +1,9 @@
 import * as stylex from "@stylexjs/stylex";
 
-// The palette is a sky: a sunset for the sign-in page, a soft dawn behind the board, and one
-// colour per kind of weather. Quadrant colours reuse the weather ones so the board reads the
-// same way the forecast does: Do is a storm warning, Drop is fog.
+// The palette is a sky: a sunset for the sign-in page, a dawn behind the board that turns with
+// the team's weather (its skies are in Sky), and one colour per kind of weather. Quadrant colours
+// reuse the weather ones so the board reads the same way the forecast does: Do is a storm
+// warning, Drop is fog.
 
 export const colors = stylex.defineVars({
   ink: "#1d1a33",
@@ -33,9 +34,12 @@ export const colors = stylex.defineVars({
 export const gradients = stylex.defineVars({
   sunset:
     "linear-gradient(180deg, #1f1747 0%, #46246b 28%, #9b3c78 52%, #e8665a 72%, #ffb35c 90%, #ffd98a 100%)",
-  dawn: "linear-gradient(180deg, #cfe2ff 0%, #e9e4ff 45%, #ffe6d6 80%, #fff3e4 100%)",
   accent: "linear-gradient(135deg, #ffb35c 0%, #ff7a45 55%, #e8507a 100%)",
 });
+
+// Text straight on the board's sky: ink, which the storm sky turns light (see Sky). Cards and
+// controls set their own colour, so only text meant to sit on the sky uses this.
+export const boardSky = stylex.defineVars({ text: "#1d1a33" });
 
 export const fonts = stylex.defineVars({
   body: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',

@@ -1,6 +1,7 @@
 import { type Context, Hono } from "hono";
 import { html, raw } from "hono/html";
 import { renderToString } from "preact-render-to-string";
+import { skyTops, type Weather } from "ui";
 import { App, type AppProps } from "./App";
 import {
   BOARD_QUERY,
@@ -10,6 +11,7 @@ import {
   teamBoard,
   type Viewer,
 } from "./board";
+import { weatherIcon } from "./weather";
 
 export interface Bindings {
   /** Service binding to the server Worker (see wrangler.jsonc). */
@@ -27,11 +29,10 @@ html{color-scheme:light;-webkit-text-size-adjust:100%}
 body{margin:0}
 h1,h2,h3,p{margin:0}`;
 
-// Browser chrome and overscroll match the page's sky: the sunset sign-in page or the dawn board.
-const skyColors = {
-  sunset: { theme: "#46246b", body: "#1f1747" },
-  dawn: { theme: "#cfe2ff", body: "#cfe2ff" },
-};
+// Browser chrome and overscroll match the page's sky: the sunset sign-in page, or the board's
+// sky in its team's weather as the page loads. The board's Sky keeps them in step after that.
+const sunset = { theme: "#46246b", body: "#1f1747" };
+const boardSky = (weather: Weather) => ({ theme: skyTops[weather], body: skyTops[weather] });
 
 const toServer = (c: Context<{ Bindings: Bindings }>) => c.env.SERVER.fetch(c.req.raw);
 
@@ -55,7 +56,10 @@ export const app = new Hono<{ Bindings: Bindings }>()
     };
     // Escape "<" so the JSON can't close the <script> tag early.
     const propsJson = JSON.stringify(props).replaceAll("<", "\\u003c");
-    const sky = props.viewer ? skyColors.dawn : skyColors.sunset;
+    const teamWeather = props.board?.team?.weather;
+    const sky = props.viewer
+      ? boardSky(teamWeather ? weatherIcon[teamWeather.kind] : "partly")
+      : sunset;
 
     return c.html(html`<!doctype html>
       <html lang="en">

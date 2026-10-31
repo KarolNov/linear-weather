@@ -23,6 +23,20 @@ const sent = (call: unknown[] | undefined) =>
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+/** The fields TeamBoard selects on the team itself, not inside `people` or `rules`. */
+function teamFields(query: string) {
+  const start = "fragment TeamBoard on Team {";
+  const body = query.slice(query.indexOf(start) + start.length);
+  const fields: string[] = [];
+  let depth = 0;
+  for (const token of body.match(/[{}]|\w+/g) ?? []) {
+    if (token === "{") depth++;
+    else if (token === "}" && depth-- === 0) break;
+    else if (depth === 0 && token !== "}") fields.push(token);
+  }
+  return fields;
+}
+
 describe("board client", () => {
   it("sends the demo's mutations to /graphql?demo=true", async () => {
     const fetch = vi.fn(async () =>
@@ -70,6 +84,18 @@ describe("board client", () => {
     await flush();
     answer(Response.json({ data: { overrideQuadrant: { __typename: "OverrideSuccess", team } } }));
     expect(await next).toEqual({ ok: true, team });
+  });
+
+  it("asks for the team's weather back with each answer, so the sky can follow a change", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json({ data: { overrideQuadrant: { __typename: "OverrideSuccess", team } } }),
+    );
+    await boardClient(false, fetch).placeIssue("i-1", "do");
+    await boardClient(false, fetch).updateRules("t-avg", rules);
+    for (const call of fetch.mock.calls) {
+      // The team's own weather, not only each person's.
+      expect(teamFields(sent(call).query)).toContain("weather");
+    }
   });
 
   it("hands back what the server said was wrong, field by field", async () => {

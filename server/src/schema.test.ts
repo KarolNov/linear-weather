@@ -181,14 +181,18 @@ describe("schema", () => {
       "Natasha Romanoff": {
         kind: "STORM",
         load: 17,
-        reason: "17 urgent points, 1.2× the team average; 1 Do issue overdue",
+        reason: "17 urgent points, 1.2× the team average; 1 issue overdue",
       },
       "Steve Rogers": { kind: "SUNNY", load: 7, reason: "7 urgent points, 0.5× the team average" },
-      "Thor Odinson": { kind: "FOG", load: null, reason: "Nothing urgent, only undated work" },
+      "Thor Odinson": {
+        kind: "FOG",
+        load: null,
+        reason: "Nothing urgent, but some work has no due date",
+      },
       "Tony Stark": {
         kind: "STORM",
         load: 45,
-        reason: "45 urgent points, 3.1× the team average; 3 Do issues overdue",
+        reason: "45 urgent points, 3.1× the team average; 3 issues overdue",
       },
       "Wanda Maximoff": { kind: "SUNNY", load: 0, reason: "Nothing urgent" },
     });

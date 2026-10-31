@@ -25,6 +25,7 @@ const delegateIssue = (estimate: number | null = 1): MatrixIssue => ({
   estimate,
 });
 const overdueDo: MatrixIssue = { priority: 1, dueDate: "2026-10-15", estimate: 1 };
+const overdueDelegate: MatrixIssue = { priority: 4, dueDate: "2026-10-15", estimate: 1 };
 const undated: MatrixIssue = { priority: 2, dueDate: null, estimate: 3 };
 const later: MatrixIssue = { priority: 2, dueDate: "2026-12-01", estimate: 3 };
 
@@ -42,7 +43,7 @@ describe("weatherFor", () => {
     expect(weatherFor(load, 10, false)).toBe(kind);
   });
 
-  it("is a storm with overdue Do work, however light the load", () => {
+  it("is a storm with overdue urgent work, however light the load", () => {
     expect(weatherFor(1, 10, true)).toBe("storm");
     expect(weatherFor(null, 10, true)).toBe("storm");
   });
@@ -74,12 +75,24 @@ describe("loadMetricFor", () => {
 describe("urgentLoad", () => {
   it("adds up Do and Delegate only, by points or by count", () => {
     const matrix = matrixOf(doIssue(3), delegateIssue(5), later);
-    expect(urgentLoad(matrix, "points", TODAY)).toEqual({ load: 8, overdueDo: 0 });
-    expect(urgentLoad(matrix, "issues", TODAY)).toEqual({ load: 2, overdueDo: 0 });
+    expect(urgentLoad(matrix, "points", TODAY)).toEqual({ load: 8, overdue: 0 });
+    expect(urgentLoad(matrix, "issues", TODAY)).toEqual({ load: 2, overdue: 0 });
   });
 
-  it("counts overdue Do issues", () => {
-    expect(urgentLoad(matrixOf(overdueDo, doIssue()), "issues", TODAY).overdueDo).toBe(1);
+  it("counts overdue urgent issues, Do and Delegate alike", () => {
+    expect(urgentLoad(matrixOf(overdueDo, doIssue()), "issues", TODAY).overdue).toBe(1);
+    expect(urgentLoad(matrixOf(overdueDelegate, delegateIssue()), "issues", TODAY).overdue).toBe(1);
+  });
+
+  it("still counts an overdue issue moved by hand from Do to Delegate", () => {
+    const moved = buildMatrix(
+      [{ id: "late", ...overdueDo }],
+      DEFAULT_RULES,
+      TODAY,
+      new Map([["late", "delegate"]]),
+    );
+    expect(moved.delegate).toHaveLength(1);
+    expect(urgentLoad(moved, "issues", TODAY).overdue).toBe(1);
   });
 
   it("counts only the estimated issues when some urgent work is unestimated", () => {
@@ -89,7 +102,7 @@ describe("urgentLoad", () => {
   it("can't measure points when no urgent issue is estimated", () => {
     expect(urgentLoad(matrixOf(doIssue(null)), "points", TODAY)).toEqual({
       load: null,
-      overdueDo: 0,
+      overdue: 0,
       unknown: "unestimated",
     });
     expect(urgentLoad(matrixOf(doIssue(null)), "issues", TODAY).load).toBe(1);
@@ -126,11 +139,11 @@ describe("teamWeather", () => {
       ["fog", null, 2],
     ]);
     expect(people[0]?.reason).toBe("4 urgent issues, 2.0× the team average");
-    expect(people[3]?.reason).toBe("Nothing urgent, only undated work");
+    expect(people[3]?.reason).toBe("Nothing urgent, but some work has no due date");
     expect(team).toMatchObject({ kind: "storm", load: 4, reason: "Tony is in a storm" });
   });
 
-  it("says when overdue Do work makes the storm", () => {
+  it("says when overdue work makes the storm", () => {
     const { people, team } = teamWeather(
       [
         { name: "Natasha", matrix: matrixOf(overdueDo) },
@@ -141,7 +154,7 @@ describe("teamWeather", () => {
     );
     expect(people[0]).toMatchObject({
       kind: "storm",
-      reason: "1 urgent point, 1.0× the team average; 1 Do issue overdue",
+      reason: "1 urgent point, 1.0× the team average; 1 issue overdue",
     });
     expect(team.reason).toBe("Natasha is in a storm");
   });

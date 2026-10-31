@@ -30,17 +30,17 @@ export const DEFAULT_THRESHOLDS: WeatherThresholds = {
 /**
  * One person's weather, from their urgent load against the team's average.
  *
- * - Overdue Do issues → storm, however light the load: they're already late.
+ * - Overdue urgent issues → storm, however light the load: they're already late.
  * - `load` null means it can't be measured → fog.
  * - No urgent load across the team (average 0) → sunny: everyone has room.
  */
 export function weatherFor(
   load: number | null,
   teamAverage: number,
-  hasOverdueDo: boolean,
+  hasOverdue: boolean,
   thresholds: WeatherThresholds = DEFAULT_THRESHOLDS,
 ): WeatherKind {
-  if (hasOverdueDo) return "storm";
+  if (hasOverdue) return "storm";
   if (load === null) return "fog";
   if (teamAverage <= 0) return "sunny";
   const ratio = load / teamAverage;
@@ -62,8 +62,9 @@ export function loadMetricFor(issues: readonly MatrixIssue[]): LoadMetric {
 export interface Load {
   /** Urgent (Do + Delegate) load in the metric, or null when it can't be measured. */
   load: number | null;
-  /** How many Do issues are past their due date. */
-  overdueDo: number;
+  /** How many urgent (Do or Delegate) issues are past their due date. Moving one out of Do by
+   * hand doesn't make it any less late. */
+  overdue: number;
   /** Why the load can't be measured, when it can't. */
   unknown?: "unestimated" | "undated";
 }
@@ -80,16 +81,16 @@ export function urgentLoad(
   today: CalendarDate,
 ): Load {
   const urgent = [...matrix.do, ...matrix.delegate];
-  const overdueDo = matrix.do.filter((i) => i.dueDate !== null && i.dueDate < today).length;
+  const overdue = urgent.filter((i) => i.dueDate !== null && i.dueDate < today).length;
   const estimated = urgent.filter((i) => i.estimate != null);
   if (metric === "points" && urgent.length > 0 && estimated.length === 0) {
-    return { load: null, overdueDo, unknown: "unestimated" };
+    return { load: null, overdue, unknown: "unestimated" };
   }
   const load =
     metric === "points" ? estimated.reduce((sum, i) => sum + (i.estimate ?? 0), 0) : urgent.length;
   const undated = [...matrix.schedule, ...matrix.drop].some((i) => i.dueDate === null);
-  if (load === 0 && undated) return { load: null, overdueDo, unknown: "undated" };
-  return { load, overdueDo };
+  if (load === 0 && undated) return { load: null, overdue, unknown: "undated" };
+  return { load, overdue };
 }
 
 export interface Weather {
@@ -99,7 +100,7 @@ export interface Weather {
   load: number | null;
   /** The mean urgent load of the people whose load could be measured. Null when nobody's could. */
   teamAverage: number | null;
-  /** Why, e.g. "13 urgent points, 3.1× the team average; 2 Do issues overdue". */
+  /** Why, e.g. "13 urgent points, 3.1× the team average; 2 issues overdue". */
   reason: string;
 }
 
@@ -151,9 +152,9 @@ function weatherOf(
   metric: LoadMetric,
   thresholds: WeatherThresholds,
 ): Weather {
-  const { load, overdueDo } = measured;
+  const { load, overdue } = measured;
   return {
-    kind: weatherFor(load, teamAverage ?? 0, overdueDo > 0, thresholds),
+    kind: weatherFor(load, teamAverage ?? 0, overdue > 0, thresholds),
     metric,
     load,
     teamAverage,
@@ -199,16 +200,16 @@ function spread(
 }
 
 function describeLoad(
-  { load, overdueDo, unknown }: Load,
+  { load, overdue: late, unknown }: Load,
   teamAverage: number | null,
   metric: LoadMetric,
 ): string {
-  const overdue = overdueDo === 0 ? "" : `${plural(overdueDo, "Do issue")} overdue`;
+  const overdue = late === 0 ? "" : `${plural(late, "issue")} overdue`;
   if (load === null) {
     const why =
       unknown === "unestimated"
         ? "no urgent issue is estimated"
-        : "nothing urgent, only undated work";
+        : "nothing urgent, but some work has no due date";
     return overdue ? `${overdue}; ${why}` : `${why[0]?.toUpperCase()}${why.slice(1)}`;
   }
   if (load === 0 && !overdue) return "Nothing urgent";

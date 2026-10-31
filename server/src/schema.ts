@@ -165,11 +165,14 @@ const WeatherKindEnum = builder.enumType("WeatherKind", {
     SUNNY: { value: "sunny", description: "Below average: room for more." },
     CLOUDY: { value: "cloudy", description: "Around average." },
     RAIN: { value: "rain", description: "Noticeably above average (over 1.25×)." },
-    STORM: { value: "storm", description: "Far above average (over 1.5×), or Do issues overdue." },
+    STORM: {
+      value: "storm",
+      description: "Far above average (over 1.5×), or urgent issues overdue.",
+    },
     FOG: {
       value: "fog",
       description:
-        "Can't tell: nothing urgent but undated work, or no urgent issue estimated when counting points.",
+        "Can't tell: nothing urgent but some work has no due date, or no urgent issue estimated when counting points.",
     },
   } as const,
 });
@@ -198,7 +201,7 @@ const WeatherRef = builder.objectRef<Weather>("Weather").implement({
         "The mean urgent load of the team's people whose load could be measured. Null when nobody's could.",
     }),
     reason: t.exposeString("reason", {
-      description: 'Why, e.g. "13 urgent points, 3.1× the team average; 2 Do issues overdue".',
+      description: 'Why, e.g. "13 urgent points, 3.1× the team average; 2 issues overdue".',
     }),
   }),
 });

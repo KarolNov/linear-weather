@@ -1,8 +1,13 @@
 import { env } from "cloudflare:workers";
 import { graphql } from "graphql";
 import { describe, expect, it } from "vitest";
-// The web app keeps its query by its components; checking it here catches schema drift.
+// The web app keeps its queries by its components; checking them here catches schema drift.
 import { BOARD_QUERY } from "../../web/src/board";
+import {
+  CLEAR_OVERRIDE_MUTATION,
+  OVERRIDE_MUTATION,
+  UPDATE_RULES_MUTATION,
+} from "../../web/src/mutations";
 import { Store } from "./db/store";
 import { DEFAULT_RULES } from "./domain/quadrant";
 import { LinearAuthError, LinearRateLimitError, type LinearSource } from "./linear/client";
@@ -463,6 +468,34 @@ describe("the web app's board query", () => {
     const board = await data<{ viewer: unknown; team: unknown }>(BOARD_QUERY, { teamId: null });
     expect(board.viewer).toMatchObject({ name: "Nick Fury" });
     expect(board.team).toMatchObject({ name: "Avengers" });
+  });
+  type Answer = Record<
+    string,
+    { __typename: string; team?: { rules: unknown; people: unknown[] } }
+  >;
+
+  it("changes the rules and answers with the team's board", async () => {
+    const rules = { importantFrom: 1, urgencyWindowDays: 7, noDueDate: "URGENT" };
+    const { updateQuadrantRules } = await data<Answer>(UPDATE_RULES_MUTATION, {
+      teamId: DEMO_TEAM.id,
+      input: rules,
+    });
+    expect(updateQuadrantRules?.__typename).toBe("UpdateRulesSuccess");
+    expect(updateQuadrantRules?.team?.rules).toEqual(rules);
+    expect(updateQuadrantRules?.team?.people.length).toBeGreaterThan(0);
+  });
+
+  it("places an issue by hand and hands it back, answering with the team's board", async () => {
+    const { overrideQuadrant } = await data<Answer>(OVERRIDE_MUTATION, {
+      issueId: "demo-issue-avg-1",
+      quadrant: "DROP",
+    });
+    expect(overrideQuadrant?.__typename).toBe("OverrideSuccess");
+    expect(overrideQuadrant?.team?.people.length).toBeGreaterThan(0);
+    const { clearOverride } = await data<Answer>(CLEAR_OVERRIDE_MUTATION, {
+      issueId: "demo-issue-avg-1",
+    });
+    expect(clearOverride?.__typename).toBe("OverrideSuccess");
   });
 });
 

@@ -1,12 +1,14 @@
 import * as stylex from "@stylexjs/stylex";
-import { useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import {
+  Alert,
   Avatar,
   Badge,
   Button,
   Card,
   Logo,
   Sky,
+  VisuallyHidden,
   type Weather,
   WeatherIcon,
   weatherLabels,
@@ -15,14 +17,21 @@ import { colors, fonts, radii, space } from "ui/tokens.stylex";
 import {
   type Board,
   type BoardError,
+  type BoardIssue,
   type PersonMatrix as PersonMatrixData,
   QUADRANTS,
+  type Quadrant,
+  type Rules,
+  type TeamBoardData,
+  teamBoard,
   total,
   type Viewer,
 } from "./board";
 import { entrance } from "./motion";
+import { boardClient } from "./mutations";
 import { PersonMatrix } from "./PersonMatrix";
 import { quadrantFill, quadrantInfo } from "./quadrants";
+import { RulesPanel } from "./RulesPanel";
 import { TeamPicker } from "./TeamPicker";
 
 export interface BoardShellProps {
@@ -99,7 +108,20 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
 }
 
 function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
-  const { team, teams, people, today } = board;
+  const { teams, today } = board;
+  // The team and its people as the last change left them. Each change answers with the whole
+  // team's board, so it's replaced rather than patched.
+  const [{ team, people }, setTeamBoard] = useState(() => ({
+    team: board.team,
+    people: board.people,
+  }));
+  const client = useMemo(() => boardClient(Boolean(demo)), [demo]);
+  const [editingRules, setEditingRules] = useState(false);
+  // Issues whose move hasn't answered yet.
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  const [failure, setFailure] = useState<string | null>(null);
+  // Read out by screen readers; the board redrawing is the visible answer.
+  const [status, setStatus] = useState("");
   // Lists start shut so the matrices are what you see first. Keyed by assignee id.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const keyOf = (person: PersonMatrixData) => person.assignee?.id ?? "unassigned";
@@ -112,6 +134,62 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
       else next.delete(key);
       return next;
     });
+
+  // The issue whose move button gets the keyboard back once the board redraws. A moved card
+  // lands in another quadrant's list, so the button that had focus is gone.
+  const [refocus, setRefocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (refocus === null) return;
+    setRefocus(null);
+    // Only when the move left focus nowhere, so a PM who went on to something else keeps it.
+    if (document.activeElement && document.activeElement !== document.body) return;
+    document.querySelector<HTMLElement>(`[data-move-trigger="${CSS.escape(refocus)}"]`)?.focus();
+  }, [refocus]);
+
+  /** Redraws the board from a saved change's answer; false, with a notice, when it can't. */
+  const showAnswer = (answer: TeamBoardData | null) => {
+    // A move answers with its issue's team, which isn't this one if the issue changed team in
+    // Linear since the page loaded.
+    if (!answer || answer.id !== team?.id) {
+      setFailure("That's saved, but the board can't show it yet. Reload the page to see it.");
+      return false;
+    }
+    setTeamBoard(teamBoard(answer));
+    return true;
+  };
+  const place = async (issue: BoardIssue, to: Quadrant | null) => {
+    const markPending = (on: boolean) =>
+      setPending((current) => {
+        const next = new Set(current);
+        if (on) next.add(issue.id);
+        else next.delete(issue.id);
+        return next;
+      });
+    markPending(true);
+    setFailure(null);
+    const result = await client.placeIssue(issue.id, to);
+    markPending(false);
+    setRefocus(issue.id);
+    if (!result.ok) {
+      setFailure(`Couldn't move ${issue.identifier}. ${result.message}`);
+      return;
+    }
+    if (!showAnswer(result.team)) return;
+    setStatus(
+      to
+        ? `Moved ${issue.identifier} to ${quadrantInfo[to].name}.`
+        : `${issue.identifier} is back with the rules.`,
+    );
+  };
+  const saveRules = async (rules: Rules) => {
+    if (!team) throw new Error("no team to save rules for");
+    setFailure(null);
+    const result = await client.updateRules(team.id, rules);
+    if (result.ok && showAnswer(result.team)) {
+      setStatus("Rules saved. The board is sorted by them now.");
+    }
+    return result;
+  };
 
   if (!team) {
     return (
@@ -147,9 +225,43 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
               {allExpanded ? "Collapse all" : "Expand all"}
             </Button>
           )}
+          <Button
+            variant="quiet"
+            aria-expanded={editingRules}
+            aria-controls={editingRules ? "rules-panel" : undefined}
+            onClick={() => setEditingRules(!editingRules)}
+            xstyle={styles.expandAll}
+          >
+            Sorting rules
+          </Button>
           {teams.length > 1 && <TeamPicker teams={teams} selected={team} demo={demo} />}
         </div>
       </div>
+      {editingRules && (
+        <div id="rules-panel">
+          <RulesPanel
+            // A fresh form for each team, starting from its saved rules.
+            key={team.id}
+            teamName={team.name}
+            rules={team.rules}
+            onSave={saveRules}
+            onClose={() => setEditingRules(false)}
+          />
+        </div>
+      )}
+      {failure && (
+        <Alert weather="rain">
+          <span {...stylex.props(styles.failure)}>
+            {failure}
+            <Button variant="quiet" onClick={() => setFailure(null)} xstyle={styles.expandAll}>
+              Dismiss
+            </Button>
+          </span>
+        </Alert>
+      )}
+      <VisuallyHidden>
+        <span role="status">{status}</span>
+      </VisuallyHidden>
       <div {...stylex.props(styles.people)}>
         {people.map((person, i) => (
           <PersonMatrix
@@ -158,6 +270,8 @@ function TeamBoard({ board, demo }: { board: Board; demo?: boolean }) {
             today={today}
             expanded={expanded.has(keyOf(person))}
             onExpandedChange={(open) => setOne(keyOf(person), open)}
+            onPlace={place}
+            pending={pending}
             xstyle={[
               entrance.board,
               entrance.delay(PERSON_DELAY_MS + Math.min(i, MAX_STAGGERED) * PERSON_STEP_MS),
@@ -265,6 +379,13 @@ const styles = stylex.create({
   },
   controls: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: space.xs },
   expandAll: { paddingBlock: "8px", fontSize: "0.875rem" },
+  failure: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space.sm,
+  },
   legends: {
     display: "grid",
     gridTemplateColumns: { default: "1fr", "@media (min-width: 860px)": "1fr 1fr" },

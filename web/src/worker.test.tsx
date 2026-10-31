@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { BoardData, BoardIssue, Matrix } from "./board";
+import type { BoardData, BoardIssue, Matrix, Rules } from "./board";
 import { app, type Bindings } from "./worker";
 
 const avengers = { id: "t-avg", name: "Avengers", key: "AVG" };
@@ -16,6 +16,7 @@ function issue(fields: Partial<BoardIssue>): BoardIssue {
     priority: 1,
     estimate: 5,
     state: { name: "In Progress" },
+    quadrantSource: "RULE",
     placementReason: "Urgent priority, overdue by 5 days",
     ...fields,
   };
@@ -57,8 +58,11 @@ function boardData(viewer: unknown, team: BoardData["team"] = defaultTeam) {
   return { today: "2026-10-18", viewer, teams: [avengers, ops], team };
 }
 
+const defaultRules: Rules = { importantFrom: 3, urgencyWindowDays: 14, noDueDate: "NOT_URGENT" };
+
 const defaultTeam: BoardData["team"] = {
   ...avengers,
+  rules: defaultRules,
   people: [{ ...tony, matrix: tonysMatrix }],
   unassigned,
 };
@@ -138,6 +142,38 @@ describe("web worker", () => {
     expect(page).toContain("No date");
   });
 
+  it("marks issues placed by hand, saying where the rules would put them", async () => {
+    const reason = "Placed by hand; the rules say Drop (Low priority, no due date)";
+    const pinned = {
+      ...defaultTeam,
+      people: [
+        {
+          ...tony,
+          matrix: {
+            ...emptyMatrix,
+            counts: { ...emptyMatrix.counts, do: 1 },
+            do: [issue({ quadrantSource: "OVERRIDE", placementReason: reason })],
+          },
+        },
+      ],
+      unassigned: emptyMatrix,
+    } satisfies BoardData["team"];
+    const { bindings } = serverReturning(fury, () =>
+      Response.json({ data: boardData(fury, pinned) }),
+    );
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain("By hand");
+    expect(page).toContain(`title="${reason}"`);
+    expect(page).toContain("Move AVG-1");
+    expect(page).toContain("Sorting rules");
+  });
+
+  it("doesn't mark issues the rules placed", async () => {
+    const { bindings } = serverReturning(fury);
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).not.toContain("By hand");
+  });
+
   it("asks for the picked team and keeps the demo in the picker", async () => {
     const { bindings, fetch } = serverReturning(fury);
     const page = await (await app.request("/?demo=true&team=t-ops", {}, bindings)).text();
@@ -153,6 +189,7 @@ describe("web worker", () => {
   it("says nobody has open issues when every member's matrix is empty", async () => {
     const quiet = {
       ...avengers,
+      rules: defaultRules,
       people: [{ ...tony, matrix: emptyMatrix }],
       unassigned: emptyMatrix,
     };

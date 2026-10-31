@@ -2,6 +2,7 @@ import * as stylex from "@stylexjs/stylex";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { colors, fonts, media, motion, radii, shadows, space } from "ui/tokens.stylex";
 import type { Team } from "./board";
+import { useDismiss } from "./dismiss";
 import { entrance } from "./motion";
 
 export interface TeamPickerProps {
@@ -25,26 +26,14 @@ export function TeamPicker({ teams, selected, demo }: TeamPickerProps) {
     if (ref.current?.open) setOpen(true);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = () => {
+  useDismiss(
+    ref,
+    open,
+    () => {
       if (ref.current) ref.current.open = false;
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      if (!ref.current?.contains(event.target as Node)) close();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      close();
-      ref.current?.querySelector("summary")?.focus();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+    },
+    () => ref.current?.querySelector("summary"),
+  );
 
   return (
     <details

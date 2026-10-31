@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Avatar, Card } from "ui";
 import { colors, fonts, media, motion, radii, space } from "ui/tokens.stylex";
 import {
+  type BoardIssue,
   type CalendarDate,
   total as countIssues,
   type PersonMatrix as Person,
@@ -19,6 +20,10 @@ export interface PersonMatrixProps {
   /** Whether the issue list under the matrix is open. The board starts with every list shut. */
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
+  /** Places an issue by hand, or with null hands it back to the rules. */
+  onPlace?: (issue: BoardIssue, quadrant: Quadrant | null) => void;
+  /** Issues whose move is on its way to the server. */
+  pending?: ReadonlySet<string>;
   xstyle?: stylex.StyleXStyles;
 }
 
@@ -31,9 +36,14 @@ export function PersonMatrix({
   today,
   expanded,
   onExpandedChange,
+  onPlace,
+  pending,
   xstyle,
 }: PersonMatrixProps) {
   const [only, setOnly] = useState<Quadrant | null>(null);
+  // A quadrant the PM just moved the last issue out of shows every quadrant again, and stays
+  // unpicked, so moving an issue back in later doesn't hide the rest.
+  if (only !== null && matrix.counts[only] === 0) setOnly(null);
   const details = useRef<HTMLDetailsElement>(null);
   const body = useRef<HTMLDivElement>(null);
   // The <details> stays open while its list slides shut, so `open` lags `expanded` on the way down.
@@ -207,6 +217,8 @@ export function PersonMatrix({
                         issue={issue}
                         quadrant={q}
                         today={today}
+                        onPlace={onPlace && ((to) => onPlace(issue, to))}
+                        pending={pending?.has(issue.id)}
                         xstyle={[
                           entrance.reveal,
                           entrance.delay(Math.min(revealed++, MAX_STAGGERED) * CARD_STEP_MS),
@@ -241,6 +253,10 @@ const styles = stylex.create({
     flexDirection: "column",
     gap: space.md,
     minWidth: 0,
+    // An issue's open menu holds the focus, and lifts the card above its neighbours so they
+    // don't cover the menu.
+    position: "relative",
+    zIndex: { default: null, ":focus-within": 1 },
   },
   header: { display: "flex", alignItems: "center", gap: space.sm },
   nobody: {

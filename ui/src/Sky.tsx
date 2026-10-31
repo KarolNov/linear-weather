@@ -1,8 +1,8 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren } from "preact";
-import { useEffect, useRef } from "preact/hooks";
-import type { Rain } from "./rain";
-import { colors, fonts, gradients } from "./tokens.stylex";
+import { useEffect } from "preact/hooks";
+import { boardSky, colors, fonts, gradients } from "./tokens.stylex";
+import { useRain } from "./useRain";
 import type { Weather } from "./WeatherIcon";
 
 export interface SkyProps {
@@ -16,7 +16,7 @@ export interface SkyProps {
   children: ComponentChildren;
 }
 
-/** The top of each dawn sky, for browser chrome that should match it. */
+/** The top of each dawn sky, for browser chrome that should match it. Each sky starts from it. */
 export const skyTops: Record<Weather, string> = {
   sun: "#b9d8ff",
   partly: "#cfe2ff",
@@ -42,21 +42,43 @@ const clouds: { top: string; width: string; seconds: number; offset: number; dep
 
 /** A full-page sky with clouds drifting across it behind its content. */
 export function Sky({ time = "sunset", weather = "partly", children }: SkyProps) {
-  if (time === "sunset") return <SunsetSky>{children}</SunsetSky>;
+  return time === "sunset" ? (
+    <SunsetSky>{children}</SunsetSky>
+  ) : (
+    <DawnSky weather={weather}>{children}</DawnSky>
+  );
+}
+
+function DawnSky({ weather, children }: { weather: Weather; children: ComponentChildren }) {
   const wet = weather === "rain" || weather === "storm";
   const tint = weather === "storm" ? styles.bodyStorm : weather === "rain" ? styles.bodyRain : null;
-  const rainCanvas = useRain(wet ? (weather === "storm" ? "storm" : "rain") : null);
+  const rainCanvas = useRain(wet ? (weather === "storm" ? "storm" : "rain") : null, TURN_MS);
+  // Browser chrome and overscroll follow the sky; the page arrives with its first weather's.
+  useEffect(() => {
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", skyTops[weather]);
+    document.body.style.backgroundColor = skyTops[weather];
+  }, [weather]);
   return (
     <div
       data-weather={weather}
-      {...stylex.props(styles.sky, styles.dawn, weather === "storm" && styles.inkOnStorm)}
+      {...stylex.props(styles.sky, styles.dawn, weather === "storm" && stormText)}
     >
       <div aria-hidden="true" {...stylex.props(styles.scenery, styles.pinned)}>
         <CloudFilter />
-        {/* Every sky is there, and only the weather's shows, so a change can cross-fade. */}
-        {WEATHERS.map((w) => (
-          <div key={w} {...stylex.props(styles.layer, skies[w], w !== weather && styles.hidden)} />
-        ))}
+        {/* Every sky is there, and only the weather's shows. A new one fades in on top of the
+            last, which goes once it's covered, so nothing shows through mid-change. */}
+        <div {...stylex.props(styles.skies)}>
+          {WEATHERS.map((w) => (
+            <div
+              key={w}
+              {...stylex.props(
+                styles.layer,
+                skies[w],
+                w === weather ? styles.onTop : styles.covered,
+              )}
+            />
+          ))}
+        </div>
         {clouds.map((cloud, i) => (
           <Cloud
             key={cloud.top}
@@ -71,53 +93,16 @@ export function Sky({ time = "sunset", weather = "partly", children }: SkyProps)
           <canvas ref={rainCanvas} {...stylex.props(styles.rain)} />
         </div>
         <div {...stylex.props(styles.layer, styles.motion, weather !== "storm" && styles.hidden)}>
-          <div {...stylex.props(styles.lightning)} />
+          <div {...stylex.props(styles.lightning, weather !== "storm" && styles.still)} />
         </div>
         <div {...stylex.props(styles.layer, styles.fogHaze, weather !== "fog" && styles.hidden)}>
-          <div {...stylex.props(styles.mist, styles.mistHigh)} />
-          <div {...stylex.props(styles.mist, styles.mistLow)} />
+          <div {...stylex.props(styles.mist, styles.mistHigh, weather !== "fog" && styles.still)} />
+          <div {...stylex.props(styles.mist, styles.mistLow, weather !== "fog" && styles.still)} />
         </div>
       </div>
       <div {...stylex.props(styles.content)}>{children}</div>
     </div>
   );
-}
-
-/**
- * Rain on the returned canvas while `intensity` is set. The drawing code loads only then, after
- * the page is up, so a dry sky never fetches it; until it arrives the grey sky says rain alone.
- * Nothing loads with reduced motion. Easing off, it keeps falling while its layer fades out.
- */
-function useRain(intensity: "rain" | "storm" | null) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const rain = useRef<Rain | null>(null);
-  useEffect(() => {
-    if (!intensity) {
-      if (!rain.current) return;
-      // Turning wet again before the fade ends clears this, and the same rain carries on.
-      const timer = setTimeout(() => {
-        rain.current?.stop();
-        rain.current = null;
-      }, TURN_MS);
-      return () => clearTimeout(timer);
-    }
-    if (rain.current) {
-      rain.current.setIntensity(intensity);
-      return;
-    }
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let cancelled = false;
-    import("./rain").then(({ startRain }) => {
-      if (cancelled || !canvas.current) return;
-      rain.current = startRain(canvas.current, intensity);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [intensity]);
-  // Off the page entirely, say signing out mid-storm: stop at once.
-  useEffect(() => () => rain.current?.stop(), []);
-  return canvas;
 }
 
 function SunsetSky({ children }: { children: ComponentChildren }) {
@@ -250,22 +235,16 @@ const styles = stylex.create({
     WebkitFontSmoothing: "antialiased",
   },
   sunset: { backgroundImage: gradients.sunset, color: colors.inkOnSky },
-  // The weather's own layer paints the sky; this is what shows before the layers do.
-  dawn: {
-    backgroundImage: gradients.dawn,
-    backgroundAttachment: "fixed",
-    color: colors.ink,
-    transitionProperty: "color",
-    transitionDuration: TURN,
-  },
-  // Text straight on the storm turns light. Cards and controls bring their own surfaces.
-  inkOnStorm: { color: colors.inkOnSky },
+  // The weather's own layer paints the sky, pinned over all of it.
+  dawn: { color: colors.ink },
   scenery: { position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none" },
   // The board's height changes as issue lists open and shut. Pinned to the viewport, the sky
   // and its clouds stay put instead of sliding with the page.
   pinned: { position: "fixed" },
   content: { position: "relative" },
 
+  // Its own stacking context, so the sky on top stays under the clouds.
+  skies: { position: "absolute", inset: 0, isolation: "isolate" },
   layer: {
     position: "absolute",
     inset: 0,
@@ -276,6 +255,16 @@ const styles = stylex.create({
   },
   // Faded out, then out of the way, so hidden rain and lightning aren't painted.
   hidden: { opacity: 0, visibility: "hidden" },
+  onTop: { zIndex: 1 },
+  // Under the new sky until it has faded in, then gone at once.
+  covered: {
+    opacity: 0,
+    visibility: "hidden",
+    transitionDelay: TURN,
+    transitionDuration: "0s",
+  },
+  // Out of sight, so nothing to animate or keep on the GPU.
+  still: { animationPlayState: "paused", willChange: "auto" },
   rain: { position: "absolute", inset: 0, width: "100%", height: "100%" },
   lightning: {
     position: "absolute",
@@ -289,7 +278,6 @@ const styles = stylex.create({
   },
   // Rain and lightning only move, so with reduced motion they aren't there at all.
   motion: { display: { default: "block", [REDUCED_MOTION]: "none" } },
-  // Over the clouds, so they blur into it.
   // Over the clouds, so they fade into it: a veil thickest near the ground, then wisps of
   // mist drifting through it at two depths.
   fogHaze: {
@@ -441,10 +429,25 @@ const styles = stylex.create({
   lit: { backgroundColor: "rgba(255, 176, 120, 0.7)" },
 });
 
+// One per team weather. Rain and fog stay light enough for ink on top; the storm is dark, so
+// text on it turns light.
 const skies = stylex.create({
-  sun: { backgroundImage: gradients.sunny },
-  partly: { backgroundImage: gradients.dawn },
-  rain: { backgroundImage: gradients.rain },
-  storm: { backgroundImage: gradients.storm },
-  fog: { backgroundImage: gradients.fog },
+  sun: {
+    backgroundImage: `radial-gradient(60vmax 40vmax at 85% 0%, rgba(255, 214, 130, 0.55), transparent 70%), linear-gradient(180deg, ${skyTops.sun} 0%, #dcebff 45%, #fff0dc 85%, #fff6e8 100%)`,
+  },
+  partly: {
+    backgroundImage: `linear-gradient(180deg, ${skyTops.partly} 0%, #e9e4ff 45%, #ffe6d6 80%, #fff3e4 100%)`,
+  },
+  rain: {
+    backgroundImage: `linear-gradient(180deg, ${skyTops.rain} 0%, #a9b3c7 40%, #c7cdd9 80%, #d8dce4 100%)`,
+  },
+  storm: {
+    backgroundImage: `linear-gradient(180deg, ${skyTops.storm} 0%, #3d3a5a 40%, #565271 80%, #67637f 100%)`,
+  },
+  fog: {
+    backgroundImage: `linear-gradient(180deg, ${skyTops.fog} 0%, #dfe1e7 45%, #e9e9ec 80%, #efeeef 100%)`,
+  },
 });
+
+// Text straight on the storm turns light. Cards and controls keep their own ink.
+const stormText = stylex.createTheme(boardSky, { text: colors.inkOnSky });

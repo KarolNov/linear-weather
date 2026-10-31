@@ -30,7 +30,7 @@ body{margin:0}
 h1,h2,h3,p{margin:0}`;
 
 // Browser chrome and overscroll match the page's sky: the sunset sign-in page, or the board's
-// sky in its team's weather as the page loads.
+// sky in its team's weather as the page loads. The board's Sky keeps them in step after that.
 const sunset = { theme: "#46246b", body: "#1f1747" };
 const boardSky = (weather: Weather) => ({ theme: skyTops[weather], body: skyTops[weather] });
 

@@ -23,6 +23,20 @@ const sent = (call: unknown[] | undefined) =>
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+/** The fields TeamBoard selects on the team itself, not inside `people` or `rules`. */
+function teamFields(query: string) {
+  const start = "fragment TeamBoard on Team {";
+  const body = query.slice(query.indexOf(start) + start.length);
+  const fields: string[] = [];
+  let depth = 0;
+  for (const token of body.match(/[{}]|\w+/g) ?? []) {
+    if (token === "{") depth++;
+    else if (token === "}" && depth-- === 0) break;
+    else if (depth === 0 && token !== "}") fields.push(token);
+  }
+  return fields;
+}
+
 describe("board client", () => {
   it("sends the demo's mutations to /graphql?demo=true", async () => {
     const fetch = vi.fn(async () =>
@@ -80,7 +94,7 @@ describe("board client", () => {
     await boardClient(false, fetch).updateRules("t-avg", rules);
     for (const call of fetch.mock.calls) {
       // The team's own weather, not only each person's.
-      expect(sent(call).query).toContain("\n  weather { kind reason }\n");
+      expect(teamFields(sent(call).query)).toContain("weather");
     }
   });
 

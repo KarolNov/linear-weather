@@ -35,6 +35,9 @@ const MAX_DROPS = 450;
 const SLANT = -0.16;
 // A background doesn't need 60 frames a second; half that saves battery on a board left open.
 const FRAME_MS = 1000 / 30;
+// Browsers round frame timestamps, so two 60 Hz frames can measure a hair under FRAME_MS. Draw
+// anyway, or every other draw waits a third frame and the rain stutters at 20 fps.
+const FRAME_SLACK_MS = 4;
 // After a hidden tab or a long frame, step as if only this much time passed, not all of it.
 const MAX_STEP_MS = 50;
 
@@ -54,6 +57,8 @@ export function startRain(canvas: HTMLCanvasElement, intensity: RainIntensity): 
   const ctx = context;
   let width = 0;
   let height = 0;
+  let ratio = 1;
+  let current = intensity;
   let speedUp = 1;
   let brightness = 1;
   const layers: Drop[][] = LAYERS.map(() => []);
@@ -77,17 +82,24 @@ export function startRain(canvas: HTMLCanvasElement, intensity: RainIntensity): 
     });
   };
 
-  const setIntensity = (next: RainIntensity) => {
-    speedUp = next === "storm" ? STORM_SPEED : 1;
-    brightness = BRIGHTNESS[next];
-    const total = Math.min(MAX_DROPS, Math.round((width * height * DENSITY[next]) / 1_000_000));
+  /** Sets the drop counts for `current` over the sky's size, adding any missing drops. */
+  const retarget = (anywhere: boolean) => {
+    speedUp = current === "storm" ? STORM_SPEED : 1;
+    brightness = BRIGHTNESS[current];
+    const total = Math.min(MAX_DROPS, Math.round((width * height * DENSITY[current]) / 1_000_000));
     targets = LAYERS.map((layer) => Math.round(total * layer.share));
-    // New drops start above the sky, so a storm builds rather than appearing at once.
-    fill(false);
+    fill(anywhere);
   };
 
+  const setIntensity = (next: RainIntensity) => {
+    current = next;
+    // New drops start above the sky, so a storm builds rather than appearing at once.
+    retarget(false);
+  };
+
+  const pixelRatio = () => Math.min(window.devicePixelRatio || 1, 2);
   const resize = () => {
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    ratio = pixelRatio();
     width = canvas.clientWidth;
     height = canvas.clientHeight;
     canvas.width = Math.round(width * ratio);
@@ -128,29 +140,30 @@ export function startRain(canvas: HTMLCanvasElement, intensity: RainIntensity): 
   const tick = (now: number) => {
     frame = requestAnimationFrame(tick);
     if (last === 0) last = now;
-    if (now - last < FRAME_MS) return;
+    if (now - last < FRAME_MS - FRAME_SLACK_MS) return;
+    // Moved to a screen with another pixel ratio: redraw the bitmap sharp at the new one.
+    if (pixelRatio() !== ratio) resize();
     step(now - last);
     last = now;
   };
 
   resize();
-  setIntensity(intensity);
   // The page opens mid-shower, like the clouds open mid-drift.
-  for (const drops of layers) drops.length = 0;
-  fill(true);
-  window.addEventListener("resize", onResize);
-  frame = requestAnimationFrame(tick);
-
-  function onResize() {
+  retarget(true);
+  // The canvas's own box, not the window: a scrollbar appearing resizes it too. Sky uncovered by
+  // growing gets its rain at once rather than waiting for drops to fall into it.
+  const observer = new ResizeObserver(() => {
     resize();
-    setIntensity(speedUp === 1 ? "rain" : "storm");
-  }
+    retarget(true);
+  });
+  observer.observe(canvas);
+  frame = requestAnimationFrame(tick);
 
   return {
     setIntensity,
     stop() {
       cancelAnimationFrame(frame);
-      window.removeEventListener("resize", onResize);
+      observer.disconnect();
       ctx.clearRect(0, 0, width, height);
     },
   };

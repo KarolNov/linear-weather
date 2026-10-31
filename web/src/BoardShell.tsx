@@ -13,7 +13,7 @@ import {
   WeatherIcon,
   weatherLabels,
 } from "ui";
-import { colors, fonts, radii, space } from "ui/tokens.stylex";
+import { boardSky, colors, fonts, radii, space } from "ui/tokens.stylex";
 import {
   type Board,
   type BoardError,
@@ -221,10 +221,10 @@ function TeamBoard({
     <section aria-labelledby="team-name" {...stylex.props(styles.board)}>
       <div {...stylex.props(styles.boardHeader, entrance.board)}>
         <div>
-          <h1 id="team-name" {...stylex.props(styles.title)}>
+          <h1 id="team-name" {...stylex.props(styles.title, styles.onSky)}>
             {team.name}
           </h1>
-          <p {...stylex.props(styles.subtitle)}>
+          <p {...stylex.props(styles.onSky, styles.subtitle)}>
             {withIssues.length === 0
               ? "Nobody on this team has open issues."
               : "Open issues by person, soonest due first."}
@@ -353,8 +353,6 @@ const styles = stylex.create({
     gap: space.sm,
     paddingBlock: space.sm,
     paddingInline: { default: space.md, "@media (min-width: 768px)": space.xl },
-    // Set here, not inherited: the storm sky turns text on it light, and this bar stays light.
-    color: colors.ink,
     backgroundColor: "rgba(255, 255, 255, 0.55)",
     backdropFilter: "blur(16px) saturate(1.4)",
     borderBottom: `1px solid ${colors.border}`,
@@ -391,7 +389,9 @@ const styles = stylex.create({
     lineHeight: 1.1,
   },
   lead: { maxWidth: "40rem", fontSize: "1.0625rem", lineHeight: 1.55, color: colors.inkMuted },
-  // Straight on the sky, so muted by fading whatever colour the sky gives text.
+  // Straight on the sky, so its colour follows the sky's, easing with it.
+  onSky: { color: boardSky.text, transitionProperty: "color", transitionDuration: "1.6s" },
+  // Muted by fading whatever colour the sky gives text.
   subtitle: { opacity: 0.8 },
   forecast: {
     display: "inline-flex",
@@ -402,7 +402,6 @@ const styles = stylex.create({
     paddingInlineStart: space.xxs,
     paddingInlineEnd: space.md,
     borderRadius: radii.pill,
-    color: colors.ink,
     backgroundColor: colors.surface,
     border: `1px solid ${colors.border}`,
     backdropFilter: "blur(16px)",

@@ -140,7 +140,7 @@ export function PersonMatrix({
         )}
       </header>
 
-      {forecast && <Forecast name={name} weeks={forecast} today={today} />}
+      {forecast && forecast.length > 0 && <Forecast name={name} weeks={forecast} />}
 
       <div {...stylex.props(styles.grid)}>
         {QUADRANTS.map((q) => {
@@ -250,33 +250,44 @@ export function PersonMatrix({
   );
 }
 
-/** The weeks ahead as a strip of small icons, each explained on hover and to screen readers. */
-function Forecast({
-  name,
-  weeks,
-  today,
-}: {
-  name: string;
-  weeks: ForecastWeek[];
-  today: CalendarDate;
-}) {
+/**
+ * The weeks ahead as a strip of small icons. Each explains itself on hover, and on a press for
+ * keyboards, touch and screen readers.
+ */
+function Forecast({ name, weeks }: { name: string; weeks: ForecastWeek[] }) {
+  const [picked, setPicked] = useState<CalendarDate | null>(null);
+  const explain = ({ endsOn, weather, summary, turningUrgent }: ForecastWeek) => {
+    const which = turningUrgent.map((issue) => issue.identifier).join(", ");
+    const news = turningUrgent.length === 0 ? "" : ` ${summary}: ${which}.`;
+    return `${describeWeek(endsOn)}: ${weatherLabels[weatherIcon[weather.kind]]}. ${weather.reason}.${news}`;
+  };
+  const shown = weeks.find((week) => week.endsOn === picked);
   return (
-    <ol aria-label={`${name}'s forecast`} {...stylex.props(styles.forecast)}>
-      {weeks.map(({ startsOn, weather, summary, turningUrgent }) => {
-        const when = describeWeek(startsOn, today);
-        const which = turningUrgent.map((issue) => issue.identifier).join(", ");
-        const news = turningUrgent.length === 0 ? "" : ` ${summary}: ${which}.`;
-        const explained = `${when}: ${weatherLabels[weatherIcon[weather.kind]]}. ${weather.reason}.${news}`;
-        return (
-          <li key={startsOn} title={explained} {...stylex.props(styles.week)}>
-            <WeatherIcon weather={weatherIcon[weather.kind]} size={22} label={explained} />
-            <span aria-hidden="true" {...stylex.props(styles.weekLabel)}>
-              {when}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
+    <div>
+      <ol aria-label={`${name}'s forecast`} {...stylex.props(styles.forecast)}>
+        {weeks.map((week) => {
+          const explained = explain(week);
+          return (
+            <li key={week.endsOn} {...stylex.props(styles.weekItem)}>
+              <button
+                type="button"
+                title={explained}
+                aria-label={explained}
+                aria-pressed={week.endsOn === picked}
+                onClick={() => setPicked(week.endsOn === picked ? null : week.endsOn)}
+                {...stylex.props(styles.week)}
+              >
+                <WeatherIcon weather={weatherIcon[week.weather.kind]} size={22} label="" />
+                <span {...stylex.props(styles.weekLabel)}>{describeWeek(week.endsOn)}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <p aria-live="polite" {...stylex.props(styles.weekNews, !shown && styles.weekNewsEmpty)}>
+        {shown ? explain(shown) : ""}
+      </p>
+    </div>
   );
 }
 
@@ -319,15 +330,34 @@ const styles = stylex.create({
   weather: { display: "inline-flex", flexShrink: 0, marginInlineStart: "auto" },
   forecast: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(0, 1fr))",
+    gridAutoColumns: "minmax(0, 1fr)",
     gridAutoFlow: "column",
     gap: space.xs,
     margin: 0,
     padding: 0,
     listStyle: "none",
   },
-  week: { display: "flex", flexDirection: "column", alignItems: "center", gap: "2px", minWidth: 0 },
+  weekItem: { minWidth: 0 },
+  week: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "2px",
+    width: "100%",
+    padding: "2px",
+    borderWidth: 0,
+    borderRadius: radii.sm,
+    backgroundColor: {
+      default: "transparent",
+      [media.hover]: { default: "transparent", ":hover": "rgba(29, 26, 51, 0.06)" },
+    },
+    font: "inherit",
+    cursor: "pointer",
+    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+  },
   weekLabel: { fontSize: "0.6875rem", color: colors.inkMuted, whiteSpace: "nowrap" },
+  weekNews: { marginTop: space.xs, marginBottom: 0, fontSize: "0.8125rem", color: colors.inkMuted },
+  weekNewsEmpty: { display: "none" },
   name: {
     fontFamily: fonts.display,
     fontSize: "1.0625rem",

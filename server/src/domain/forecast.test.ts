@@ -8,12 +8,11 @@ import { DEFAULT_RULES } from "./quadrant";
 const TODAY = "2026-10-18";
 
 let next = 0;
-const issue = (dueDate: string | null, priority: MatrixIssue["priority"] = 2) => ({
-  id: `i${next++}`,
-  priority,
-  dueDate,
-  estimate: 1,
-});
+const issue = (
+  dueDate: string | null,
+  priority: MatrixIssue["priority"] = 2,
+  estimate: number | null = 1,
+) => ({ id: `i${next++}`, priority, dueDate, estimate });
 const person = (
   name: string,
   issues: ReturnType<typeof issue>[],
@@ -36,7 +35,7 @@ describe("forecast", () => {
     // Due Nov 18: urgent from Nov 5, in the third week.
     const bunch = [issue("2026-11-18"), issue("2026-11-18"), issue("2026-11-19", 4)];
     const { people } = forecast(
-      [person("Ana", bunch), person("Ben", [issue("2026-10-20"), issue("2026-11-30")])],
+      [person("Ana", bunch), person("Ben", [issue("2026-10-24"), issue("2026-11-30")])],
       "issues",
       TODAY,
       4,
@@ -47,13 +46,18 @@ describe("forecast", () => {
     expect(ana?.[2]?.summary).toBe("2 High-priority issues and 1 Low-priority issue become urgent");
     expect(ana?.[2]?.turningUrgent).toHaveLength(3);
     expect(ana?.[0]?.summary).toBe("Nothing new turns urgent");
-    // Ben's Oct 20 issue is done by then; his Nov 30 one turns urgent Nov 17, past the horizon.
+    // Ben's Oct 24 issue is due the first week's last day, so it counts then and is done after;
+    // his Nov 30 one turns urgent Nov 17, past the horizon.
     expect(ben?.map((w) => w.weather.load)).toEqual([1, 0, 0, 0]);
   });
 
   it("counts work as done after its due date, but keeps overdue work, and its storm", () => {
     const { people } = forecast(
-      [person("Ana", [issue("2026-10-10")]), person("Ben", [issue("2026-10-19")])],
+      [
+        person("Ana", [issue("2026-10-10")]),
+        person("Ben", [issue("2026-10-24")]),
+        person("Cy", [issue("2026-10-19")]),
+      ],
       "issues",
       TODAY,
       2,
@@ -61,6 +65,8 @@ describe("forecast", () => {
     expect(kinds(people[0] ?? [])).toEqual(["storm", "storm"]);
     expect(people[0]?.[1]?.weather.reason).toContain("1 issue overdue");
     expect(people[1]?.map((w) => w.weather.load)).toEqual([1, 0]);
+    // Due mid-week: done by the week's last day, which the weather is for.
+    expect(people[2]?.map((w) => w.weather.load)).toEqual([0, 0]);
   });
 
   it("only counts what turns urgent later, not what is urgent already", () => {
@@ -81,8 +87,8 @@ describe("forecast", () => {
       TODAY,
       4,
     );
-    // Urgent from now, by hand, until its due date; the other never turns urgent.
-    expect(people[0]?.map((w) => w.weather.load)).toEqual([1, 1, 1, 1]);
+    // Urgent from now, by hand, until it's done on Nov 10; the other never turns urgent.
+    expect(people[0]?.map((w) => w.weather.load)).toEqual([1, 1, 1, 0]);
     expect(people[0]?.flatMap((w) => w.turningUrgent)).toEqual([]);
   });
 
@@ -99,9 +105,9 @@ describe("forecast", () => {
   it("projects the team's spread each week and picks its worst", () => {
     const { team, worst } = forecast(
       [
-        person("Ana", [issue("2026-10-20"), issue("2026-11-18"), issue("2026-11-18")]),
-        person("Ben", [issue("2026-10-20"), issue("2026-10-21")]),
-        person("Cy", [issue("2026-10-21")]),
+        person("Ana", [issue("2026-10-24"), issue("2026-11-18"), issue("2026-11-18")]),
+        person("Ben", [issue("2026-10-24"), issue("2026-10-24")]),
+        person("Cy", [issue("2026-10-24")]),
       ],
       "issues",
       TODAY,
@@ -111,6 +117,13 @@ describe("forecast", () => {
     expect(team[2]?.weather.reason).toBe("Ana is in a storm");
     expect(team[2]?.summary).toBe("2 High-priority issues become urgent");
     expect(worst).toBe(team[2]);
+  });
+
+  it("counts points only if everything urgent in any week is estimated", () => {
+    const unestimated = issue("2026-11-18", 2, null);
+    const people = [person("Ana", [issue("2026-10-24"), unestimated]), person("Ben", [])];
+    expect(forecast(people, null, TODAY, 4).team[0]?.weather.metric).toBe("issues");
+    expect(forecast(people, null, TODAY, 2).team[0]?.weather.metric).toBe("points");
   });
 
   it("refuses a horizon it can't project", () => {

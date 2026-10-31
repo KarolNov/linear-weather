@@ -72,12 +72,14 @@ const defaultTeam: BoardData["team"] = {
       forecast: [
         {
           startsOn: "2026-10-18",
+          endsOn: "2026-10-24",
           weather: { kind: "STORM" as const, reason: "4 urgent points" },
           summary: "Nothing new turns urgent",
           turningUrgent: [],
         },
         {
           startsOn: "2026-10-25",
+          endsOn: "2026-10-31",
           weather: { kind: "RAIN" as const, reason: "5 urgent points" },
           summary: "1 High-priority issue becomes urgent",
           turningUrgent: [{ identifier: "AVG-7" }],
@@ -204,9 +206,9 @@ describe("web worker", () => {
     const { bindings } = serverReturning(fury);
     const page = await (await app.request("/", {}, bindings)).text();
     expect(page).toContain(`aria-label="Tony Stark's forecast"`);
-    expect(page).toContain("This week: Storm. 4 urgent points.");
+    expect(page).toContain("By Oct 24: Storm. 4 urgent points.");
     expect(page).toContain(
-      "Oct 25: Rain. 5 urgent points. 1 High-priority issue becomes urgent: AVG-7.",
+      "By Oct 31: Rain. 5 urgent points. 1 High-priority issue becomes urgent: AVG-7.",
     );
   });
 

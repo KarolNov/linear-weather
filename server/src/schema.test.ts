@@ -264,9 +264,9 @@ describe("schema", () => {
     ]);
     // Three more turn urgent this week, then his work comes due and leaves.
     expect(bruce.map((w) => [w.weather.kind, w.weather.load])).toEqual([
-      ["STORM", 9],
-      ["STORM", 5],
-      ["RAIN", 3],
+      ["STORM", 6],
+      ["STORM", 4],
+      ["SUNNY", 0],
       ["SUNNY", 0],
     ]);
     expect(bruce[0]?.turningUrgent.map((i) => i.identifier)).toEqual([

@@ -60,6 +60,8 @@ export interface Weather {
 export interface ForecastWeek {
   /** Today for the first week, then every 7 days. */
   startsOn: CalendarDate;
+  /** The day its weather is for. */
+  endsOn: CalendarDate;
   weather: Weather;
   /** E.g. "3 High-priority issues become urgent". */
   summary: string;
@@ -129,7 +131,7 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
     name
     avatarUrl
     weather { kind reason }
-    forecast { startsOn weather { kind reason } summary turningUrgent { identifier } }
+    forecast { startsOn endsOn weather { kind reason } summary turningUrgent { identifier } }
     matrix { ${MATRIX_FIELDS} }
   }
   unassigned { ${MATRIX_FIELDS} }
@@ -229,7 +231,10 @@ export function describeDue(dueDate: CalendarDate, today: CalendarDate) {
   return { text: `${date} · ${relative}`, overdue: days < 0, today: days === 0 };
 }
 
-/** A forecast week as the strip labels it: "This week", then the date it starts, e.g. "Oct 25". */
-export function describeWeek(startsOn: CalendarDate, today: CalendarDate): string {
-  return startsOn === today ? "This week" : shortDate.format(Date.parse(startsOn));
+/**
+ * A forecast week as the strip labels it: by the day its weather is for, e.g. "By Oct 24", so it
+ * doesn't read as the weather now.
+ */
+export function describeWeek(endsOn: CalendarDate): string {
+  return `By ${shortDate.format(Date.parse(endsOn))}`;
 }

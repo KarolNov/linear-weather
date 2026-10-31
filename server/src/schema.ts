@@ -6,6 +6,7 @@ import { GraphQLError } from "graphql";
 import {
   type ForecastWeek,
   forecast,
+  isForecastHorizon,
   MAX_FORECAST_WEEKS,
   type TeamForecast,
 } from "./domain/forecast";
@@ -141,24 +142,23 @@ async function teamWeatherOf(
   });
 }
 
-/** A team's forecast for `weeks` weeks, counting load in `metric`, else in what suits the team. */
+/** A team's forecast for `weeks` weeks, counting load in `metric`, else in what suits the weeks. */
 async function teamForecastOf(
   context: GraphQLContext,
   teamId: string,
   weeks: number,
   metric: LoadMetric | null | undefined,
 ): Promise<{ byPerson: Map<string, ForecastWeek<TeamIssue>[]>; team: TeamForecast<TeamIssue> }> {
-  if (!Number.isInteger(weeks) || weeks < 1 || weeks > MAX_FORECAST_WEEKS) {
+  if (!isForecastHorizon(weeks)) {
     throw new GraphQLError(`A forecast covers 1 to ${MAX_FORECAST_WEEKS} weeks.`, {
       extensions: { code: "BAD_USER_INPUT" },
     });
   }
-  const resolved = metric ?? (await teamLoadMetric(context, teamId));
-  return once(context, `forecast:${teamId}:${resolved}:${weeks}`, async () => {
+  return once(context, `forecast:${teamId}:${metric ?? "auto"}:${weeks}`, async () => {
     const people = await peopleMatrices(context, teamId);
     const projected = forecast(
       people.map(({ person, matrix }) => ({ name: person.name, matrix })),
-      resolved,
+      metric ?? null,
       context.today,
       weeks,
     );
@@ -172,6 +172,17 @@ async function teamForecastOf(
       team: projected,
     };
   });
+}
+
+/** Someone's weather in a team they're not on and hold none of the issues of: nothing to measure. */
+function notOnTeam(team: Weather): Weather {
+  return {
+    kind: "fog",
+    metric: team.metric,
+    load: null,
+    teamAverage: team.teamAverage,
+    reason: "Not on this team",
+  };
 }
 
 async function signedIn(context: GraphQLContext): Promise<Workspace> {
@@ -474,14 +485,7 @@ UserRef.implement({
         const weather = await teamWeatherOf(context, teamId, args.metric);
         const theirs = weather.byPerson.get(user.id);
         if (theirs) return theirs;
-        // Not on the team and holding none of its issues: no load there to measure.
-        return {
-          kind: "fog",
-          metric: weather.metric,
-          load: null,
-          teamAverage: weather.team.teamAverage,
-          reason: "Not on this team",
-        };
+        return notOnTeam(weather.team);
       },
     }),
     forecast: t.field({
@@ -497,7 +501,11 @@ UserRef.implement({
           defaultValue: FORECAST_WEEKS,
           description: `1 to ${MAX_FORECAST_WEEKS}.`,
         }),
-        metric: t.arg({ type: LoadMetricEnum, description: "Defaults to the team's loadMetric." }),
+        metric: t.arg({
+          type: LoadMetricEnum,
+          description:
+            "Defaults to POINTS if every issue urgent in any of the weeks is estimated, else ISSUES.",
+        }),
       },
       resolve: async (user, args, context) => {
         const teamId = args.teamId == null ? user.teamId : String(args.teamId);
@@ -507,13 +515,7 @@ UserRef.implement({
         if (theirs) return theirs;
         return projected.team.team.map((week) => ({
           ...week,
-          weather: {
-            kind: "fog" as const,
-            metric: week.weather.metric,
-            load: null,
-            teamAverage: week.weather.teamAverage,
-            reason: "Not on this team",
-          },
+          weather: notOnTeam(week.weather),
           turningUrgent: [],
           summary: "Not on this team",
         }));
@@ -572,7 +574,11 @@ TeamRef.implement({
           defaultValue: FORECAST_WEEKS,
           description: `1 to ${MAX_FORECAST_WEEKS}.`,
         }),
-        metric: t.arg({ type: LoadMetricEnum, description: "Defaults to the team's loadMetric." }),
+        metric: t.arg({
+          type: LoadMetricEnum,
+          description:
+            "Defaults to POINTS if every issue urgent in any of the weeks is estimated, else ISSUES.",
+        }),
       },
       resolve: async (team, args, context) =>
         (await teamForecastOf(context, team.id, args.weeks, args.metric)).team,

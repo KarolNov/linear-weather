@@ -6,6 +6,7 @@ import {
   type CalendarDate,
   type ClassifiableIssue,
   classify,
+  type LinearPriority,
   type Quadrant,
   type QuadrantRules,
 } from "./quadrant";
@@ -100,6 +101,10 @@ function mostPressingFirst(a: ClassifiableIssue, b: ClassifiableIssue): number {
     if (b.dueDate === null) return -1;
     return a.dueDate < b.dueDate ? -1 : 1;
   }
-  // "No priority" (0) sorts after Low (4).
-  return (a.priority || 5) - (b.priority || 5);
+  return byPriority(a.priority, b.priority);
+}
+
+/** Most important first: Urgent (1) to Low (4), then "No priority" (0). */
+export function byPriority(a: LinearPriority, b: LinearPriority): number {
+  return (a || 5) - (b || 5);
 }

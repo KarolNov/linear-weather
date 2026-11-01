@@ -1,7 +1,7 @@
 // The forecast: each person's weather in the weeks ahead, as dated issues turn urgent. Pure, like
 // the weather now that it projects forward.
 
-import { byPriority, type Matrix, type MatrixIssue, type Placed } from "./matrix";
+import { byPriority, isImportant, type Matrix, type MatrixIssue, type Placed } from "./matrix";
 import { addDays, type CalendarDate, type LinearPriority, type Quadrant } from "./quadrant";
 import {
   DEFAULT_THRESHOLDS,
@@ -117,15 +117,15 @@ export function forecast<I extends MatrixIssue>(
 const URGENT: ReadonlySet<Quadrant> = new Set(["do", "delegate"]);
 
 /** The first day an issue counts as urgent in the forecast, or null if it never will. */
-function urgentFrom(issue: Placed<MatrixIssue>, today: CalendarDate): CalendarDate | null {
+export function urgentFrom(issue: Placed<MatrixIssue>, today: CalendarDate): CalendarDate | null {
   if (issue.quadrantSource === "override") return URGENT.has(issue.quadrant) ? today : null;
   return issue.becomesUrgentOn;
 }
 
-type UrgentFrom = (issue: Placed<MatrixIssue>) => CalendarDate | null;
+export type UrgentFrom = (issue: Placed<MatrixIssue>) => CalendarDate | null;
 
 /** A matrix as it should stand on `on`: work due before then is done, unless already overdue. */
-function project<I extends MatrixIssue>(
+export function project<I extends MatrixIssue>(
   matrix: Matrix<I>,
   from: UrgentFrom,
   today: CalendarDate,
@@ -148,8 +148,7 @@ function projectedQuadrant(
   if (issue.quadrantSource === "override") return issue.quadrant;
   const urgentOn = from(issue);
   const urgent = urgentOn !== null && urgentOn <= on;
-  const important = issue.quadrant === "do" || issue.quadrant === "schedule";
-  return important ? (urgent ? "do" : "schedule") : urgent ? "delegate" : "drop";
+  return isImportant(issue) ? (urgent ? "do" : "schedule") : urgent ? "delegate" : "drop";
 }
 
 /** Issues the rules make urgent from `startsOn` to `endsOn`, not those urgent already. */

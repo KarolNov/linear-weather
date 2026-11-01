@@ -22,6 +22,7 @@ import {
   QUADRANTS,
   type Quadrant,
   type Rules,
+  runningLate,
   type TeamBoardData,
   type Weather as TeamWeather,
   teamBoard,
@@ -32,6 +33,7 @@ import { entrance } from "./motion";
 import { boardClient } from "./mutations";
 import { PersonMatrix } from "./PersonMatrix";
 import { quadrantFill, quadrantInfo } from "./quadrants";
+import { RebalancePanel } from "./RebalancePanel";
 import { RulesPanel } from "./RulesPanel";
 import { TeamPicker } from "./TeamPicker";
 import { weatherIcon } from "./weather";
@@ -132,6 +134,7 @@ function TeamBoard({
 }) {
   const client = useMemo(() => boardClient(Boolean(demo)), [demo]);
   const [editingRules, setEditingRules] = useState(false);
+  const [rebalancing, setRebalancing] = useState(false);
   // Issues whose move hasn't answered yet.
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
   const [failure, setFailure] = useState<string | null>(null);
@@ -217,6 +220,7 @@ function TeamBoard({
       </Card>
     );
   }
+  const moves = team.rebalanceNow.length + team.rebalanceForecast.length;
   return (
     <section aria-labelledby="team-name" {...stylex.props(styles.board)}>
       <div {...stylex.props(styles.boardHeader, entrance.board)}>
@@ -243,6 +247,15 @@ function TeamBoard({
           )}
           <Button
             variant="quiet"
+            aria-expanded={rebalancing}
+            aria-controls={rebalancing ? "rebalance-panel" : undefined}
+            onClick={() => setRebalancing(!rebalancing)}
+            xstyle={styles.expandAll}
+          >
+            {moves === 0 ? "Rebalance" : `Rebalance · ${moves}`}
+          </Button>
+          <Button
+            variant="quiet"
             aria-expanded={editingRules}
             aria-controls={editingRules ? "rules-panel" : undefined}
             onClick={() => setEditingRules(!editingRules)}
@@ -262,6 +275,17 @@ function TeamBoard({
             rules={team.rules}
             onSave={saveRules}
             onClose={() => setEditingRules(false)}
+          />
+        </div>
+      )}
+      {rebalancing && (
+        <div id="rebalance-panel">
+          <RebalancePanel
+            teamName={team.name}
+            rebalanceNow={team.rebalanceNow}
+            rebalanceForecast={team.rebalanceForecast}
+            runningLate={runningLate(people)}
+            onClose={() => setRebalancing(false)}
           />
         </div>
       )}

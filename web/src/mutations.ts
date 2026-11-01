@@ -106,18 +106,23 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
   const endpoint = demo ? "/graphql?demo=true" : "/graphql";
   let queue: Promise<unknown> = Promise.resolve();
 
+  /** Sends one operation and hands back the answer's body. Throws on an HTTP error. */
+  async function post<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (!res.ok) throw new Error(`server responded ${res.status}`);
+    return (await res.json()) as T;
+  }
+
   async function send(query: string, variables: Record<string, unknown>): Promise<MutationResult> {
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query, variables }),
-      });
-      if (!res.ok) throw new Error(`server responded ${res.status}`);
-      const { data, errors = [] } = (await res.json()) as {
+      const { data, errors = [] } = await post<{
         data?: Record<string, MutationPayload> | null;
         errors?: { message: string; path?: (string | number)[] }[];
-      };
+      }>(query, variables);
       const payload = data && Object.values(data)[0];
       // The change is made before the board is read back, so an error below the mutation's own
       // field means it was saved and only the board failed to load, e.g. Linear's rate limit.
@@ -155,13 +160,9 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
 
   async function read(teamId: string): Promise<TeamBoardData | null> {
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query: TEAM_QUERY, variables: { teamId } }),
+      const { data } = await post<{ data?: { team: TeamBoardData | null } | null }>(TEAM_QUERY, {
+        teamId,
       });
-      if (!res.ok) throw new Error(`server responded ${res.status}`);
-      const { data } = (await res.json()) as { data?: { team: TeamBoardData | null } | null };
       return data?.team ?? null;
     } catch (error) {
       console.error(`Couldn't read the board again: ${error}`);

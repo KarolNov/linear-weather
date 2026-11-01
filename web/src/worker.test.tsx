@@ -1,6 +1,14 @@
 import { renderToString } from "preact-render-to-string";
 import { describe, expect, it, vi } from "vitest";
-import type { BoardData, BoardIssue, Matrix, Rules, Suggestion } from "./board";
+import {
+  type BoardData,
+  type BoardIssue,
+  type Matrix,
+  type PersonMatrix,
+  type Rules,
+  runningLate,
+  type Suggestion,
+} from "./board";
 import { RebalancePanel } from "./RebalancePanel";
 import { app, type Bindings } from "./worker";
 
@@ -273,6 +281,45 @@ describe("web worker", () => {
     // A forecast move says when the issue turns urgent, and which week's storm it heads off.
     expect(panel).toContain("urgent Nov 3");
     expect(panel).toContain('aria-label="Wanda Maximoff would be: Partly cloudy in week 3."');
+  });
+
+  it("finds who is running late: overdue urgent work, not overdue work that can wait", () => {
+    const late = issue({ id: "i-4", identifier: "AVG-4", dueDate: "2026-10-01" });
+    const waits = issue({ id: "i-5", identifier: "AVG-5", dueDate: "2026-10-02" });
+    const people: PersonMatrix[] = [
+      {
+        assignee: tony,
+        matrix: { ...tonysMatrix, delegate: [late], schedule: [waits] },
+        weather: { kind: "STORM", reason: "2 issues overdue" },
+        forecast: [],
+      },
+      {
+        assignee: wanda,
+        matrix: { ...emptyMatrix, do: [issue({ id: "i-6", dueDate: "2026-10-18" })] },
+        weather: { kind: "SUNNY", reason: "Nothing overdue" },
+        forecast: [],
+      },
+      { assignee: null, matrix: tonysMatrix, weather: null, forecast: null },
+    ];
+    expect(runningLate(people, "2026-10-18")).toEqual([{ person: tony, overdue: 2 }]);
+  });
+
+  it("warns that moves can't clear a storm overdue work causes", () => {
+    const panel = renderToString(
+      <RebalancePanel
+        teamName="Avengers"
+        rebalanceNow={[nowMove]}
+        rebalanceForecast={[]}
+        runningLate={[
+          { person: tony, overdue: 3 },
+          { person: wanda, overdue: 1 },
+        ]}
+        onClose={() => {}}
+      />,
+    );
+    expect(panel).toContain(
+      "Tony Stark (3 overdue) and Wanda Maximoff (1 overdue) stay in a storm after these moves",
+    );
   });
 
   it("says when there's nothing to move", () => {

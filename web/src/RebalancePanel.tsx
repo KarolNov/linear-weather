@@ -1,15 +1,25 @@
 import * as stylex from "@stylexjs/stylex";
 import { Avatar, Button, Card, VisuallyHidden, WeatherIcon, weatherLabels } from "ui";
 import { colors, fonts, radii, space } from "ui/tokens.stylex";
-import { describeDay, type Person, type Rebalance, type Suggestion } from "./board";
+import {
+  describeDay,
+  type Person,
+  type Rebalance,
+  type RunningLate,
+  type Suggestion,
+} from "./board";
 import { entrance } from "./motion";
 import { quadrantFill, quadrantInfo } from "./quadrants";
 import { weatherIcon } from "./weather";
 
 export interface RebalancePanelProps extends Rebalance {
   teamName: string;
+  /** Who stays in a storm whatever is moved, because their overdue work stays with them. */
+  runningLate?: RunningLate[];
   onClose: () => void;
 }
+
+const names = new Intl.ListFormat("en-US", { type: "conjunction" });
 
 /**
  * Who could hand which issue to whom: for today's storms, and for the ones the forecast sees
@@ -19,8 +29,12 @@ export function RebalancePanel({
   teamName,
   rebalanceNow,
   rebalanceForecast,
+  runningLate = [],
   onClose,
 }: RebalancePanelProps) {
+  const late = names.format(
+    runningLate.map(({ person, overdue }) => `${person.name} (${overdue} overdue)`),
+  );
   return (
     <Card as="section" xstyle={entrance.reveal}>
       <div {...stylex.props(styles.panel)}>
@@ -33,6 +47,16 @@ export function RebalancePanel({
             or in a storm. Overdue work stays where it is, and nobody running late takes more.
           </p>
         </div>
+        {runningLate.length > 0 && (
+          <div {...stylex.props(styles.note)}>
+            <WeatherIcon weather="storm" size={28} label="" />
+            <p>
+              {late} {runningLate.length === 1 ? "stays" : "stay"} in a storm after these moves:
+              overdue work stays with whoever has it. Finish it, or move its due date in Linear, to
+              clear the storm.
+            </p>
+          </div>
+        )}
         <div {...stylex.props(styles.horizons)}>
           <Horizon
             id="rebalance-now"
@@ -160,6 +184,17 @@ const styles = stylex.create({
   },
   subheading: { fontFamily: fonts.display, fontSize: "1rem", fontWeight: 700 },
   muted: { color: colors.inkMuted, fontSize: "0.9375rem" },
+  note: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    padding: space.sm,
+    borderRadius: radii.md,
+    border: `1px solid ${colors.border}`,
+    backgroundColor: colors.surfaceStrong,
+    fontSize: "0.9375rem",
+    lineHeight: 1.4,
+  },
   horizons: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",

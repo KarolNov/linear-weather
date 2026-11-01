@@ -22,6 +22,7 @@ import {
   QUADRANTS,
   type Quadrant,
   type Rules,
+  runningLate,
   type TeamBoardData,
   type Weather as TeamWeather,
   teamBoard,
@@ -283,6 +284,7 @@ function TeamBoard({
             teamName={team.name}
             rebalanceNow={team.rebalanceNow}
             rebalanceForecast={team.rebalanceForecast}
+            runningLate={runningLate(people, today)}
             onClose={() => setRebalancing(false)}
           />
         </div>

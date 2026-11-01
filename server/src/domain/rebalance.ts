@@ -47,16 +47,17 @@ export interface RebalanceOptions {
  * overloaded, or no single move helps.
  *
  * - **now** moves work that is urgent today.
- * - **forecast** heads off storms before they arrive: in the earliest week someone is
- *   overloaded, it moves work that isn't urgent yet but will be by then. An issue weighs on
- *   every week from when it turns urgent until it's due, so a move must even out those weeks
- *   taken together, not just the one it's for: easing week 3 mustn't bury the taker in week 2.
+ * - **forecast** heads off storms before they arrive, starting from the board as today's moves
+ *   leave it. Week by week, it settles each week before looking at the next, moving work that
+ *   isn't urgent yet but will be by that week's end. An issue weighs on every week from when it
+ *   turns urgent until it's due, so a move must even out those weeks taken together, not just
+ *   the one it's for: easing week 3 mustn't bury the taker in week 2.
  *
  * Each issue moves at most once, and only if it narrows the gap between giver and taker.
  *
  * Nobody takes on work while they have overdue issues, or while their load can't be measured.
  * Overdue issues stay put: moving them only moves the storm. Without a `metric`, load is counted
- * as the weather (now) or forecast would count it.
+ * as the weather (now) or forecast would count it on today's board.
  */
 export function rebalance<I extends MatrixIssue, P extends { name: string }>(
   people: readonly (P & { matrix: Matrix<I> })[],
@@ -68,15 +69,21 @@ export function rebalance<I extends MatrixIssue, P extends { name: string }>(
   // Moves are made on copies, so each round reads the weather the earlier ones leave.
   const state = people.map(({ name, matrix }) => ({ name, matrix: copy(matrix) }));
   const overdue = state.map(({ matrix }) => hasOverdue(matrix, today));
-  let counted =
-    metric ?? (horizon === "now" ? loadMetricFor(state.map(({ matrix }) => matrix)) : null);
   const from: UrgentFrom = (issue) => urgentFrom(issue, today);
+  // Counted the same way all the way through, whoever ends up holding what.
+  const nowMetric = metric ?? loadMetricFor(state.map(({ matrix }) => matrix));
+  const forecastMetric =
+    horizon === "forecast"
+      ? (metric ??
+        forecast(state, null, today, weeks, thresholds).team[0]?.weather.metric ??
+        "issues")
+      : nowMetric;
 
-  /** Now, or each forecast week, as the moves so far leave them. */
-  function rounds(): Round<I>[] {
-    if (horizon === "now") {
-      const weather = teamWeather(state, counted ?? "issues", today, thresholds);
-      const round = {
+  /** Today, as the moves so far leave it. */
+  function now(): Round<I>[] {
+    const weather = teamWeather(state, nowMetric, today, thresholds);
+    return [
+      {
         week: null,
         loads: weather.people.map(({ load }) => load),
         teamAverage: weather.team.teamAverage,
@@ -85,11 +92,13 @@ export function rebalance<I extends MatrixIssue, P extends { name: string }>(
             (i) => i.dueDate === null || i.dueDate >= today,
           ),
         ),
-      };
-      return [round];
-    }
-    const projected = forecast(state, counted, today, weeks, thresholds);
-    counted ??= projected.team[0]?.weather.metric ?? "issues";
+      },
+    ];
+  }
+
+  /** Each forecast week, as the moves so far leave it. */
+  function ahead(): Round<I>[] {
+    const projected = forecast(state, forecastMetric, today, weeks, thresholds);
     return projected.team.map(({ endsOn, weather }, week) => ({
       week: week + 1,
       loads: projected.people.map((theirs) => theirs[week]?.weather.load ?? null),
@@ -106,54 +115,59 @@ export function rebalance<I extends MatrixIssue, P extends { name: string }>(
 
   const suggestions: Suggestion<P, I>[] = [];
   const moved = new Set<Placed<I>>();
-  // Each issue moves at most once, so the pass ends.
-  for (;;) {
-    const all = rounds();
-    const size = sizeIn(counted ?? "issues");
-    // Evens out the giver's and taker's load over every round the issue counts in: the change
-    // in the sum of their squared loads, which a fairer split lowers.
-    const fits = (issue: Placed<I>, giver: number, taker: number) => {
-      if (moved.has(issue)) return false;
-      const s = size(issue);
-      let change = 0;
-      for (const { loads, movable } of all) {
-        const [g, t] = [loads[giver], loads[taker]];
-        if (g == null || t == null || !movable[giver]?.includes(issue)) continue;
-        change += s * (s + t - g);
-      }
-      return change < 0;
-    };
-    let found: { round: Round<I>; move: Move<I> } | null = null;
-    for (const round of all) {
-      const move = bestMove(round, overdue, size, fits, thresholds);
-      if (move) {
-        found = { round, move };
-        break;
-      }
-    }
-    if (!found) break;
-    const { round, move } = found;
-    const { issue } = move;
-    moved.add(issue);
-    const giver = state[move.from] as (typeof state)[number];
-    const taker = state[move.to] as (typeof state)[number];
-    giver.matrix[issue.quadrant] = giver.matrix[issue.quadrant].filter((i) => i !== issue);
-    taker.matrix[issue.quadrant] = [...taker.matrix[issue.quadrant], issue];
 
-    // Both were measured before and after, so the average doesn't move.
-    const average = round.teamAverage as number;
-    const fromAfter = move.fromLoad - move.size;
-    const toAfter = move.toLoad + move.size;
-    const ratio = (load: number) => times(ratioOf(load, average));
-    suggestions.push({
-      issue,
-      from: people[move.from] as P,
-      to: people[move.to] as P,
-      week: round.week,
-      fromWeather: weatherFor(fromAfter, average, overdue[move.from] ?? false, thresholds),
-      toWeather: weatherFor(toAfter, average, false, thresholds),
-      reason: `${giver.name} goes from ${ratio(move.fromLoad)} to ${ratio(fromAfter)} the team average, ${taker.name} from ${ratio(move.toLoad)} to ${ratio(toAfter)}`,
-    });
+  /** Makes moves in one round until it's balanced, or no move helps. */
+  function settle(rounds: () => Round<I>[], at: number, counted: LoadMetric, report: boolean) {
+    const size = sizeIn(counted);
+    // Each issue moves at most once, so this ends.
+    for (;;) {
+      const all = rounds();
+      const round = all[at];
+      if (!round) return;
+      // Evens out the giver's and taker's load over every round the issue counts in: the change
+      // in the sum of their squared loads, which a fairer split lowers.
+      const fits = (issue: Placed<I>, giver: number, taker: number) => {
+        if (moved.has(issue)) return false;
+        const s = size(issue);
+        let change = 0;
+        for (const { loads, movable } of all) {
+          const [g, t] = [loads[giver], loads[taker]];
+          if (g == null || t == null || !movable[giver]?.includes(issue)) continue;
+          change += s * (s + t - g);
+        }
+        return change < 0;
+      };
+      const move = bestMove(round, overdue, size, fits, thresholds);
+      if (!move) return;
+      const { issue } = move;
+      moved.add(issue);
+      const giver = state[move.from] as (typeof state)[number];
+      const taker = state[move.to] as (typeof state)[number];
+      giver.matrix[issue.quadrant] = giver.matrix[issue.quadrant].filter((i) => i !== issue);
+      taker.matrix[issue.quadrant] = [...taker.matrix[issue.quadrant], issue];
+      if (!report) continue;
+
+      // Both were measured before and after, so the average doesn't move.
+      const average = round.teamAverage as number;
+      const fromAfter = move.fromLoad - move.size;
+      const toAfter = move.toLoad + move.size;
+      const ratio = (load: number) => times(ratioOf(load, average));
+      suggestions.push({
+        issue,
+        from: people[move.from] as P,
+        to: people[move.to] as P,
+        week: round.week,
+        fromWeather: weatherFor(fromAfter, average, overdue[move.from] ?? false, thresholds),
+        toWeather: weatherFor(toAfter, average, false, thresholds),
+        reason: `${giver.name} goes from ${ratio(move.fromLoad)} to ${ratio(fromAfter)} the team average, ${taker.name} from ${ratio(move.toLoad)} to ${ratio(toAfter)}`,
+      });
+    }
+  }
+
+  // The forecast assumes today's moves were made, then settles the weeks in order.
+  settle(now, 0, nowMetric, horizon === "now");
+  if (horizon === "forecast") {
+    for (let week = 0; week < weeks; week++) settle(ahead, week, forecastMetric, true);
   }
   return suggestions;
 }

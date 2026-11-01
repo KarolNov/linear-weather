@@ -145,10 +145,10 @@ The team's `worst` week is the most lopsided one (storm, then rain, then fog, th
 `Team.rebalanceSuggestions(horizon:)` lists moves that would bring everyone's urgent load within the weather's thresholds, in the order to make them (`server/src/domain/rebalance.ts`). It's greedy: while someone is under rain or in a storm by load, the busiest person hands the least busy one issue, the one that leaves the two closest, and the weather is read again.
 
 - **`NOW`** moves work that is urgent today.
-- **`FORECAST`** heads storms off before they arrive. In the earliest overloaded week, it moves work that isn't urgent yet but will be by then. An issue weighs on every week from when it turns urgent until it's due, so a move has to even out the giver's and taker's load across all those weeks together (their sum of squares has to drop). Otherwise, easing week 3 could bury the taker in week 2, and the next round would send the issue back.
+- **`FORECAST`** heads storms off before they arrive, starting from the board as the `NOW` moves leave it. It settles the weeks in order, each before the next, moving work that isn't urgent yet but will be by that week's end. An issue weighs on every week from when it turns urgent until it's due, so a move has to even out the giver's and taker's load across all those weeks together (their sum of squares has to drop). Otherwise, easing week 3 could bury the taker in week 2, and the next round would send the issue back.
 - **What doesn't move:** overdue work, since moving it only moves the storm. Nobody running late takes on more, and nobody whose load can't be measured does either. Each issue moves at most once, and only if it narrows the gap, so the list always ends.
 
-The two horizons are worked out separately: the forecast doesn't assume today's moves were made.
+So the two lists read as one plan: make today's moves, then each week's in turn. The forecast list never repeats today's moves.
 
 ### Mutations and their errors
 

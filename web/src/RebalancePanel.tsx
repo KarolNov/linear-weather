@@ -44,7 +44,7 @@ export function RebalancePanel({
           <Horizon
             id="rebalance-forecast"
             title="Before the storm"
-            lead="Work to hand over before it turns urgent, in the next 4 weeks."
+            lead="Once today's moves are made: work to hand over before it turns urgent, week by week."
             empty="Nothing to move ahead of time: no storm is coming that one move would head off."
             suggestions={rebalanceForecast}
           />

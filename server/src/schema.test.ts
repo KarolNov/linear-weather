@@ -348,13 +348,17 @@ describe("schema", () => {
         "Tony Stark goes from 2.75× to 2.5× the team average, Wanda Maximoff from 0.0× to 0.25×",
     });
     expect(team.now.every(({ week }) => week === null)).toBe(true);
-    // Forecast moves only work not urgent yet, ahead of the week it would storm.
+    // Forecast moves only work not urgent yet, ahead of the week it would storm, on the board
+    // today's moves leave: Wanda has taken some of Tony's, so Steve is the one free now.
     expect(team.forecast[0]).toMatchObject({
       issue: { identifier: "AVG-33", quadrant: "SCHEDULE" },
       from: { name: "Bruce Banner" },
-      to: { name: "Wanda Maximoff" },
+      to: { name: "Steve Rogers" },
       week: 1,
     });
+    // Week by week, each settled before the next.
+    const weeks = team.forecast.map(({ week }) => week ?? 0);
+    expect(weeks).toEqual([...weeks].sort((a, b) => a - b));
     expect(
       team.forecast.every(
         ({ issue }) => issue.quadrant === "SCHEDULE" || issue.quadrant === "DROP",

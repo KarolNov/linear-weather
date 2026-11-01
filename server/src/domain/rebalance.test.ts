@@ -133,33 +133,53 @@ describe("rebalance forecast", () => {
   });
 
   it("weighs every week an issue counts in, so easing one week doesn't swamp another", () => {
-    // Ben and Cy are busy until Oct 31, then free. Ana's and Dee's work turns urgent Oct 31 and
-    // is due Nov 13, so it weighs on weeks 2 and 3.
-    const ana = times(4, () => issue("2026-11-13"));
+    // Everyone has three issues due Oct 31, urgent already, so today is even. Ana's and Dee's
+    // other work turns urgent Oct 31 and is due Nov 13, so it weighs on weeks 2 and 3.
+    const busy = () => times(3, () => issue("2026-10-31"));
     const team = [
-      person("Ana", ana),
-      person(
-        "Ben",
-        times(3, () => issue("2026-10-31")),
-      ),
-      person(
-        "Cy",
-        times(3, () => issue("2026-10-31")),
-      ),
-      person(
-        "Dee",
-        times(2, () => issue("2026-11-13")),
-      ),
+      person("Ana", [...busy(), ...times(4, () => issue("2026-11-13"))]),
+      person("Ben", busy()),
+      person("Cy", busy()),
+      person("Dee", [...busy(), ...times(2, () => issue("2026-11-13"))]),
     ];
+    expect(rebalance(team, "now", "issues", TODAY)).toEqual([]);
     const suggestions = rebalance(team, "forecast", "issues", TODAY);
     const ids = suggestions.map(({ issue }) => issue.id);
     expect(new Set(ids).size).toBe(ids.length);
-    // Week 3 alone would keep handing Ana's work to Ben and Cy, burying them in week 2 and
-    // sending it back. Over both weeks, one each is a fair trade.
-    expect(suggestions.map(({ from, to, week }) => [from.name, to.name, week])).toEqual([
-      ["Ana", "Dee", 2],
-      ["Ana", "Ben", 3],
-      ["Dee", "Cy", 3],
+    // Week 2: Ana 7, Ben 3, Cy 3, Dee 5; week 3: 4, 0, 0, 2. One each to Ben and Cy leaves
+    // 5, 4, 4, 5 and 2, 1, 1, 2: a third would put Ben or Cy above Ana in week 2.
+    expect(moves(suggestions).map(([, ...move]) => move)).toEqual([
+      ["Ana", "Ben", 2],
+      ["Ana", "Cy", 2],
+    ]);
+  });
+
+  it("starts from the board as today's moves leave it", () => {
+    // Today Ana holds all the urgent work, due Oct 31. Ben's turns urgent on Oct 23, in week 1.
+    const team = [
+      person(
+        "Ana",
+        times(4, () => issue("2026-10-31")),
+      ),
+      person(
+        "Ben",
+        times(3, () => issue("2026-11-05")),
+      ),
+      person("Cy", []),
+      person("Dee", []),
+    ];
+    // Today: one each to Ben, Cy and Dee.
+    expect(moves(rebalance(team, "now", "issues", TODAY)).map(([, ...move]) => move)).toEqual([
+      ["Ana", "Ben", null],
+      ["Ana", "Cy", null],
+      ["Ana", "Dee", null],
+    ]);
+    // Week 1 after those: Ana 1, Ben 4, Cy 1, Dee 1, so Ben hands on two, ties going to whoever
+    // comes first. Without them Ana would look busiest, with nothing that isn't urgent already,
+    // and nothing would move.
+    expect(moves(rebalance(team, "forecast", "issues", TODAY)).map(([, ...move]) => move)).toEqual([
+      ["Ben", "Ana", 1],
+      ["Ben", "Cy", 1],
     ]);
   });
 

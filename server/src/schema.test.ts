@@ -922,6 +922,25 @@ describe("reassigning", () => {
     );
     expect(result.errors?.map((e) => e.extensions.code)).toEqual(["BAD_USER_INPUT"]);
   });
+
+  it("still says the issue was handed over when the database fails afterwards", async () => {
+    const failing = () => Promise.reject(new Error("D1_ERROR: database is locked"));
+    const broken: PlacementStore = {
+      ...writesTo(new Store(env.DB)),
+      rules: failing,
+      overrides: failing,
+    };
+    const result = await run(
+      reassign,
+      { issueId: "demo-issue-avg-10", userId: "demo-user-wanda" },
+      { store: broken, log: () => {} },
+    );
+    expect(result.errors).toBeUndefined();
+    expect((result.data as ReassignResult).reassignIssue).toMatchObject({
+      __typename: "ReassignSuccess",
+      issue: { identifier: "AVG-10", assignee: { name: "Wanda Maximoff" } },
+    });
+  });
 });
 
 /** Everyone's urgent load now and by the end of this week, counted in issues. */

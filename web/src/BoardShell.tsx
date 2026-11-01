@@ -23,6 +23,7 @@ import {
   type Quadrant,
   type Rules,
   runningLate,
+  type Suggestion,
   type TeamBoardData,
   type Weather as TeamWeather,
   teamBoard,
@@ -30,7 +31,7 @@ import {
   type Viewer,
 } from "./board";
 import { entrance } from "./motion";
-import { boardClient } from "./mutations";
+import { applyMoves, boardClient } from "./mutations";
 import { PersonMatrix } from "./PersonMatrix";
 import { quadrantFill, quadrantInfo } from "./quadrants";
 import { RebalancePanel } from "./RebalancePanel";
@@ -120,6 +121,8 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
 
 type Shown = Pick<Board, "team" | "people">;
 
+const names = new Intl.ListFormat("en-US", { type: "conjunction" });
+
 function TeamBoard({
   board: { teams, today },
   shown: { team, people },
@@ -137,6 +140,17 @@ function TeamBoard({
   const [rebalancing, setRebalancing] = useState(false);
   // Issues whose move hasn't answered yet.
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  const markPending = (issueIds: string[], on: boolean) =>
+    setPending((current) => {
+      const next = new Set(current);
+      for (const id of issueIds) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  // Today's moves are being made, one after another.
+  const [applying, setApplying] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   // Read out by screen readers; the board redrawing is the visible answer.
   const [status, setStatus] = useState("");
@@ -176,17 +190,10 @@ function TeamBoard({
     return true;
   };
   const place = async (issue: BoardIssue, to: Quadrant | null) => {
-    const markPending = (on: boolean) =>
-      setPending((current) => {
-        const next = new Set(current);
-        if (on) next.add(issue.id);
-        else next.delete(issue.id);
-        return next;
-      });
-    markPending(true);
+    markPending([issue.id], true);
     setFailure(null);
     const result = await client.placeIssue(issue.id, to);
-    markPending(false);
+    markPending([issue.id], false);
     setRefocus(issue.id);
     if (!result.ok) {
       setFailure(`Couldn't move ${issue.identifier}. ${result.message}`);
@@ -198,6 +205,44 @@ function TeamBoard({
         ? `Moved ${issue.identifier} to ${quadrantInfo[to].name}.`
         : `${issue.identifier} is back with the rules.`,
     );
+  };
+  // A suggestion's button goes once its move is made, so give the keyboard to the panel.
+  const refocusPanel = () => {
+    if (document.activeElement && document.activeElement !== document.body) return;
+    document.getElementById("rebalance-heading")?.focus();
+  };
+  const reassign = async (move: Suggestion) => {
+    const { issue, to } = move;
+    markPending([issue.id], true);
+    setFailure(null);
+    const result = await client.reassign(issue.id, to.id);
+    markPending([issue.id], false);
+    if (!result.ok) {
+      setFailure(`Couldn't hand ${issue.identifier} to ${to.name}. ${result.message}`);
+      return;
+    }
+    if (showAnswer(result.team)) setStatus(`${issue.identifier} is ${to.name}'s now.`);
+    refocusPanel();
+  };
+  const applyNow = async (moves: Suggestion[]) => {
+    const ids = moves.map(({ issue }) => issue.id);
+    setApplying(true);
+    markPending(ids, true);
+    setFailure(null);
+    const { moved, failed, team: after } = await applyMoves(client, moves);
+    markPending(ids, false);
+    setApplying(false);
+    const made = names.format(moved.map(({ issue, to }) => `${issue.identifier} to ${to.name}`));
+    const shown = moved.length === 0 || showAnswer(after);
+    if (failed) {
+      const { move, message } = failed;
+      setFailure(
+        `${moved.length > 0 ? `Handed ${made}. ` : ""}Couldn't hand ${move.issue.identifier} to ${move.to.name}, so the rest weren't made. ${message}`,
+      );
+    } else if (shown) {
+      setStatus(`Handed ${made}. The board is planned again from here.`);
+    }
+    refocusPanel();
   };
   const saveRules = async (rules: Rules) => {
     if (!team) throw new Error("no team to save rules for");
@@ -285,6 +330,10 @@ function TeamBoard({
             rebalanceNow={team.rebalanceNow}
             rebalanceForecast={team.rebalanceForecast}
             runningLate={runningLate(people)}
+            pending={pending}
+            applying={applying}
+            onReassign={reassign}
+            onApplyNow={applyNow}
             onClose={() => setRebalancing(false)}
           />
         </div>

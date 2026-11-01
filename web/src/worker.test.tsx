@@ -9,7 +9,7 @@ import {
   runningLate,
   type Suggestion,
 } from "./board";
-import { RebalancePanel } from "./RebalancePanel";
+import { ConfirmMoves, RebalancePanel } from "./RebalancePanel";
 import { app, type Bindings } from "./worker";
 
 const avengers = { id: "t-avg", name: "Avengers", key: "AVG" };
@@ -155,6 +155,14 @@ async function sentQuery(request: Request | undefined) {
 
 const fury = { name: "Nick Fury", avatarUrl: null, organization: { name: "S.H.I.E.L.D." } };
 
+/** A rebalance panel nothing is moving in yet. */
+const moving = {
+  pending: new Set<string>(),
+  applying: false,
+  onReassign: () => {},
+  onApplyNow: () => {},
+};
+
 describe("web worker", () => {
   it("server-renders the sign-in page when signed out", async () => {
     const { bindings } = serverReturning(null);
@@ -271,6 +279,7 @@ describe("web worker", () => {
         rebalanceNow={[nowMove]}
         rebalanceForecast={[forecastMove]}
         onClose={() => {}}
+        {...moving}
       />,
     );
     expect(panel).toContain("Rebalancing Avengers");
@@ -281,6 +290,51 @@ describe("web worker", () => {
     // A forecast move says when the issue turns urgent, and which week's storm it heads off.
     expect(panel).toContain("urgent Nov 3");
     expect(panel).toContain('aria-label="Wanda Maximoff would be: Partly cloudy in week 3."');
+  });
+
+  it("hands each move over in one click, and offers to make all of today's at once", () => {
+    const panel = renderToString(
+      <RebalancePanel
+        teamName="Avengers"
+        rebalanceNow={[nowMove]}
+        rebalanceForecast={[forecastMove]}
+        onClose={() => {}}
+        {...moving}
+      />,
+    );
+    expect(panel).toContain('aria-label="Hand AVG-11 to Wanda Maximoff"');
+    expect(panel).toContain('aria-label="Hand AVG-7 to Wanda Maximoff"');
+    expect(panel.match(/Make all of today.s moves/g)).toHaveLength(1);
+  });
+
+  it("doesn't offer today's moves at once when there are none", () => {
+    const panel = renderToString(
+      <RebalancePanel
+        teamName="Avengers"
+        rebalanceNow={[]}
+        rebalanceForecast={[forecastMove]}
+        onClose={() => {}}
+        {...moving}
+      />,
+    );
+    expect(panel).not.toContain("Make all of today");
+  });
+
+  it("asks before making today's moves, listing who gets what in order", () => {
+    const clint = { id: "u-clint", name: "Clint Barton", avatarUrl: null };
+    const second = {
+      ...nowMove,
+      issue: { ...nowMove.issue, id: "i-12", identifier: "AVG-12" },
+      to: clint,
+    };
+    const confirm = renderToString(
+      <ConfirmMoves moves={[nowMove, second]} onConfirm={() => {}} onCancel={() => {}} />,
+    );
+    expect(confirm).toContain("Make these 2 moves in Linear?");
+    const text = confirm.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    expect(text).toMatch(
+      /AVG-11 .*Tony Stark .*Wanda Maximoff .*AVG-12 .*Tony Stark .*Clint Barton/,
+    );
   });
 
   it("finds who is running late, as their weather counts overdue work", () => {
@@ -313,6 +367,7 @@ describe("web worker", () => {
           { person: wanda, overdue: 1 },
         ]}
         onClose={() => {}}
+        {...moving}
       />,
     );
     expect(panel).toContain(
@@ -328,6 +383,7 @@ describe("web worker", () => {
         rebalanceForecast={[]}
         runningLate={[{ person: tony, overdue: 1 }]}
         onClose={() => {}}
+        {...moving}
       />,
     );
     expect(panel).toContain("Tony Stark (1 overdue) stays in a storm: overdue work");
@@ -341,6 +397,7 @@ describe("web worker", () => {
         rebalanceNow={[]}
         rebalanceForecast={[]}
         onClose={() => {}}
+        {...moving}
       />,
     );
     expect(panel).toContain("Nothing to move:");

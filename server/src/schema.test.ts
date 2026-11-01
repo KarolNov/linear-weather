@@ -11,6 +11,7 @@ import {
 import {
   CLEAR_OVERRIDE_MUTATION,
   OVERRIDE_MUTATION,
+  REASSIGN_MUTATION,
   UPDATE_RULES_MUTATION,
 } from "../../web/src/mutations";
 import { Store } from "./db/store";
@@ -946,6 +947,17 @@ describe("the web app's board query", () => {
     });
     expect(clearOverride?.__typename).toBe("OverrideSuccess");
     expect(placement(clearOverride?.team, "demo-issue-avg-1")).toMatchObject({ source: "RULE" });
+  });
+
+  it("hands an issue to someone else, answering with the team's board planned again", async () => {
+    const { reassignIssue } = await data<Answer>(REASSIGN_MUTATION, {
+      issueId: "demo-issue-avg-10",
+      userId: "demo-user-wanda",
+    });
+    expect(reassignIssue?.__typename).toBe("ReassignSuccess");
+    const wanda = reassignIssue?.team?.people.find((p) => p.name === "Wanda Maximoff");
+    expect(wanda?.matrix.do.map((issue) => issue.id)).toEqual(["demo-issue-avg-10"]);
+    expect(reassignIssue?.team?.rebalanceNow).toBeInstanceOf(Array);
   });
 });
 

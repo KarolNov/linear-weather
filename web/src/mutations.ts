@@ -1,7 +1,13 @@
-// Changing the board from the browser: a team's rules, or where one issue sits. Every mutation
+// Changing the board from the browser: a team's rules, where one issue sits, or who has it. Every mutation
 // asks for the team's board back, so the page redraws from the answer with nothing derived here.
 
-import { type Quadrant, type Rules, TEAM_BOARD_FRAGMENTS, type TeamBoardData } from "./board";
+import {
+  type Quadrant,
+  type Rules,
+  type Suggestion,
+  TEAM_BOARD_FRAGMENTS,
+  type TeamBoardData,
+} from "./board";
 
 // Each answers with the team's board, or the failure's message.
 const RESULT_FIELDS = `
@@ -37,6 +43,15 @@ export const CLEAR_OVERRIDE_MUTATION = `mutation ClearOverride($issueId: ID!) {
 
 ${TEAM_BOARD_FRAGMENTS}`;
 
+export const REASSIGN_MUTATION = `mutation ReassignIssue($issueId: ID!, $userId: ID!) {
+  reassignIssue(issueId: $issueId, userId: $userId) {
+    ${RESULT_FIELDS}
+    ... on ReassignSuccess { team { ...TeamBoard } }
+  }
+}
+
+${TEAM_BOARD_FRAGMENTS}`;
+
 /** Something wrong with proposed rules, on the field the form should mark. */
 export interface RuleProblem {
   field: keyof Rules;
@@ -63,6 +78,8 @@ export interface BoardClient {
   updateRules(teamId: string, rules: Rules): Promise<MutationResult>;
   /** Places an issue by hand, or with null hands it back to the rules. */
   placeIssue(issueId: string, quadrant: Quadrant | null): Promise<MutationResult>;
+  /** Hands an issue to someone else on its team, in Linear. */
+  reassign(issueId: string, userId: string): Promise<MutationResult>;
 }
 
 /**
@@ -127,5 +144,37 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
       quadrant
         ? queued(OVERRIDE_MUTATION, { issueId, quadrant: quadrant.toUpperCase() })
         : queued(CLEAR_OVERRIDE_MUTATION, { issueId }),
+    reassign: (issueId, userId) => queued(REASSIGN_MUTATION, { issueId, userId }),
   } satisfies BoardClient;
+}
+
+/** How a run of moves went. */
+export interface AppliedMoves {
+  /** The moves made, in order, up to the first that failed. */
+  moved: Suggestion[];
+  /** The first move that failed, and why. Those after it weren't tried. */
+  failed: { move: Suggestion; message: string } | null;
+  /** The board after the last move made; null when none was, or it couldn't be read back. */
+  team: TeamBoardData | null;
+}
+
+/**
+ * Makes moves one at a time, in order, stopping at the first that fails: each move was planned
+ * from the board the ones before it leave, so the rest may not make sense without it.
+ */
+export async function applyMoves(
+  client: Pick<BoardClient, "reassign">,
+  moves: Suggestion[],
+): Promise<AppliedMoves> {
+  const applied: AppliedMoves = { moved: [], failed: null, team: null };
+  for (const move of moves) {
+    const result = await client.reassign(move.issue.id, move.to.id);
+    if (!result.ok) {
+      applied.failed = { move, message: result.message };
+      break;
+    }
+    applied.moved.push(move);
+    applied.team = result.team;
+  }
+  return applied;
 }

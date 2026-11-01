@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { boardClient } from "./mutations";
+import type { Suggestion } from "./board";
+import { applyMoves, boardClient, REASSIGN_MUTATION } from "./mutations";
 
 const team = { id: "t-avg", name: "Avengers", key: "AVG" };
 const rules = { importantFrom: 2, urgencyWindowDays: 7, noDueDate: "URGENT" } as const;
@@ -98,6 +99,17 @@ describe("board client", () => {
     }
   });
 
+  it("hands an issue to someone else, answering with the team's board", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json({ data: { reassignIssue: { __typename: "ReassignSuccess", team } } }),
+    );
+    expect(await boardClient(false, fetch).reassign("i-1", "u-wanda")).toEqual({ ok: true, team });
+    expect(sent(fetch.mock.calls[0])).toEqual({
+      query: REASSIGN_MUTATION,
+      variables: { issueId: "i-1", userId: "u-wanda" },
+    });
+  });
+
   it("hands back what the server said was wrong, field by field", async () => {
     const problems = [{ field: "urgencyWindowDays", message: "1 to 365 whole days." }];
     const fetch = vi.fn(async () =>
@@ -149,6 +161,63 @@ describe("board client", () => {
     expect(await boardClient(false, fetch).placeIssue("i-1", "do")).toEqual({
       ok: true,
       team: null,
+    });
+  });
+});
+
+describe("applying moves", () => {
+  const person = (name: string) => ({ id: `u-${name}`, name, avatarUrl: null });
+  const move = (n: number, to: string): Suggestion => ({
+    issue: {
+      id: `i-${n}`,
+      identifier: `AVG-${n}`,
+      title: `Issue ${n}`,
+      url: `https://linear.app/x/issue/AVG-${n}`,
+      quadrant: "DO",
+      becomesUrgentOn: "2026-10-18",
+    },
+    from: person("tony"),
+    to: person(to),
+    week: null,
+    toWeather: "CLOUDY",
+    reason: "",
+  });
+  const moves = [move(1, "wanda"), move(2, "clint"), move(3, "steve")];
+
+  /** The server: each move answers with the board after it, unless it's one that fails. */
+  function server(failing: Record<string, string> = {}) {
+    return vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const { issueId } = sent([_url, init]).variables as { issueId: string };
+      const message = failing[issueId];
+      return Response.json({
+        data: {
+          reassignIssue: message
+            ? { __typename: "LinearRateLimited", message }
+            : { __typename: "ReassignSuccess", team: { ...team, after: issueId } },
+        },
+      });
+    });
+  }
+
+  it("makes every move, one at a time in order, ending on the board after the last", async () => {
+    const fetch = server();
+    const applied = await applyMoves(boardClient(false, fetch), moves);
+    expect(fetch.mock.calls.map((call) => sent(call).variables)).toEqual([
+      { issueId: "i-1", userId: "u-wanda" },
+      { issueId: "i-2", userId: "u-clint" },
+      { issueId: "i-3", userId: "u-steve" },
+    ]);
+    expect(applied).toEqual({ moved: moves, failed: null, team: { ...team, after: "i-3" } });
+  });
+
+  it("stops at the first move that fails, saying which went through", async () => {
+    const fetch = server({ "i-2": "Linear's rate limit is spent for now; try again later." });
+    const applied = await applyMoves(boardClient(false, fetch), moves);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(applied).toEqual({
+      moved: [moves[0]],
+      failed: { move: moves[1], message: "Linear's rate limit is spent for now; try again later." },
+      team: { ...team, after: "i-1" },
     });
   });
 });

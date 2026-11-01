@@ -261,6 +261,6 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 
 ## Status
 
-🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** lists suggested moves for now and for the coming weeks (applying them in Linear is #16).
+🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** suggests who should hand which issue to whom, now and before the storms the forecast sees; **Hand over** makes a move in Linear in one click, and **Make all of today's moves** makes the Now list's moves in order after a yes, stopping at the first that fails.
 # linear-weather
 Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

@@ -27,7 +27,7 @@ import {
   teamWeather,
   type Weather,
 } from "./domain/weather";
-import { LinearAuthError, LinearRateLimitError } from "./linear/client";
+import { LinearAuthError, LinearForbiddenError, LinearRateLimitError } from "./linear/client";
 import type { Assignee } from "./linear/team-issues";
 import type { Placements } from "./placements";
 import type { Team, TeamIssue, Viewer, Workspace } from "./workspace";
@@ -760,6 +760,11 @@ interface OverrideSuccess {
   issue: IssueModel;
   team: Team;
 }
+interface ReassignSuccess {
+  __typename: "ReassignSuccess";
+  issue: IssueModel;
+  team: Team;
+}
 
 /** Every failure, so the Error interface resolves to whichever this is. */
 type Failure = Unauthorized | LinearRateLimited | TeamNotFound | IssueNotFound | InvalidRules;
@@ -829,6 +834,15 @@ const OverrideSuccessRef = builder.objectRef<OverrideSuccess>("OverrideSuccess")
   }),
 });
 
+const ReassignSuccessRef = builder.objectRef<ReassignSuccess>("ReassignSuccess").implement({
+  description:
+    "The issue is someone else's in Linear now. Everything derived from who holds what, like each weather and forecast, follows: ask for it here.",
+  fields: (t) => ({
+    issue: t.expose("issue", { type: IssueRef }),
+    team: t.expose("team", { type: TeamRef, description: "The issue's team, for its matrices." }),
+  }),
+});
+
 const UpdateRulesResultRef = builder.unionType("UpdateRulesResult", {
   types: [
     UpdateRulesSuccessRef,
@@ -842,6 +856,11 @@ const UpdateRulesResultRef = builder.unionType("UpdateRulesResult", {
 
 const OverrideResultRef = builder.unionType("OverrideResult", {
   types: [OverrideSuccessRef, IssueNotFoundRef, UnauthorizedRef, LinearRateLimitedRef],
+  resolveType: (result) => result.__typename,
+});
+
+const ReassignResultRef = builder.unionType("ReassignResult", {
+  types: [ReassignSuccessRef, IssueNotFoundRef, UnauthorizedRef, LinearRateLimitedRef],
   resolveType: (result) => result.__typename,
 });
 
@@ -861,6 +880,11 @@ async function attempt<T>(
   } catch (error) {
     if (error instanceof LinearAuthError) {
       return unauthorized("Linear rejected the session; sign in again.");
+    }
+    if (error instanceof LinearForbiddenError) {
+      return unauthorized(
+        "Linear won't let you change that. Sign in again to allow changes, or ask an admin of the team for access.",
+      );
     }
     if (error instanceof LinearRateLimitError) {
       return {
@@ -897,6 +921,43 @@ async function placeByHand(
   return {
     __typename: "OverrideSuccess",
     issue: place(issue, rules, context.today, quadrant ?? undefined),
+    team: issue.team,
+  };
+}
+
+/** Hands an issue to someone else in Linear. */
+async function reassign(
+  context: GraphQLContext,
+  workspace: Workspace,
+  issueId: string,
+  userId: string,
+): Promise<ReassignSuccess | IssueNotFound> {
+  const notFound: IssueNotFound = {
+    __typename: "IssueNotFound",
+    message: "There's no such issue, or you can't see it.",
+    issueId,
+  };
+  // Linear answers an issue the viewer can't see with an error, not a result to switch on.
+  const before = await workspace.issue(issueId);
+  if (!before) return notFound;
+  // Only to someone the board shows on the issue's team, so it lands on someone's matrix there.
+  const { people } = await workspace.teamWork(before.team.id);
+  if (!people.some((person) => person.id === userId)) {
+    throw new GraphQLError(
+      `There's nobody with that id on ${before.team.name} to hand ${before.identifier} to.`,
+      { extensions: { code: "BAD_USER_INPUT" } },
+    );
+  }
+  const issue = await workspace.reassign(issueId, userId);
+  if (!issue) return notFound;
+  forgetWork(context);
+  const [rules, overrides] = await Promise.all([
+    context.placements.rules(issue.team.id),
+    context.placements.overrides([issue]),
+  ]);
+  return {
+    __typename: "ReassignSuccess",
+    issue: place(issue, rules, context.today, overrides.get(issue.id)),
     team: issue.team,
   };
 }
@@ -952,6 +1013,18 @@ builder.mutationType({
       args: { issueId: t.arg.id({ required: true }) },
       resolve: (_root, { issueId }, context) =>
         attempt(context, (workspace) => placeByHand(context, workspace, String(issueId), null)),
+    }),
+    reassignIssue: t.field({
+      type: ReassignResultRef,
+      description: "Hands an issue to someone else on its team, in Linear.",
+      args: {
+        issueId: t.arg.id({ required: true }),
+        userId: t.arg.id({ required: true, description: "Who takes it." }),
+      },
+      resolve: (_root, { issueId, userId }, context) =>
+        attempt(context, (workspace) =>
+          reassign(context, workspace, String(issueId), String(userId)),
+        ),
     }),
   }),
 });

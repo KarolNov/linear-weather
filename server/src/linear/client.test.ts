@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LinearAuthError, LinearClient, LinearRateLimitError } from "./client";
+import {
+  LinearAuthError,
+  LinearClient,
+  LinearForbiddenError,
+  LinearRateLimitError,
+} from "./client";
 import { TypedDocumentString } from "./generated";
 
 const Hello = new TypedDocumentString<{ viewer: { id: string } }, Record<string, never>>(
@@ -177,6 +182,24 @@ describe("LinearClient", () => {
     );
     const client = new LinearClient("Bearer revoked");
     await expect(client.request(Hello)).rejects.toBeInstanceOf(LinearAuthError);
+  });
+
+  it("reports a change the token isn't allowed to make as forbidden", async () => {
+    mockFetch(() =>
+      Response.json(
+        {
+          errors: [
+            {
+              message: "Invalid scope: `write` required",
+              extensions: { type: "forbidden", code: "FORBIDDEN", statusCode: 403 },
+            },
+          ],
+        },
+        { status: 400 },
+      ),
+    );
+    const client = new LinearClient("Bearer read-only");
+    await expect(client.request(Hello)).rejects.toBeInstanceOf(LinearForbiddenError);
   });
 
   it("surfaces other GraphQL errors", async () => {

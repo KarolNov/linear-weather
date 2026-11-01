@@ -8,16 +8,18 @@
 
 import type { Overrides } from "../domain/matrix";
 import { DEFAULT_RULES, type Quadrant, type QuadrantRules } from "../domain/quadrant";
+import type { DemoAssignments } from "../linear/demo";
 import type { PlacementStore } from "../placements";
 import { decodeDemo, encodeDemo } from "./demo-cookie";
 
-export class DemoStore implements PlacementStore {
+export class DemoStore implements PlacementStore, DemoAssignments {
   /** Whether anything changed since the cookie was read, so the response should set it. */
   changed = false;
 
   private constructor(
     private readonly savedRules: Map<string, QuadrantRules>,
     private readonly savedOverrides: Map<string, Quadrant>,
+    private readonly savedAssignees: Map<string, string>,
   ) {}
 
   /**
@@ -25,13 +27,17 @@ export class DemoStore implements PlacementStore {
    * rules or a quadrant is dropped, as if never set; a cookie that isn't ours at all is ignored.
    */
   static fromCookie(value: string | undefined): DemoStore {
-    const { rules, overrides } = decodeDemo(value);
-    return new DemoStore(rules, overrides);
+    const { rules, overrides, assignees } = decodeDemo(value);
+    return new DemoStore(rules, overrides, assignees);
   }
 
   /** The cookie's new value. */
   cookie(): string {
-    return encodeDemo({ rules: this.savedRules, overrides: this.savedOverrides });
+    return encodeDemo({
+      rules: this.savedRules,
+      overrides: this.savedOverrides,
+      assignees: this.savedAssignees,
+    });
   }
 
   async rules(teamIds: readonly string[]): Promise<Map<string, QuadrantRules>> {
@@ -60,6 +66,18 @@ export class DemoStore implements PlacementStore {
   async setOverride(issueId: string, quadrant: Quadrant): Promise<void> {
     this.savedOverrides.set(issueId, quadrant);
     this.changed = true;
+  }
+
+  assignee(issueId: string): string | undefined {
+    return this.savedAssignees.get(issueId);
+  }
+
+  setAssignee(issueId: string, userId: string | null): void {
+    if (userId === null) this.changed = this.savedAssignees.delete(issueId) || this.changed;
+    else {
+      this.savedAssignees.set(issueId, userId);
+      this.changed = true;
+    }
   }
 
   async clearOverride(issueId: string): Promise<void> {

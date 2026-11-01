@@ -2,9 +2,10 @@
 // JSON spends most of that on quotes (escaped to %22) and on the demo's long ids. So the cookie is
 // plain text in characters a cookie carries unescaped, with the ids' fixed prefixes dropped:
 //
-//   1~avengers.2.7.0!ops.3.30.1~avg-1.3!ops-4.1
+//   1~avengers.2.7.0!ops.3.30.1~avg-1.3!ops-4.1~avg-10.wanda
 //   │ └ rules: team.importantFrom.urgencyWindowDays.noDueDate
 //   │                             └ overrides: issue.quadrant
+//   │                                            └ assignees: issue.user, left off when empty
 //   └ format version
 //
 // Enums are their index in QUADRANTS / NO_DUE_DATE. Everything read back is checked again,
@@ -19,10 +20,12 @@ import {
 } from "../domain/quadrant";
 import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssues } from "../linear/demo";
 
-/** What the demo keeps for a visitor: the rules and quadrants they set. */
+/** What the demo keeps for a visitor: the rules and quadrants they set, and who has which issue. */
 export interface DemoSaved {
   rules: Map<string, QuadrantRules>;
   overrides: Map<string, Quadrant>;
+  /** User ids by issue id, for issues handed to someone the demo doesn't give them to. */
+  assignees: Map<string, string>;
 }
 
 export const DEMO_COOKIE = "lw_demo";
@@ -36,6 +39,7 @@ export const MAX_COOKIE_LENGTH = 4096;
 const VERSION = "1";
 const TEAM_PREFIX = "demo-team-";
 const ISSUE_PREFIX = "demo-issue-";
+const USER_PREFIX = "demo-user-";
 /** An id without its prefix: nothing that could be mistaken for a separator. */
 const SHORT_ID = /^[a-z0-9-]+$/;
 /**
@@ -46,8 +50,11 @@ const TEAM_IDS = new Set([DEMO_TEAM.id, DEMO_OPS_TEAM.id]);
 const ISSUE_IDS = new Set(
   [...TEAM_IDS].flatMap((team) => demoIssues("2000-01-01", team)).map(({ id }) => id),
 );
+const USER_IDS = new Set(
+  [DEMO_TEAM, DEMO_OPS_TEAM].flatMap((team) => team.members.map(({ id }) => id)),
+);
 
-export function encodeDemo({ rules, overrides }: DemoSaved): string {
+export function encodeDemo({ rules, overrides, assignees }: DemoSaved): string {
   const teams = [...rules].map(
     ([teamId, { importantFrom, urgencyWindowDays, noDueDate }]) =>
       `${shorten(teamId, TEAM_PREFIX)}.${importantFrom}.${urgencyWindowDays}.${NO_DUE_DATE.indexOf(noDueDate)}`,
@@ -55,7 +62,18 @@ export function encodeDemo({ rules, overrides }: DemoSaved): string {
   const issues = [...overrides].map(
     ([issueId, quadrant]) => `${shorten(issueId, ISSUE_PREFIX)}.${QUADRANTS.indexOf(quadrant)}`,
   );
-  return [VERSION, teams.join("!"), issues.join("!")].join("~");
+  const sections = [VERSION, teams.join("!"), issues.join("!")];
+  if (assignees.size > 0) {
+    sections.push(
+      [...assignees]
+        .map(
+          ([issueId, userId]) =>
+            `${shorten(issueId, ISSUE_PREFIX)}.${shorten(userId, USER_PREFIX)}`,
+        )
+        .join("!"),
+    );
+  }
+  return sections.join("~");
 }
 
 /**
@@ -64,9 +82,9 @@ export function encodeDemo({ rules, overrides }: DemoSaved): string {
  * at all, or from another version, reads as nothing saved.
  */
 export function decodeDemo(value: string | undefined): DemoSaved {
-  const saved: DemoSaved = { rules: new Map(), overrides: new Map() };
+  const saved: DemoSaved = { rules: new Map(), overrides: new Map(), assignees: new Map() };
   if (!value || value.length > MAX_COOKIE_LENGTH) return saved;
-  const [version, teams = "", issues = ""] = value.split("~");
+  const [version, teams = "", issues = "", assignees = ""] = value.split("~");
   if (version !== VERSION) return saved;
   for (const [id, importantFrom, urgencyWindowDays, noDueDate] of fields(teams, 4)) {
     const undated = NO_DUE_DATE[index(noDueDate)];
@@ -81,6 +99,11 @@ export function decodeDemo(value: string | undefined): DemoSaved {
   for (const [id, quadrant] of fields(issues, 2)) {
     const placed = QUADRANTS[index(quadrant)];
     if (placed && ISSUE_IDS.has(ISSUE_PREFIX + id)) saved.overrides.set(ISSUE_PREFIX + id, placed);
+  }
+  for (const [id, user] of fields(assignees, 2)) {
+    if (ISSUE_IDS.has(ISSUE_PREFIX + id) && USER_IDS.has(USER_PREFIX + user)) {
+      saved.assignees.set(ISSUE_PREFIX + id, USER_PREFIX + user);
+    }
   }
   return saved;
 }

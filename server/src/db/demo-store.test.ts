@@ -36,6 +36,33 @@ describe("DemoStore", () => {
     expect(await after.overrides([first, second])).toEqual(new Map([[first, "drop"]]));
   });
 
+  it("keeps who the visitor handed issues to, and forgets those handed back", async () => {
+    const before = DemoStore.fromCookie(undefined);
+    before.setAssignee("demo-issue-avg-10", "demo-user-wanda");
+    before.setAssignee("demo-issue-ops-1", "demo-user-maria");
+    before.setAssignee("demo-issue-ops-1", null);
+    expect(before.changed).toBe(true);
+    expect(before.cookie()).toBe("1~~~avg-10.wanda");
+
+    const after = DemoStore.fromCookie(before.cookie());
+    expect(after.assignee("demo-issue-avg-10")).toBe("demo-user-wanda");
+    expect(after.assignee("demo-issue-ops-1")).toBeUndefined();
+    expect(after.changed).toBe(false);
+  });
+
+  it("has changed after handing back an issue its cookie had handed over", () => {
+    const store = DemoStore.fromCookie("1~~~avg-10.wanda");
+    store.setAssignee("demo-issue-avg-10", null);
+    expect(store.changed).toBe(true);
+    expect(store.cookie()).toBe("1~~");
+  });
+
+  it("hasn't changed after handing back an issue that was never handed over", () => {
+    const store = DemoStore.fromCookie(undefined);
+    store.setAssignee("demo-issue-avg-10", null);
+    expect(store.changed).toBe(false);
+  });
+
   it("keeps nothing for rules set back to the defaults", async () => {
     const store = DemoStore.fromCookie("1~avengers.2.7.0~");
     await store.setRules(team, DEFAULT_RULES);
@@ -54,11 +81,15 @@ describe("DemoStore", () => {
     expect(store.changed).toBe(false);
   });
 
-  it("fits the whole demo in one cookie: every issue placed, every team's rules changed", async () => {
+  it("fits the whole demo in one cookie: every issue placed and handed over, every team's rules changed", async () => {
     const store = DemoStore.fromCookie(undefined);
     for (const { id } of [DEMO_TEAM, DEMO_OPS_TEAM]) {
       await store.setRules(id, { ...strict, urgencyWindowDays: MAX_URGENCY_WINDOW_DAYS });
-      for (const issue of demoIssues("2026-10-18", id)) await store.setOverride(issue.id, "drop");
+      for (const issue of demoIssues("2026-10-18", id)) {
+        await store.setOverride(issue.id, "drop");
+        // The longest id that's a member of both teams.
+        store.setAssignee(issue.id, "demo-user-natasha");
+      }
     }
     const cookie = generateCookie(DEMO_COOKIE, store.cookie(), {
       httpOnly: true,
@@ -91,12 +122,23 @@ describe("decodeDemo", () => {
     expect(saved.overrides).toEqual(new Map([[first, "schedule"]]));
   });
 
+  it("drops whoever in the cookie isn't a demo user holding a demo issue", () => {
+    const assignees = ["avg-10.wanda", "avg-11.nobody", "x-1.steve", "avg-12", "avg-13.steve.1"];
+    expect(decodeDemo(`1~~~${assignees.join("!")}`).assignees).toEqual(
+      new Map([["demo-issue-avg-10", "demo-user-wanda"]]),
+    );
+  });
+
   it.each([
     ["empty", ""],
     ["from another version", "2~avengers.2.7.0~avg-1.3"],
     ["not ours", '{"overrides":{"demo-issue-avg-1":"drop"}}'],
     ["too long", `1~~avg-1.3!${"x".repeat(MAX_COOKIE_LENGTH)}`],
   ])("reads a cookie that's %s as nothing saved", (_case, cookie) => {
-    expect(decodeDemo(cookie)).toEqual({ rules: new Map(), overrides: new Map() });
+    expect(decodeDemo(cookie)).toEqual({
+      rules: new Map(),
+      overrides: new Map(),
+      assignees: new Map(),
+    });
   });
 });

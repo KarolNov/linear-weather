@@ -123,9 +123,11 @@ type Mutation {
   updateQuadrantRules(teamId: ID!, input: QuadrantRulesInput!): UpdateRulesResult!
   overrideQuadrant(issueId: ID!, quadrant: Quadrant!): OverrideResult!
   clearOverride(issueId: ID!): OverrideResult!
+  reassignIssue(issueId: ID!, userId: ID!): ReassignResult!   # writes to Linear
 }
 union UpdateRulesResult = UpdateRulesSuccess | InvalidRules | TeamNotFound | Unauthorized | LinearRateLimited
 union OverrideResult = OverrideSuccess | IssueNotFound | Unauthorized | LinearRateLimited
+union ReassignResult = ReassignSuccess | IssueNotFound | Unauthorized | LinearRateLimited
 interface Error { message: String! }   # every failure above implements it
 ```
 
@@ -154,9 +156,10 @@ So the two lists read as one plan: make today's moves, then each week's in turn.
 
 Each mutation answers with a union: what it did, or one of the failures a client is expected to handle (bad rules, an id the viewer can't see, signed out, Linear's rate limit). They're ordinary types with fields of their own, like `InvalidRules.problems` (one per input field, for a settings form) or `LinearRateLimited.resetAt`, so clients see them in the schema and switch on `__typename`. Each implements `Error`, so `... on Error { message }` catches any a client doesn't single out. Top-level `errors` are left for the unexpected, like the database failing.
 
-- **Checked against Linear first.** A team must be one the viewer can see, and so must an issue, so nobody changes rules or places issues in workspaces they aren't in.
-- **The demo's changes stay in the visitor's browser.** Anyone can open `?demo=true`, so its mutations never reach D1: rules and overrides go in a compact `lw_demo` cookie (`server/src/db/demo-store.ts`, format in `demo-cookie.ts`), which every `?demo=true` request reads and any that changes something sets again. A cookie rather than localStorage, because the board renders on the server. The client still calls `/graphql?demo=true`, and sends mutations one at a time, since two in flight start from the same cookie and the last response wins. Clearing site data resets the demo.
-- **Derived fields follow on their own.** A success hands back the team (and, for overrides, the issue), and everything on them is derived when read. After `updateQuadrantRules`, `team { people { matrix { counts } } }` in the same response is already sorted by the new rules, with no code written for it. Writes go through the request's `Placements`, so nothing later in the response reads what was cached before.
+- **Checked against Linear first.** A team must be one the viewer can see, and so must an issue, so nobody changes rules or places issues in workspaces they aren't in. Whoever takes a reassigned issue must be on the board for its team; anyone else is a top-level `BAD_USER_INPUT` error, since the board never offers them.
+- **Reassigning writes to Linear.** `reassignIssue` calls Linear's `issueUpdate` with the new assignee, which needs the OAuth `write` scope. Linear refusing the change (`FORBIDDEN`, e.g. a token without `write`) answers `Unauthorized`, like a revoked session.
+- **The demo's changes stay in the visitor's browser.** Anyone can open `?demo=true`, so its mutations never reach D1: rules, overrides and reassigned issues go in a compact `lw_demo` cookie (`server/src/db/demo-store.ts`, format in `demo-cookie.ts`), which every `?demo=true` request reads and any that changes something sets again. A cookie rather than localStorage, because the board renders on the server. The client still calls `/graphql?demo=true`, and sends mutations one at a time, since two in flight start from the same cookie and the last response wins. Clearing site data resets the demo.
+- **Derived fields follow on their own.** A success hands back the team (and, for overrides and reassignments, the issue), and everything on them is derived when read. After `updateQuadrantRules`, `team { people { matrix { counts } } }` in the same response is already sorted by the new rules, with no code written for it. Writes go through the request's `Placements`, and a reassignment drops the team's cached Linear work, so nothing later in the response reads what was cached before.
 
 The web Worker loads a page with one query (`BOARD_QUERY` in `web/src/board.ts`), and a server test runs that exact query against the schema so the two can't drift apart. The board's mutations (`web/src/mutations.ts`) are tested the same way. Each asks for the team's board back through the same `TeamBoard` fragment the page loads with, so after a rules change or a move the browser redraws from the answer and never works out a quadrant itself. Within a request each team's members and issues are fetched from Linear once and shared by every resolver that needs them (`server/src/workspace.ts`). Two per-request [DataLoaders](https://github.com/graphql/dataloader) batch the lookups, one for team members and one for open issues, so every team resolved in the same tick shares one Linear query of each kind.
 

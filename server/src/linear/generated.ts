@@ -10,6 +10,14 @@ export type IssueByIdQueryVariables = Exact<{
 
 export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } }> } };
 
+export type ReassignIssueMutationVariables = Exact<{
+  id: string;
+  assigneeId: string;
+}>;
+
+
+export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } } | null } };
+
 export type IssueCardFragment = { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } };
 
 export type OpenIssuesQueryVariables = Exact<{
@@ -120,6 +128,41 @@ fragment TeamSummary on Team {
   name
   key
 }`) as unknown as TypedDocumentString<IssueByIdQuery, IssueByIdQueryVariables>;
+export const ReassignIssueDocument = /*#__PURE__*/ new TypedDocumentString(`
+    mutation ReassignIssue($id: String!, $assigneeId: String!) {
+  issueUpdate(id: $id, input: { assigneeId: $assigneeId }) {
+    success
+    issue {
+      ...IssueCard
+      team {
+        ...TeamSummary
+      }
+    }
+  }
+}
+    fragment IssueCard on Issue {
+  id
+  identifier
+  title
+  url
+  dueDate
+  priority
+  estimate
+  assignee {
+    id
+    name
+    avatarUrl
+  }
+  state {
+    name
+    type
+  }
+}
+fragment TeamSummary on Team {
+  id
+  name
+  key
+}`) as unknown as TypedDocumentString<ReassignIssueMutation, ReassignIssueMutationVariables>;
 export const OpenIssuesDocument = /*#__PURE__*/ new TypedDocumentString(`
     query OpenIssues($teamIds: [ID!]!, $first: Int!, $after: String) {
   issues(

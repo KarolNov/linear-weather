@@ -1,0 +1,13 @@
+# Hands an issue to someone else. Answers with the issue as the matrix reads it, so the board can
+# place it again without fetching it. Needs the OAuth `write` scope.
+mutation ReassignIssue($id: String!, $assigneeId: String!) {
+  issueUpdate(id: $id, input: { assigneeId: $assigneeId }) {
+    success
+    issue {
+      ...IssueCard
+      team {
+        ...TeamSummary
+      }
+    }
+  }
+}

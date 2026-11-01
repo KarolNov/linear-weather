@@ -8,6 +8,7 @@ import type { LinearPriority } from "./domain/quadrant";
 import type { LinearSource } from "./linear/client";
 import {
   IssueByIdDocument,
+  ReassignIssueDocument,
   type TeamSummaryFragment,
   TeamsDocument,
   TeamsMembersDocument,
@@ -80,6 +81,21 @@ export class Workspace {
   async issue(id: string): Promise<(TeamIssue & { team: Team }) | null> {
     const { issues } = await this.linear.request(IssueByIdDocument, { id });
     return (issues.nodes[0] as (TeamIssue & { team: Team }) | undefined) ?? null;
+  }
+
+  /**
+   * Hands an issue to someone else in Linear, and forgets its team's work so the rest of the
+   * request reads it from there. Null when Linear didn't make the change.
+   */
+  async reassign(issueId: string, userId: string): Promise<(TeamIssue & { team: Team }) | null> {
+    const { issueUpdate } = await this.linear.request(ReassignIssueDocument, {
+      id: issueId,
+      assigneeId: userId,
+    });
+    const issue = issueUpdate.success ? issueUpdate.issue : null;
+    if (!issue) return null;
+    this.work.delete(issue.team.id);
+    return issue as TeamIssue & { team: Team };
   }
 
   teamWork(teamId: string): Promise<TeamWork> {

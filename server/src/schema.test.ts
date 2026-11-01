@@ -15,9 +15,14 @@ import {
 } from "../../web/src/mutations";
 import { Store } from "./db/store";
 import { DEFAULT_RULES, MAX_URGENCY_WINDOW_DAYS } from "./domain/quadrant";
-import { LinearAuthError, LinearRateLimitError, type LinearSource } from "./linear/client";
+import {
+  LinearAuthError,
+  LinearForbiddenError,
+  LinearRateLimitError,
+  type LinearSource,
+} from "./linear/client";
 import { DEMO_OPS_TEAM, DEMO_TEAM, DemoLinear } from "./linear/demo";
-import { TeamsMembersDocument } from "./linear/generated";
+import { ReassignIssueDocument, TeamsMembersDocument } from "./linear/generated";
 import { type PlacementStore, Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
 import { Workspace } from "./workspace";
@@ -673,6 +678,218 @@ describe("mutations", () => {
     expect(await new Store(env.DB).overrides(["someone-elses"])).toEqual(new Map());
   });
 });
+
+describe("reassigning", () => {
+  const reassign = `mutation ($issueId: ID!, $userId: ID!) {
+    reassignIssue(issueId: $issueId, userId: $userId) {
+      __typename
+      ... on Error { message }
+      ... on IssueNotFound { issueId }
+      ... on LinearRateLimited { resetAt }
+      ... on ReassignSuccess {
+        issue { identifier quadrant assignee { name } }
+        team { ${LOADS} }
+      }
+    }
+  }`;
+  type ReassignResult = {
+    reassignIssue: {
+      __typename: string;
+      message?: string;
+      issueId?: string;
+      issue?: { identifier: string; quadrant: string; assignee: { name: string } | null };
+      team?: Loads;
+    };
+  };
+
+  it("hands an issue to someone else, and their weather and forecast follow", async () => {
+    const linear = new DemoLinear({ today });
+    const before = await run(`{ team { ${LOADS} } }`, {}, { linear });
+    expect(loadOf((before.data as { team: Loads }).team, "Wanda Maximoff")).toEqual({
+      now: 0,
+      week1: 0,
+    });
+    expect(loadOf((before.data as { team: Loads }).team, "Tony Stark")).toEqual({
+      now: 11,
+      week1: 6,
+    });
+
+    // AVG-10, "Replace the repulsor gloves' firmware": Tony's, High priority, due in 9 days.
+    const result = await run(
+      reassign,
+      { issueId: "demo-issue-avg-10", userId: "demo-user-wanda" },
+      { linear },
+    );
+    expect(result.errors).toBeUndefined();
+    const { reassignIssue } = result.data as ReassignResult;
+    expect(reassignIssue.__typename).toBe("ReassignSuccess");
+    expect(reassignIssue.issue).toEqual({
+      identifier: "AVG-10",
+      quadrant: "DO",
+      assignee: { name: "Wanda Maximoff" },
+    });
+    expect(loadOf(reassignIssue.team, "Wanda Maximoff")).toEqual({ now: 1, week1: 1 });
+    expect(loadOf(reassignIssue.team, "Tony Stark")).toEqual({ now: 10, week1: 5 });
+
+    // Linear keeps it: the next request reads it from there.
+    const after = await run(`{ team { ${LOADS} } }`, {}, { linear });
+    expect(loadOf((after.data as { team: Loads }).team, "Wanda Maximoff")).toEqual({
+      now: 1,
+      week1: 1,
+    });
+  });
+
+  it("won't reassign an issue the viewer can't see", async () => {
+    const result = await run(reassign, { issueId: "someone-elses", userId: "demo-user-wanda" });
+    expect(result.errors).toBeUndefined();
+    expect((result.data as ReassignResult).reassignIssue).toEqual({
+      __typename: "IssueNotFound",
+      message: "There's no such issue, or you can't see it.",
+      issueId: "someone-elses",
+    });
+  });
+
+  it("says the issue wasn't found when Linear doesn't make the change", async () => {
+    const demo = new DemoLinear({ today });
+    const unchanged: LinearSource = {
+      request: (document, ...variables) =>
+        document.toString() === ReassignIssueDocument.toString()
+          ? demo.request(document, ...variables).then(
+              (answer) =>
+                ({
+                  ...(answer as object),
+                  issueUpdate: {
+                    ...(answer as { issueUpdate: object }).issueUpdate,
+                    success: false,
+                  },
+                }) as never,
+            )
+          : demo.request(document, ...variables),
+    };
+    const result = await run(
+      reassign,
+      { issueId: "demo-issue-avg-10", userId: "demo-user-wanda" },
+      { linear: unchanged },
+    );
+    expect((result.data as ReassignResult).reassignIssue).toMatchObject({
+      __typename: "IssueNotFound",
+      issueId: "demo-issue-avg-10",
+    });
+  });
+
+  it.each([
+    { case: "signed out", options: { signedIn: false }, typename: "Unauthorized" },
+    {
+      case: "with a revoked Linear session",
+      options: { linear: failingWith(new LinearAuthError("revoked")) },
+      typename: "Unauthorized",
+    },
+    {
+      case: "when Linear's rate limit is spent",
+      options: { linear: failingWith(new LinearRateLimitError(null)) },
+      typename: "LinearRateLimited",
+    },
+  ])("is $typename $case", async ({ options, typename }) => {
+    const result = await run(
+      reassign,
+      { issueId: "demo-issue-avg-10", userId: "demo-user-wanda" },
+      options,
+    );
+    expect(result.errors).toBeUndefined();
+    expect((result.data as ReassignResult).reassignIssue.__typename).toBe(typename);
+  });
+
+  it("is Unauthorized when Linear won't let the viewer change the issue", async () => {
+    const demo = new DemoLinear({ today });
+    const readOnly: LinearSource = {
+      request: (document, ...variables) =>
+        document.toString() === ReassignIssueDocument.toString()
+          ? Promise.reject(new LinearForbiddenError("Invalid scope: `write` required"))
+          : demo.request(document, ...variables),
+    };
+    const result = await run(
+      reassign,
+      { issueId: "demo-issue-avg-10", userId: "demo-user-wanda" },
+      { linear: readOnly },
+    );
+    expect(result.errors).toBeUndefined();
+    expect((result.data as ReassignResult).reassignIssue).toEqual({
+      __typename: "Unauthorized",
+      message:
+        "Linear won't let you change that. Sign in again to allow changes, or ask an admin of the team for access.",
+    });
+  });
+
+  it("only hands an issue to someone on its team, and asks Linear for nothing else", async () => {
+    const demo = new DemoLinear({ today });
+    const sent: string[] = [];
+    const watched: LinearSource = {
+      request: (document, ...variables) => {
+        sent.push(document.toString());
+        return demo.request(document, ...variables);
+      },
+    };
+    // Phil is on S.H.I.E.L.D. Ops, not the Avengers.
+    const result = await run(
+      reassign,
+      { issueId: "demo-issue-avg-10", userId: "demo-user-phil" },
+      { linear: watched },
+    );
+    expect(result.data).toEqual({ reassignIssue: null });
+    expect(result.errors?.map((e) => [e.message, e.extensions.code])).toEqual([
+      ["There's nobody with that id on Avengers to hand AVG-10 to.", "BAD_USER_INPUT"],
+    ]);
+    expect(sent).not.toContain(ReassignIssueDocument.toString());
+  });
+
+  it("answers each of several moves in one request with the board after it", async () => {
+    const { first, second } = await data<{
+      first: ReassignResult["reassignIssue"];
+      second: ReassignResult["reassignIssue"];
+    }>(
+      `mutation {
+        first: reassignIssue(issueId: "demo-issue-avg-10", userId: "demo-user-wanda") {
+          ... on ReassignSuccess { team { ${LOADS} } }
+        }
+        second: reassignIssue(issueId: "demo-issue-avg-9", userId: "demo-user-wanda") {
+          ... on ReassignSuccess { team { ${LOADS} } }
+        }
+      }`,
+    );
+    expect(loadOf(first.team, "Wanda Maximoff")?.now).toBe(1);
+    expect(loadOf(second.team, "Wanda Maximoff")?.now).toBe(2);
+  });
+
+  it("keeps an issue placed by hand where it was put", async () => {
+    await data(
+      `mutation { overrideQuadrant(issueId: "demo-issue-avg-10", quadrant: DROP) { __typename } }`,
+    );
+    const { reassignIssue } = await data<{
+      reassignIssue: { issue: { quadrant: string; quadrantSource: string } };
+    }>(
+      `mutation {
+        reassignIssue(issueId: "demo-issue-avg-10", userId: "demo-user-wanda") {
+          ... on ReassignSuccess { issue { quadrant quadrantSource } }
+        }
+      }`,
+    );
+    expect(reassignIssue.issue).toEqual({ quadrant: "DROP", quadrantSource: "OVERRIDE" });
+  });
+});
+
+/** Everyone's urgent load now and by the end of this week, counted in issues. */
+const LOADS = `people {
+  name
+  weather(metric: ISSUES) { load }
+  forecast(weeks: 1, metric: ISSUES) { weather { load } }
+}`;
+type Loads = {
+  people: { name: string; weather: { load: number }; forecast: { weather: { load: number } }[] }[];
+};
+function loadOf(team: Loads | undefined, name: string) {
+  const them = team?.people.find((p) => p.name === name);
+  return them && { now: them.weather.load, week1: them.forecast[0]?.weather.load };
+}
 
 /** A Linear that fails every request this way. */
 function failingWith(error: Error): LinearSource {

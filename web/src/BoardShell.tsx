@@ -229,17 +229,19 @@ function TeamBoard({
   const refocusPanel = () => setPanelFocus(true);
   /** Makes moves in Linear, one at a time; `all` when they're today's, made after a yes. */
   const makeMoves = async (moves: Suggestion[], all: boolean) => {
-    if (!team) throw new Error("no team to make moves in");
+    if (!team) return;
     const ids = moves.map(({ issue }) => issue.id);
-    setApplying(all);
+    // Only today's moves lock the panel; a single move answering mustn't unlock it mid-run.
+    if (all) setApplying(true);
     markPending(ids, true);
     setFailure(null);
     const applied = await applyMoves(client, team.id, moves);
     markPending(ids, false);
-    setApplying(false);
+    if (all) setApplying(false);
     const said = describeMoves(moves, applied);
     if ("failure" in said) {
-      // The board as read again after the failure; when it couldn't be, the old one stays.
+      // The board as read again after the failure, else after the last move made; with neither,
+      // the one shown stays.
       if (applied.team) showAnswer(applied.team);
       moveFailed(said.failure);
       return;

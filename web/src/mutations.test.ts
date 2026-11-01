@@ -188,13 +188,17 @@ describe("applying moves", () => {
    * The server: each move answers with the board after it, unless it's one that fails. Reading
    * the board answers it as it stands.
    */
-  function server(failing: Record<string, string> = {}) {
+  function server(failing: Record<string, string> = {}, { readable = true } = {}) {
     return vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const { issueId, teamId } = sent([_url, init]).variables as {
         issueId?: string;
         teamId?: string;
       };
-      if (teamId) return Response.json({ data: { team: { ...team, after: "read" } } });
+      if (teamId) {
+        return readable
+          ? Response.json({ data: { team: { ...team, after: "read" } } })
+          : new Response("Bad Gateway", { status: 502 });
+      }
       const message = failing[issueId ?? ""];
       return Response.json({
         data: {
@@ -237,6 +241,16 @@ describe("applying moves", () => {
     const fetch = server({ "i-1": "There's no such issue, or you can't see it." });
     const applied = await applyMoves(boardClient(false, fetch), team.id, moves);
     expect(applied).toMatchObject({ moved: [], team: { ...team, after: "read" } });
+  });
+
+  it("keeps the board after the last move made when it can't be read again", async () => {
+    const fetch = server(
+      { "i-2": "Linear's rate limit is spent for now; try again later." },
+      { readable: false },
+    );
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    const applied = await applyMoves(boardClient(false, fetch), team.id, moves);
+    expect(applied).toMatchObject({ moved: [moves[0]], team: { ...team, after: "i-1" } });
   });
 
   describe("in words", () => {

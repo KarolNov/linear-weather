@@ -210,8 +210,8 @@ export async function applyMoves(
     if (!result.ok) {
       applied.failed = { move, message: result.message };
       // What failed may have changed things too (it was reassigned in Linear meanwhile, say), so
-      // plan again from the board as it stands.
-      applied.team = await client.readTeam(teamId);
+      // plan again from the board as it stands; failing that, from the last move made.
+      applied.team = (await client.readTeam(teamId)) ?? applied.team;
       break;
     }
     applied.moved.push(move);

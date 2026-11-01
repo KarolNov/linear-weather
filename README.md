@@ -208,6 +208,7 @@ Within a request, rules and overrides are read through two DataLoaders (`server/
 - Local dev applies them for you. To apply them by hand, run `pnpm --filter server db:migrate:local`.
 - Tests apply every migration to an empty database in workerd (`server/test/apply-migrations.ts`) and empty the tables after each test.
 - In production, `pnpm --filter server deploy` (`server/scripts/deploy.sh`, the server's Workers Builds deploy command) applies migrations, then deploys. On the very first deploy Wrangler creates the database while deploying, so the script migrates right after instead. A migration runs while the previous code is still live, so it should add rather than rename or drop.
+- **Deploy the server before the web.** The two Workers deploy on their own, and the web's queries and mutations are checked against the server's schema. A web Worker that's ahead asks for fields the live server doesn't have yet, like `reassignIssue`, and those requests fail until the server catches up. A server that's behind also rewrites the demo's `lw_demo` cookie without the parts it doesn't know, such as reassigned issues.
 - [Worker Previews](https://developers.cloudflare.com/workers/previews/) of other branches use a shared staging database, `linear-weather-preview`, and their own session store (the `previews` block in `server/wrangler.jsonc`). `pnpm --filter server preview` (`server/scripts/preview.sh`, the server's Workers Builds preview command) migrates that database, then deploys the Preview.
 
 ### Previews

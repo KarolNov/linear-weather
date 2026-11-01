@@ -876,6 +876,52 @@ describe("reassigning", () => {
     );
     expect(reassignIssue.issue).toEqual({ quadrant: "DROP", quadrantSource: "OVERRIDE" });
   });
+
+  it("hands work only to members of the team, not to others holding its issues", async () => {
+    const demo = new DemoLinear({ today });
+    // Clint has left the Avengers, but still holds two of their issues.
+    const withoutClint: LinearSource = {
+      request: async (document, ...variables) => {
+        const answer = await demo.request(document, ...variables);
+        if (document.toString() !== TeamsMembersDocument.toString()) return answer;
+        const { teams } = answer as {
+          teams: { nodes: { members: { nodes: { id: string }[] } }[] };
+        };
+        for (const team of teams.nodes) {
+          team.members.nodes = team.members.nodes.filter((m) => m.id !== "demo-user-clint");
+        }
+        return answer;
+      },
+    };
+    const board = await run(
+      `{ team {
+        people { name }
+        now: rebalanceSuggestions(horizon: NOW) { to { name } }
+        ahead: rebalanceSuggestions(horizon: FORECAST) { to { name } }
+      } }`,
+      {},
+      { linear: withoutClint },
+    );
+    const team = (
+      board.data as {
+        team: {
+          people: { name: string }[];
+          now: { to: { name: string } }[];
+          ahead: { to: { name: string } }[];
+        };
+      }
+    ).team;
+    expect(team.people.map((p) => p.name)).toContain("Clint Barton");
+    expect(team.now.length).toBeGreaterThan(0);
+    expect([...team.now, ...team.ahead].map((s) => s.to.name)).not.toContain("Clint Barton");
+
+    const result = await run(
+      reassign,
+      { issueId: "demo-issue-avg-10", userId: "demo-user-clint" },
+      { linear: withoutClint },
+    );
+    expect(result.errors?.map((e) => e.extensions.code)).toEqual(["BAD_USER_INPUT"]);
+  });
 });
 
 /** Everyone's urgent load now and by the end of this week, counted in issues. */

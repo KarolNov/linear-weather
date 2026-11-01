@@ -53,8 +53,8 @@ export interface RebalanceOptions {
   thresholds?: WeatherThresholds;
 }
 
-/** Someone and the issues they hold. */
-type Holding<P, I> = P & { matrix: Matrix<I> };
+/** Someone and the issues they hold, and whether they can be handed more (by default they can). */
+type Holding<P, I> = P & { matrix: Matrix<I>; takesWork?: boolean };
 
 /**
  * Moves that bring everyone's urgent load within the thresholds, in the order to make them.
@@ -74,7 +74,8 @@ type Holding<P, I> = P & { matrix: Matrix<I> };
  *
  * Each issue moves at most once, and only if it narrows the gap between giver and taker.
  *
- * Nobody takes on work while they have overdue issues, or while their load can't be measured.
+ * Nobody takes on work while they have overdue issues, or while their load can't be measured, or
+ * when they can't take work at all (`takesWork: false`, e.g. someone off the team).
  * Overdue issues stay put: moving them only moves the storm. Without a `metric`, load is counted
  * as the weather (now) or forecast would count it on today's board.
  */
@@ -183,6 +184,7 @@ function balancer<I extends MatrixIssue, P extends { name: string }>(
 ) {
   const state = people.map(({ name, matrix }) => ({ name, matrix: copy(matrix) }));
   const overdue = state.map(({ matrix }) => urgentLoad(matrix, "issues", today).overdue > 0);
+  const takes = people.map(({ takesWork }) => takesWork !== false);
   const suggestions: Suggestion<P, I>[] = [];
   const moved = new Set<Placed<I>>();
 
@@ -210,7 +212,7 @@ function balancer<I extends MatrixIssue, P extends { name: string }>(
         }
         return change < 0;
       };
-      const move = bestMove(round, overdue, size, fits, thresholds);
+      const move = bestMove(round, overdue, takes, size, fits, thresholds);
       if (!move) return;
       const { issue } = move;
       moved.add(issue);
@@ -268,6 +270,7 @@ interface Move<I> {
 function bestMove<I extends MatrixIssue>(
   { loads, teamAverage, movable }: Round<I>,
   overdue: boolean[],
+  takes: boolean[],
   size: (issue: MatrixIssue) => number,
   fits: (issue: Placed<I>, giver: number, taker: number) => boolean,
   thresholds: WeatherThresholds,
@@ -281,7 +284,9 @@ function bestMove<I extends MatrixIssue>(
       const kind = weatherFor(load, teamAverage, false, thresholds);
       return kind === "rain" || kind === "storm";
     });
-  const takers = measured.filter(({ i }) => !overdue[i]).sort((a, b) => a.load - b.load);
+  const takers = measured
+    .filter(({ i }) => !overdue[i] && takes[i])
+    .sort((a, b) => a.load - b.load);
 
   for (const giver of givers) {
     for (const taker of takers) {

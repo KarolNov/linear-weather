@@ -26,6 +26,8 @@ export type TeamIssue = IssueCard & { priority: LinearPriority };
 export interface TeamWork {
   /** Team members by name, then anyone else holding the team's issues, e.g. after moving teams. */
   people: Assignee[];
+  /** The ids of the team's members: the people work can be handed to. */
+  memberIds: ReadonlySet<string>;
   issues: TeamIssue[];
   /** The same issues by assignee id; null holds the unassigned ones. */
   byAssignee: Map<string | null, TeamIssue[]>;
@@ -136,6 +138,7 @@ export class Workspace {
     }
     return {
       people: [...members, ...[...outsiders.values()].toSorted(byName)],
+      memberIds,
       issues: issues as TeamIssue[],
       byAssignee,
     };

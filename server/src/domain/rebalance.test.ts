@@ -90,6 +90,20 @@ describe("rebalance now", () => {
     expect(suggestions.every(({ fromWeather }) => fromWeather === "storm")).toBe(true);
   });
 
+  it("gives nothing to someone who can't take work, like a person off the team", () => {
+    const team = [
+      person(
+        "Ana",
+        times(6, () => issue(SOON)),
+      ),
+      { ...person("Ben", []), takesWork: false },
+      person("Cy", [issue(SOON)]),
+    ];
+    const suggestions = rebalance(team, "now", "issues", TODAY);
+    expect(suggestions.length).toBeGreaterThan(0);
+    expect(suggestions.map(({ to }) => to.name)).not.toContain("Ben");
+  });
+
   it("lets the next busiest give when the busiest has nothing to hand over", () => {
     // Ana's five are all overdue, so they stay; Ben is still in a storm (4 against 2.25).
     const team = [

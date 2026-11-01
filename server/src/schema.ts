@@ -179,8 +179,15 @@ async function teamForecastOf(
 function rebalanceNowOf(context: GraphQLContext, teamId: string, metric: LoadMetric | null) {
   return once(context, `rebalance:now:${teamId}:${metric ?? "auto"}`, async () => {
     const people = await peopleMatrices(context, teamId);
+    // Work goes only to members: someone holding the team's issues from elsewhere may have left.
+    const { memberIds } = await (await signedIn(context)).teamWork(teamId);
     return rebalanceNow(
-      people.map(({ person, matrix }) => ({ ...person, teamId, matrix })),
+      people.map(({ person, matrix }) => ({
+        ...person,
+        teamId,
+        matrix,
+        takesWork: memberIds.has(person.id),
+      })),
       metric,
       context.today,
     );
@@ -661,7 +668,7 @@ TeamRef.implement({
     rebalanceSuggestions: t.field({
       type: [SuggestionRef],
       description:
-        "Moves that bring everyone's urgent load within the weather's thresholds, in the order to make them. Greedy: the busiest person hands the least busy whichever issue leaves them closest, until nobody is under rain or in a storm by load. Overdue work stays put, and nobody running late takes more.",
+        "Moves that bring everyone's urgent load within the weather's thresholds, in the order to make them. Greedy: the busiest person hands the least busy whichever issue leaves them closest, until nobody is under rain or in a storm by load. Overdue work stays put, nobody running late takes more, and only members of the team take work.",
       args: {
         horizon: t.arg({ type: HorizonEnum, required: true }),
         weeks: t.arg.int({
@@ -937,9 +944,10 @@ async function reassign(
   // Linear answers an issue the viewer can't see with an error, not a result to switch on.
   const before = await workspace.issue(issueId);
   if (!before) return issueNotFound(issueId);
-  // Only to someone the board shows on the issue's team, so it lands on someone's matrix there.
-  const { people } = await workspace.teamWork(before.team.id);
-  if (!people.some((person) => person.id === userId)) {
+  // Only to a member of the issue's team, as the board suggests: someone holding its issues from
+  // elsewhere may have left, and Linear may not take them.
+  const { memberIds } = await workspace.teamWork(before.team.id);
+  if (!memberIds.has(userId)) {
     throw new GraphQLError(
       `There's nobody with that id on ${before.team.name} to hand ${before.identifier} to.`,
       { extensions: { code: "BAD_USER_INPUT" } },

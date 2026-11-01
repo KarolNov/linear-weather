@@ -1,9 +1,22 @@
 // Rebalance suggestions: which issues to hand from whom to whom so nobody is under rain or in a
 // storm, now or in the weeks ahead. A greedy pass over the weather and forecast, and as pure.
 
-import { forecast, project, type UrgentFrom, urgentFrom } from "./forecast";
-import { byPriority, type Matrix, type MatrixIssue, type Placed } from "./matrix";
-import type { CalendarDate } from "./quadrant";
+import {
+  isForecastHorizon,
+  MAX_FORECAST_WEEKS,
+  project,
+  type UrgentFrom,
+  urgentFrom,
+} from "./forecast";
+import {
+  byPriority,
+  isImportant,
+  type Matrix,
+  type MatrixIssue,
+  type Placed,
+  sizeIn,
+} from "./matrix";
+import { addDays, type CalendarDate } from "./quadrant";
 import {
   DEFAULT_THRESHOLDS,
   type LoadMetric,
@@ -11,6 +24,7 @@ import {
   ratioOf,
   teamWeather,
   times,
+  urgentLoad,
   type WeatherKind,
   type WeatherThresholds,
   weatherFor,
@@ -39,6 +53,9 @@ export interface RebalanceOptions {
   thresholds?: WeatherThresholds;
 }
 
+/** Someone and the issues they hold. */
+type Holding<P, I> = P & { matrix: Matrix<I> };
+
 /**
  * Moves that bring everyone's urgent load within the thresholds, in the order to make them.
  *
@@ -49,11 +66,11 @@ export interface RebalanceOptions {
  *
  * - **now** moves work that is urgent today.
  * - **forecast** heads off storms before they arrive, starting from the board as today's moves
- *   leave it. Week by week, it settles each week before looking at the next, moving work that
- *   isn't urgent yet but will be by that week's end. An issue weighs on every week from when it
- *   turns urgent until it's due, so a move must even out those weeks taken together, not just
- *   the one it's for, and leave none of them less even: easing week 3 mustn't bury the taker in
- *   week 2, which was settled already.
+ *   (counted as the weather counts them) leave it. Week by week, it settles each week before
+ *   looking at the next, moving work that isn't urgent yet but will be by that week's end. An
+ *   issue weighs on every week from when it turns urgent until it's due, so a move must even out
+ *   those weeks taken together, not just the one it's for, and leave none of them less even:
+ *   easing week 3 mustn't bury the taker in week 2, which was settled already.
  *
  * Each issue moves at most once, and only if it narrows the gap between giver and taker.
  *
@@ -62,64 +79,115 @@ export interface RebalanceOptions {
  * as the weather (now) or forecast would count it on today's board.
  */
 export function rebalance<I extends MatrixIssue, P extends { name: string }>(
-  people: readonly (P & { matrix: Matrix<I> })[],
+  people: readonly Holding<P, I>[],
   horizon: Horizon,
+  metric: LoadMetric | null,
+  today: CalendarDate,
+  options: RebalanceOptions = {},
+): Suggestion<P, I>[] {
+  const now = rebalanceNow(people, horizon === "now" ? metric : null, today, options);
+  return horizon === "now" ? now.suggestions : rebalanceAhead(now.after, metric, today, options);
+}
+
+/** Today's moves, and the board as they leave it, for `rebalanceAhead` to start from. */
+export function rebalanceNow<I extends MatrixIssue, P extends { name: string }>(
+  people: readonly Holding<P, I>[],
+  metric: LoadMetric | null,
+  today: CalendarDate,
+  { thresholds = DEFAULT_THRESHOLDS }: RebalanceOptions = {},
+): { suggestions: Suggestion<P, I>[]; after: Holding<P, I>[] } {
+  const { state, settle, suggestions, after } = balancer(people, today, thresholds);
+  // Counted the same way all the way through, whoever ends up holding what.
+  const counted = metric ?? loadMetricFor(state.map(({ matrix }) => matrix));
+  settle(
+    () => {
+      const weather = teamWeather(state, counted, today, thresholds);
+      return [
+        {
+          week: null,
+          loads: weather.people.map(({ load }) => load),
+          teamAverage: weather.team.teamAverage,
+          movable: state.map(
+            ({ matrix }) =>
+              new Set(
+                [...matrix.do, ...matrix.delegate].filter(
+                  (i) => i.dueDate === null || i.dueDate >= today,
+                ),
+              ),
+          ),
+        },
+      ];
+    },
+    0,
+    counted,
+  );
+  return { suggestions, after: after() };
+}
+
+/** The forecast's moves, week by week, from `people` as they stand (after today's moves). */
+export function rebalanceAhead<I extends MatrixIssue, P extends { name: string }>(
+  people: readonly Holding<P, I>[],
   metric: LoadMetric | null,
   today: CalendarDate,
   { weeks = 4, thresholds = DEFAULT_THRESHOLDS }: RebalanceOptions = {},
 ): Suggestion<P, I>[] {
-  // Moves are made on copies, so each round reads the weather the earlier ones leave.
-  const state = people.map(({ name, matrix }) => ({ name, matrix: copy(matrix) }));
-  const overdue = state.map(({ matrix }) => hasOverdue(matrix, today));
-  const from: UrgentFrom = (issue) => urgentFrom(issue, today);
-  // Counted the same way all the way through, whoever ends up holding what.
-  const nowMetric = metric ?? loadMetricFor(state.map(({ matrix }) => matrix));
-  const forecastMetric =
-    horizon === "forecast"
-      ? (metric ??
-        forecast(state, null, today, weeks, thresholds).team[0]?.weather.metric ??
-        "issues")
-      : nowMetric;
+  if (!isForecastHorizon(weeks)) {
+    throw new RangeError(`A forecast covers 1 to ${MAX_FORECAST_WEEKS} weeks, not ${weeks}`);
+  }
+  const { state, settle, suggestions } = balancer(people, today, thresholds);
+  // When an issue turns urgent doesn't depend on who holds it, and is worked out on each read,
+  // so read it once.
+  const firstUrgent = new Map(
+    state
+      .flatMap(({ matrix }) => Object.values(matrix).flat())
+      .map((i) => [i, urgentFrom(i, today)]),
+  );
+  const from: UrgentFrom = (issue) => firstUrgent.get(issue as Placed<I>) ?? null;
+  const ends = Array.from({ length: weeks }, (_, week) => addDays(today, 7 * week + 6));
+  /** Everyone's matrix as it should stand at each week's end, as the moves so far leave it. */
+  const projectAll = () =>
+    ends.map((endsOn) =>
+      state.map(({ name, matrix }) => ({ name, matrix: project(matrix, from, today, endsOn) })),
+    );
+  // As the forecast counts it: points only if every issue urgent in any week is estimated.
+  const counted =
+    metric ?? loadMetricFor(projectAll().flatMap((week) => week.map((p) => p.matrix)));
 
-  /** Today, as the moves so far leave it. */
-  function now(): Round<I>[] {
-    const weather = teamWeather(state, nowMetric, today, thresholds);
-    return [
-      {
-        week: null,
+  const rounds = (): Round<I>[] =>
+    projectAll().map((projected, week) => {
+      const weather = teamWeather(projected, counted, today, thresholds);
+      return {
+        week: week + 1,
         loads: weather.people.map(({ load }) => load),
         teamAverage: weather.team.teamAverage,
-        movable: state.map(({ matrix }) =>
-          [...matrix.do, ...matrix.delegate].filter(
-            (i) => i.dueDate === null || i.dueDate >= today,
-          ),
+        // Urgent by the week's end, but not today.
+        movable: projected.map(
+          ({ matrix }) =>
+            new Set(
+              [...matrix.do, ...matrix.delegate].filter(
+                (i) => i.quadrant === "schedule" || i.quadrant === "drop",
+              ),
+            ),
         ),
-      },
-    ];
-  }
+      };
+    });
+  for (let week = 0; week < weeks; week++) settle(rounds, week, counted);
+  return suggestions;
+}
 
-  /** Each forecast week, as the moves so far leave it. */
-  function ahead(): Round<I>[] {
-    const projected = forecast(state, forecastMetric, today, weeks, thresholds);
-    return projected.team.map(({ endsOn, weather }, week) => ({
-      week: week + 1,
-      loads: projected.people.map((theirs) => theirs[week]?.weather.load ?? null),
-      teamAverage: weather.teamAverage,
-      // Urgent by the week's end, but not today.
-      movable: state.map(({ matrix }) => {
-        const then = project(matrix, from, today, endsOn);
-        return [...then.do, ...then.delegate].filter(
-          (i) => i.quadrant === "schedule" || i.quadrant === "drop",
-        );
-      }),
-    }));
-  }
-
+/** Moves made on copies of `people`'s matrices, so each round reads the weather earlier ones leave. */
+function balancer<I extends MatrixIssue, P extends { name: string }>(
+  people: readonly Holding<P, I>[],
+  today: CalendarDate,
+  thresholds: WeatherThresholds,
+) {
+  const state = people.map(({ name, matrix }) => ({ name, matrix: copy(matrix) }));
+  const overdue = state.map(({ matrix }) => urgentLoad(matrix, "issues", today).overdue > 0);
   const suggestions: Suggestion<P, I>[] = [];
   const moved = new Set<Placed<I>>();
 
   /** Makes moves in one round until it's balanced, or no move helps. */
-  function settle(rounds: () => Round<I>[], at: number, counted: LoadMetric, report: boolean) {
+  function settle(rounds: () => Round<I>[], at: number, counted: LoadMetric) {
     const size = sizeIn(counted);
     // Each issue moves at most once, so this ends.
     for (;;) {
@@ -136,7 +204,7 @@ export function rebalance<I extends MatrixIssue, P extends { name: string }>(
         let change = 0;
         for (const { loads, movable } of all) {
           const [g, t] = [loads[giver], loads[taker]];
-          if (g == null || t == null || !movable[giver]?.includes(issue)) continue;
+          if (g == null || t == null || !movable[giver]?.has(issue)) continue;
           if (t + s > g) return false;
           change += s * (s + t - g);
         }
@@ -150,7 +218,6 @@ export function rebalance<I extends MatrixIssue, P extends { name: string }>(
       const taker = state[move.to] as (typeof state)[number];
       giver.matrix[issue.quadrant] = giver.matrix[issue.quadrant].filter((i) => i !== issue);
       taker.matrix[issue.quadrant] = [...taker.matrix[issue.quadrant], issue];
-      if (!report) continue;
 
       // Both were measured before and after, so the average doesn't move.
       const average = round.teamAverage as number;
@@ -169,12 +236,9 @@ export function rebalance<I extends MatrixIssue, P extends { name: string }>(
     }
   }
 
-  // The forecast assumes today's moves were made, then settles the weeks in order.
-  settle(now, 0, nowMetric, horizon === "now");
-  if (horizon === "forecast") {
-    for (let week = 0; week < weeks; week++) settle(ahead, week, forecastMetric, true);
-  }
-  return suggestions;
+  const after = (): Holding<P, I>[] =>
+    people.map((person, i) => ({ ...person, matrix: (state[i] as (typeof state)[number]).matrix }));
+  return { state, settle, suggestions, after };
 }
 
 /** One moment to balance: now, or a forecast week. */
@@ -185,7 +249,7 @@ interface Round<I> {
   loads: (number | null)[];
   teamAverage: number | null;
   /** What each person could hand over. */
-  movable: Placed<I>[][];
+  movable: Set<Placed<I>>[];
 }
 
 interface Move<I> {
@@ -223,7 +287,7 @@ function bestMove<I extends MatrixIssue>(
     for (const taker of takers) {
       const gap = giver.load - taker.load;
       if (gap <= 0) break;
-      const [issue] = (movable[giver.i] ?? [])
+      const [issue] = [...(movable[giver.i] ?? [])]
         .filter((i) => size(i) > 0 && size(i) < gap && fits(i, giver.i, taker.i))
         .sort(
           (a, b) =>
@@ -245,18 +309,6 @@ function bestMove<I extends MatrixIssue>(
     }
   }
   return null;
-}
-
-function isImportant(issue: Placed<MatrixIssue>): boolean {
-  return issue.quadrant === "do" || issue.quadrant === "schedule";
-}
-
-function sizeIn(metric: LoadMetric): (issue: MatrixIssue) => number {
-  return metric === "points" ? (issue) => issue.estimate ?? 0 : () => 1;
-}
-
-function hasOverdue(matrix: Matrix<MatrixIssue>, today: CalendarDate): boolean {
-  return [...matrix.do, ...matrix.delegate].some((i) => i.dueDate !== null && i.dueDate < today);
 }
 
 function copy<I>(matrix: Matrix<I>): Matrix<I> {

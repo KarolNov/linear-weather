@@ -1,7 +1,7 @@
 // The forecast: each person's weather in the weeks ahead, as dated issues turn urgent. Pure, like
 // the weather now that it projects forward.
 
-import { byPriority, type Matrix, type MatrixIssue, type Placed } from "./matrix";
+import { byPriority, isImportant, type Matrix, type MatrixIssue, type Placed } from "./matrix";
 import { addDays, type CalendarDate, type LinearPriority, type Quadrant } from "./quadrant";
 import {
   DEFAULT_THRESHOLDS,
@@ -148,8 +148,7 @@ function projectedQuadrant(
   if (issue.quadrantSource === "override") return issue.quadrant;
   const urgentOn = from(issue);
   const urgent = urgentOn !== null && urgentOn <= on;
-  const important = issue.quadrant === "do" || issue.quadrant === "schedule";
-  return important ? (urgent ? "do" : "schedule") : urgent ? "delegate" : "drop";
+  return isImportant(issue) ? (urgent ? "do" : "schedule") : urgent ? "delegate" : "drop";
 }
 
 /** Issues the rules make urgent from `startsOn` to `endsOn`, not those urgent already. */

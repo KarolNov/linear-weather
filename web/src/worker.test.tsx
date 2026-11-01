@@ -114,7 +114,7 @@ const defaultTeam: BoardData["team"] = {
     {
       ...tony,
       matrix: tonysMatrix,
-      weather: { kind: "STORM" as const, reason: "4 urgent points" },
+      weather: { kind: "STORM" as const, reason: "4 urgent points", overdue: 0 },
       forecast: [
         {
           startsOn: "2026-10-18",
@@ -232,7 +232,7 @@ describe("web worker", () => {
             counts: { ...emptyMatrix.counts, do: 1 },
             do: [issue({ quadrantSource: "OVERRIDE", placementReason: reason })],
           },
-          weather: { kind: "CLOUDY" as const, reason: "1 urgent issue" },
+          weather: { kind: "CLOUDY" as const, reason: "1 urgent issue", overdue: 0 },
           forecast: [],
         },
       ],
@@ -283,25 +283,23 @@ describe("web worker", () => {
     expect(panel).toContain('aria-label="Wanda Maximoff would be: Partly cloudy in week 3."');
   });
 
-  it("finds who is running late: overdue urgent work, not overdue work that can wait", () => {
-    const late = issue({ id: "i-4", identifier: "AVG-4", dueDate: "2026-10-01" });
-    const waits = issue({ id: "i-5", identifier: "AVG-5", dueDate: "2026-10-02" });
+  it("finds who is running late, as their weather counts overdue work", () => {
     const people: PersonMatrix[] = [
       {
         assignee: tony,
-        matrix: { ...tonysMatrix, delegate: [late], schedule: [waits] },
-        weather: { kind: "STORM", reason: "2 issues overdue" },
+        matrix: tonysMatrix,
+        weather: { kind: "STORM", reason: "2 issues overdue", overdue: 2 },
         forecast: [],
       },
       {
         assignee: wanda,
-        matrix: { ...emptyMatrix, do: [issue({ id: "i-6", dueDate: "2026-10-18" })] },
-        weather: { kind: "SUNNY", reason: "Nothing overdue" },
+        matrix: emptyMatrix,
+        weather: { kind: "SUNNY", reason: "Nothing overdue", overdue: 0 },
         forecast: [],
       },
       { assignee: null, matrix: tonysMatrix, weather: null, forecast: null },
     ];
-    expect(runningLate(people, "2026-10-18")).toEqual([{ person: tony, overdue: 2 }]);
+    expect(runningLate(people)).toEqual([{ person: tony, overdue: 2 }]);
   });
 
   it("warns that moves can't clear a storm overdue work causes", () => {
@@ -320,6 +318,20 @@ describe("web worker", () => {
     expect(panel).toContain(
       "Tony Stark (3 overdue) and Wanda Maximoff (1 overdue) stay in a storm after these moves",
     );
+  });
+
+  it("doesn't speak of moves when there are none", () => {
+    const panel = renderToString(
+      <RebalancePanel
+        teamName="Avengers"
+        rebalanceNow={[]}
+        rebalanceForecast={[]}
+        runningLate={[{ person: tony, overdue: 1 }]}
+        onClose={() => {}}
+      />,
+    );
+    expect(panel).toContain("Tony Stark (1 overdue) stays in a storm: overdue work");
+    expect(panel).not.toContain("after these moves");
   });
 
   it("says when there's nothing to move", () => {
@@ -364,7 +376,7 @@ describe("web worker", () => {
         {
           ...tony,
           matrix: emptyMatrix,
-          weather: { kind: "SUNNY" as const, reason: "Nothing urgent" },
+          weather: { kind: "SUNNY" as const, reason: "Nothing urgent", overdue: 0 },
           forecast: [],
         },
       ],

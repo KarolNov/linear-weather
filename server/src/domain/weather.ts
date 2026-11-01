@@ -112,6 +112,8 @@ export interface Weather {
   /** The mean urgent load of the people whose load could be measured. Null when fewer than
    * two could: nobody to compare with. */
   teamAverage: number | null;
+  /** Urgent (Do or Delegate) issues past their due date; for a team, everyone's. */
+  overdue: number;
   /** Why, e.g. "13 urgent points, 3.07× the team average; 2 issues overdue". */
   reason: string;
 }
@@ -159,6 +161,7 @@ function weatherOf(
     metric,
     load,
     teamAverage,
+    overdue,
     reason: describeLoad(measured, teamAverage, metric),
   };
 }
@@ -173,7 +176,8 @@ function spread(
     (most, { load }) => (load !== null && (most === null || load > most) ? load : most),
     null,
   );
-  const base = { metric, load: busiest, teamAverage };
+  const overdue = weathers.reduce((sum, weather) => sum + weather.overdue, 0);
+  const base = { metric, load: busiest, teamAverage, overdue };
   const names = (kind: WeatherKind) =>
     people.filter((_, i) => weathers[i]?.kind === kind).map(({ name }) => name);
 

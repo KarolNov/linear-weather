@@ -284,7 +284,7 @@ function TeamBoard({
             teamName={team.name}
             rebalanceNow={team.rebalanceNow}
             rebalanceForecast={team.rebalanceForecast}
-            runningLate={runningLate(people, today)}
+            runningLate={runningLate(people)}
             onClose={() => setRebalancing(false)}
           />
         </div>

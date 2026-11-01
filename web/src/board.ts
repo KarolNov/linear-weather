@@ -56,6 +56,12 @@ export interface Weather {
   reason: string;
 }
 
+/** A person's weather, with what keeps them in a storm whatever is handed over. */
+export interface PersonWeather extends Weather {
+  /** Their overdue urgent (Do or Delegate) issues, as the server counts them. */
+  overdue: number;
+}
+
 /** One week ahead: the weather expected by its end, and what turns urgent during it. */
 export interface ForecastWeek {
   /** Today for the first week, then every 7 days. */
@@ -111,7 +117,7 @@ export interface PersonMatrix {
   assignee: Person | null;
   matrix: Matrix;
   /** Null for the unassigned issues: nobody's load. */
-  weather: Weather | null;
+  weather: PersonWeather | null;
   /** The weeks ahead, this one first. Null for the unassigned issues. */
   forecast: ForecastWeek[] | null;
 }
@@ -155,7 +161,7 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
     id
     name
     avatarUrl
-    weather { kind reason }
+    weather { kind reason overdue }
     forecast { startsOn endsOn weather { kind reason } summary turningUrgent { identifier } }
     matrix { ${MATRIX_FIELDS} }
   }
@@ -199,7 +205,7 @@ export type TeamBoardData = Team &
   Rebalance & {
     rules: Rules;
     weather: Weather;
-    people: (Person & { matrix: Matrix; weather: Weather; forecast: ForecastWeek[] })[];
+    people: (Person & { matrix: Matrix; weather: PersonWeather; forecast: ForecastWeek[] })[];
     unassigned: Matrix;
   };
 
@@ -237,17 +243,15 @@ export interface RunningLate {
 }
 
 /**
- * Who has overdue urgent (Do or Delegate) issues, as the server's weather counts them. Overdue
- * work always means a storm, and rebalancing never moves it, so these storms outlast any moves.
+ * Who has overdue urgent (Do or Delegate) issues, by their weather. Overdue work always means a
+ * storm, and rebalancing never moves it, so these storms outlast any moves.
  */
-export function runningLate(people: PersonMatrix[], today: CalendarDate): RunningLate[] {
-  return people.flatMap(({ assignee, matrix }) => {
-    if (!assignee) return [];
-    const overdue = [...matrix.do, ...matrix.delegate].filter(
-      ({ dueDate }) => dueDate !== null && dueDate < today,
-    ).length;
-    return overdue === 0 ? [] : [{ person: assignee, overdue }];
-  });
+export function runningLate(people: PersonMatrix[]): RunningLate[] {
+  return people.flatMap(({ assignee, weather }) =>
+    assignee && weather && weather.overdue > 0
+      ? [{ person: assignee, overdue: weather.overdue }]
+      : [],
+  );
 }
 
 /** The number of issues in a matrix. */

@@ -19,7 +19,7 @@ import {
   type QuadrantRules,
   type RuleProblem,
 } from "./domain/quadrant";
-import { type Horizon, rebalance, type Suggestion } from "./domain/rebalance";
+import { type Horizon, rebalanceAhead, rebalanceNow, type Suggestion } from "./domain/rebalance";
 import {
   DEFAULT_THRESHOLDS,
   type LoadMetric,
@@ -175,28 +175,36 @@ async function teamForecastOf(
   });
 }
 
+/** Today's moves in a team, and the board they leave, counting load in `metric` or as the weather does. */
+function rebalanceNowOf(context: GraphQLContext, teamId: string, metric: LoadMetric | null) {
+  return once(context, `rebalance:now:${teamId}:${metric ?? "auto"}`, async () => {
+    const people = await peopleMatrices(context, teamId);
+    return rebalanceNow(
+      people.map(({ person, matrix }) => ({ ...person, teamId, matrix })),
+      metric,
+      context.today,
+    );
+  });
+}
+
 /** Who should hand which issue to whom, so nobody is overloaded now or in the weeks ahead. */
-function rebalanceOf(
+async function rebalanceOf(
   context: GraphQLContext,
   teamId: string,
   horizon: Horizon,
   weeks: number,
   metric: LoadMetric | null | undefined,
 ): Promise<Suggestion<UserModel, TeamIssue>[]> {
-  if (horizon === "forecast" && !isForecastHorizon(weeks)) {
+  if (horizon === "now") return (await rebalanceNowOf(context, teamId, metric ?? null)).suggestions;
+  if (!isForecastHorizon(weeks)) {
     throw new GraphQLError(`A forecast covers 1 to ${MAX_FORECAST_WEEKS} weeks.`, {
       extensions: { code: "BAD_USER_INPUT" },
     });
   }
-  return once(context, `rebalance:${teamId}:${horizon}:${metric ?? "auto"}:${weeks}`, async () => {
-    const people = await peopleMatrices(context, teamId);
-    return rebalance(
-      people.map(({ person, matrix }) => ({ ...person, teamId, matrix })),
-      horizon,
-      metric ?? null,
-      context.today,
-      { weeks },
-    );
+  return once(context, `rebalance:forecast:${teamId}:${metric ?? "auto"}:${weeks}`, async () => {
+    // From the board today's moves leave, as the NOW list (by default) shows them.
+    const { after } = await rebalanceNowOf(context, teamId, null);
+    return rebalanceAhead(after, metric ?? null, context.today, { weeks });
   });
 }
 
@@ -207,6 +215,7 @@ function notOnTeam(team: Weather): Weather {
     metric: team.metric,
     load: null,
     teamAverage: team.teamAverage,
+    overdue: 0,
     reason: "Not on this team",
   };
 }
@@ -307,6 +316,10 @@ const WeatherRef = builder.objectRef<Weather>("Weather").implement({
       nullable: true,
       description:
         "The mean urgent load of the team's people whose load could be measured. Null when fewer than two could: nobody to compare with.",
+    }),
+    overdue: t.exposeInt("overdue", {
+      description:
+        "Urgent (Do or Delegate) issues past their due date, which mean a storm whatever the load; for a team, everyone's.",
     }),
     reason: t.exposeString("reason", {
       description: 'Why, e.g. "13 urgent points, 3.07× the team average; 2 issues overdue".',

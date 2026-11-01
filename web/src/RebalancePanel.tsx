@@ -32,6 +32,7 @@ export function RebalancePanel({
   runningLate = [],
   onClose,
 }: RebalancePanelProps) {
+  const moves = rebalanceNow.length + rebalanceForecast.length > 0;
   const late = names.format(
     runningLate.map(({ person, overdue }) => `${person.name} (${overdue} overdue)`),
   );
@@ -51,9 +52,9 @@ export function RebalancePanel({
           <div {...stylex.props(styles.note)}>
             <WeatherIcon weather="storm" size={28} label="" />
             <p>
-              {late} {runningLate.length === 1 ? "stays" : "stay"} in a storm after these moves:
-              overdue work stays with whoever has it. Finish it, or move its due date in Linear, to
-              clear the storm.
+              {late} {runningLate.length === 1 ? "stays" : "stay"} in a storm
+              {moves ? " after these moves" : ""}: overdue work stays with whoever has it. Finish
+              it, or move its due date in Linear, to clear the storm.
             </p>
           </div>
         )}

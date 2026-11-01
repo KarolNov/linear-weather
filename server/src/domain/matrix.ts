@@ -10,6 +10,7 @@ import {
   type Quadrant,
   type QuadrantRules,
 } from "./quadrant";
+import type { LoadMetric } from "./weather";
 
 /** Where an issue landed and why: by the team's rules, or by hand. */
 export interface Placement {
@@ -79,12 +80,22 @@ export function buildMatrix<I extends MatrixIssue & { id: string }>(
 }
 
 export function counts(matrix: Matrix<MatrixIssue>): Record<Quadrant, number> {
-  return tally(matrix, () => 1);
+  return tally(matrix, sizeIn("issues"));
 }
 
 /** Estimate points per quadrant; unestimated issues add nothing. */
 export function points(matrix: Matrix<MatrixIssue>): Record<Quadrant, number> {
-  return tally(matrix, (issue) => issue.estimate ?? 0);
+  return tally(matrix, sizeIn("points"));
+}
+
+/** What one issue adds to a load: its estimate in points (unestimated adds nothing), else 1. */
+export function sizeIn(metric: LoadMetric): (issue: MatrixIssue) => number {
+  return metric === "points" ? (issue) => issue.estimate ?? 0 : () => 1;
+}
+
+/** Whether an issue sits in an important quadrant: Do or Schedule. */
+export function isImportant(issue: { quadrant: Quadrant }): boolean {
+  return issue.quadrant === "do" || issue.quadrant === "schedule";
 }
 
 function tally(

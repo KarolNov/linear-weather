@@ -92,7 +92,7 @@ type Matrix {         # each list most pressing first
 
 enum WeatherKind { SUNNY CLOUDY RAIN STORM FOG }
 enum LoadMetric { POINTS ISSUES }
-type Weather { kind: WeatherKind!  metric: LoadMetric!  load: Float  teamAverage: Float  reason: String! }
+type Weather { kind: WeatherKind!  metric: LoadMetric!  load: Float  teamAverage: Float  overdue: Int!  reason: String! }
 type ForecastWeek {   # the urgent load expected by the week's last day
   startsOn: Date!  endsOn: Date!  weather: Weather!
   turningUrgent: [Issue!]!  summary: String!   # "3 High-priority issues become urgent"

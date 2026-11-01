@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Suggestion } from "./board";
-import { applyMoves, boardClient, REASSIGN_MUTATION } from "./mutations";
+import { applyMoves, boardClient, describeMoves, REASSIGN_MUTATION } from "./mutations";
 
 const team = { id: "t-avg", name: "Avengers", key: "AVG" };
 const rules = { importantFrom: 2, urgencyWindowDays: 7, noDueDate: "URGENT" } as const;
@@ -184,11 +184,18 @@ describe("applying moves", () => {
   });
   const moves = [move(1, "wanda"), move(2, "clint"), move(3, "steve")];
 
-  /** The server: each move answers with the board after it, unless it's one that fails. */
+  /**
+   * The server: each move answers with the board after it, unless it's one that fails. Reading
+   * the board answers it as it stands.
+   */
   function server(failing: Record<string, string> = {}) {
     return vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const { issueId } = sent([_url, init]).variables as { issueId: string };
-      const message = failing[issueId];
+      const { issueId, teamId } = sent([_url, init]).variables as {
+        issueId?: string;
+        teamId?: string;
+      };
+      if (teamId) return Response.json({ data: { team: { ...team, after: "read" } } });
+      const message = failing[issueId ?? ""];
       return Response.json({
         data: {
           reassignIssue: message
@@ -201,7 +208,7 @@ describe("applying moves", () => {
 
   it("makes every move, one at a time in order, ending on the board after the last", async () => {
     const fetch = server();
-    const applied = await applyMoves(boardClient(false, fetch), moves);
+    const applied = await applyMoves(boardClient(false, fetch), team.id, moves);
     expect(fetch.mock.calls.map((call) => sent(call).variables)).toEqual([
       { issueId: "i-1", userId: "u-wanda" },
       { issueId: "i-2", userId: "u-clint" },
@@ -212,12 +219,74 @@ describe("applying moves", () => {
 
   it("stops at the first move that fails, saying which went through", async () => {
     const fetch = server({ "i-2": "Linear's rate limit is spent for now; try again later." });
-    const applied = await applyMoves(boardClient(false, fetch), moves);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    const applied = await applyMoves(boardClient(false, fetch), team.id, moves);
+    expect(fetch.mock.calls.map((call) => sent(call).variables)).toEqual([
+      { issueId: "i-1", userId: "u-wanda" },
+      { issueId: "i-2", userId: "u-clint" },
+      { teamId: team.id },
+    ]);
     expect(applied).toEqual({
       moved: [moves[0]],
       failed: { move: moves[1], message: "Linear's rate limit is spent for now; try again later." },
-      team: { ...team, after: "i-1" },
+      // Read again, from where things stand after the failure.
+      team: { ...team, after: "read" },
+    });
+  });
+
+  it("reads the board again when the first move fails, so it plans from where things stand", async () => {
+    const fetch = server({ "i-1": "There's no such issue, or you can't see it." });
+    const applied = await applyMoves(boardClient(false, fetch), team.id, moves);
+    expect(applied).toMatchObject({ moved: [], team: { ...team, after: "read" } });
+  });
+
+  describe("in words", () => {
+    const failed = (n: number, message = "Try later.") => ({
+      move: moves[n] as Suggestion,
+      message,
+    });
+
+    it("says whose one issue is now", () => {
+      expect(
+        describeMoves([moves[0] as Suggestion], {
+          moved: [moves[0] as Suggestion],
+          failed: null,
+          team: null,
+        }),
+      ).toEqual({
+        status: "AVG-1 is wanda's now.",
+      });
+    });
+
+    it("lists every move made, and that the board is planned again", () => {
+      expect(describeMoves(moves, { moved: moves, failed: null, team: null })).toEqual({
+        status:
+          "Handed AVG-1 to wanda, AVG-2 to clint, and AVG-3 to steve. The board is planned again from here.",
+      });
+    });
+
+    it("says which went through, which failed and why, and that the rest weren't made", () => {
+      expect(
+        describeMoves(moves, { moved: [moves[0] as Suggestion], failed: failed(1), team: null }),
+      ).toEqual({
+        failure:
+          "Handed AVG-1 to wanda. Couldn't hand AVG-2 to clint, so the rest weren't made. Try later.",
+      });
+    });
+
+    it("doesn't speak of the rest when the first of many fails before any went through", () => {
+      expect(describeMoves(moves, { moved: [], failed: failed(0), team: null })).toEqual({
+        failure: "Couldn't hand AVG-1 to wanda, so the rest weren't made. Try later.",
+      });
+    });
+
+    it("has no rest to speak of when the last move fails", () => {
+      const [first, second] = moves as [Suggestion, Suggestion];
+      expect(
+        describeMoves(moves, { moved: [first, second], failed: failed(2), team: null }),
+      ).toEqual({
+        failure:
+          "Handed AVG-1 to wanda and AVG-2 to clint. Couldn't hand AVG-3 to steve. Try later.",
+      });
     });
   });
 });

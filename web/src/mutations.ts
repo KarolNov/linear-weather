@@ -2,6 +2,7 @@
 // asks for the team's board back, so the page redraws from the answer with nothing derived here.
 
 import {
+  listOf,
   type Quadrant,
   type Rules,
   type Suggestion,
@@ -52,6 +53,13 @@ export const REASSIGN_MUTATION = `mutation ReassignIssue($issueId: ID!, $userId:
 
 ${TEAM_BOARD_FRAGMENTS}`;
 
+/** A team's board as it stands, to plan again from after a move failed. */
+export const TEAM_QUERY = `query Team($teamId: ID!) {
+  team(id: $teamId) { ...TeamBoard }
+}
+
+${TEAM_BOARD_FRAGMENTS}`;
+
 /** Something wrong with proposed rules, on the field the form should mark. */
 export interface RuleProblem {
   field: keyof Rules;
@@ -80,6 +88,8 @@ export interface BoardClient {
   placeIssue(issueId: string, quadrant: Quadrant | null): Promise<MutationResult>;
   /** Hands an issue to someone else on its team, in Linear. */
   reassign(issueId: string, userId: string): Promise<MutationResult>;
+  /** The team's board as it stands; null when it can't be read. */
+  readTeam(teamId: string): Promise<TeamBoardData | null>;
 }
 
 /**
@@ -133,9 +143,30 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
 
   /** Runs `send` once everything sent before it has answered. */
   function queued(query: string, variables: Record<string, unknown>) {
-    const result = queue.then(() => send(query, variables));
+    return inTurn(() => send(query, variables));
+  }
+
+  /** Runs `work` once everything sent before it has answered. */
+  function inTurn<T>(work: () => Promise<T>): Promise<T> {
+    const result = queue.then(work);
     queue = result;
     return result;
+  }
+
+  async function read(teamId: string): Promise<TeamBoardData | null> {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: TEAM_QUERY, variables: { teamId } }),
+      });
+      if (!res.ok) throw new Error(`server responded ${res.status}`);
+      const { data } = (await res.json()) as { data?: { team: TeamBoardData | null } | null };
+      return data?.team ?? null;
+    } catch (error) {
+      console.error(`Couldn't read the board again: ${error}`);
+      return null;
+    }
   }
 
   return {
@@ -145,6 +176,8 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
         ? queued(OVERRIDE_MUTATION, { issueId, quadrant: quadrant.toUpperCase() })
         : queued(CLEAR_OVERRIDE_MUTATION, { issueId }),
     reassign: (issueId, userId) => queued(REASSIGN_MUTATION, { issueId, userId }),
+    // After the moves sent before it, so it reads what they left.
+    readTeam: (teamId) => inTurn(() => read(teamId)),
   } satisfies BoardClient;
 }
 
@@ -154,16 +187,21 @@ export interface AppliedMoves {
   moved: Suggestion[];
   /** The first move that failed, and why. Those after it weren't tried. */
   failed: { move: Suggestion; message: string } | null;
-  /** The board after the last move made; null when none was, or it couldn't be read back. */
+  /**
+   * The board after the last move, or as read again after a failure; null when it couldn't be
+   * read, or there were no moves.
+   */
   team: TeamBoardData | null;
 }
 
 /**
  * Makes moves one at a time, in order, stopping at the first that fails: each move was planned
- * from the board the ones before it leave, so the rest may not make sense without it.
+ * from the board the ones before it leave, so the rest may not make sense without it. After a
+ * failure the board is read again.
  */
 export async function applyMoves(
-  client: Pick<BoardClient, "reassign">,
+  client: Pick<BoardClient, "reassign" | "readTeam">,
+  teamId: string,
   moves: Suggestion[],
 ): Promise<AppliedMoves> {
   const applied: AppliedMoves = { moved: [], failed: null, team: null };
@@ -171,10 +209,34 @@ export async function applyMoves(
     const result = await client.reassign(move.issue.id, move.to.id);
     if (!result.ok) {
       applied.failed = { move, message: result.message };
+      // What failed may have changed things too (it was reassigned in Linear meanwhile, say), so
+      // plan again from the board as it stands.
+      applied.team = await client.readTeam(teamId);
       break;
     }
     applied.moved.push(move);
     applied.team = result.team;
   }
   return applied;
+}
+
+/** How a run of `moves` went, as the board tells the PM: a status, or what failed and why. */
+export function describeMoves(
+  moves: Suggestion[],
+  { moved, failed }: AppliedMoves,
+): { status: string } | { failure: string } {
+  const handed = (list: Suggestion[]) =>
+    listOf(list.map(({ issue, to }) => `${issue.identifier} to ${to.name}`));
+  if (failed) {
+    const { issue, to } = failed.move;
+    const rest = moves.indexOf(failed.move) < moves.length - 1 ? ", so the rest weren't made" : "";
+    const before = moved.length > 0 ? `Handed ${handed(moved)}. ` : "";
+    return {
+      failure: `${before}Couldn't hand ${issue.identifier} to ${to.name}${rest}. ${failed.message}`,
+    };
+  }
+  const [only] = moved;
+  if (moved.length === 1 && only)
+    return { status: `${only.issue.identifier} is ${only.to.name}'s now.` };
+  return { status: `Handed ${handed(moved)}. The board is planned again from here.` };
 }

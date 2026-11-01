@@ -18,7 +18,6 @@ import {
   type Board,
   type BoardError,
   type BoardIssue,
-  listOf,
   type PersonMatrix as PersonMatrixData,
   QUADRANTS,
   type Quadrant,
@@ -32,7 +31,7 @@ import {
   type Viewer,
 } from "./board";
 import { entrance } from "./motion";
-import { applyMoves, boardClient } from "./mutations";
+import { applyMoves, boardClient, describeMoves } from "./mutations";
 import { PersonMatrix } from "./PersonMatrix";
 import { quadrantFill, quadrantInfo } from "./quadrants";
 import { RebalancePanel } from "./RebalancePanel";
@@ -228,37 +227,24 @@ function TeamBoard({
     document.getElementById("rebalance-heading")?.focus();
   }, [panelFocus]);
   const refocusPanel = () => setPanelFocus(true);
-  const reassign = async (move: Suggestion) => {
-    const { issue, to } = move;
-    markPending([issue.id], true);
-    setFailure(null);
-    const result = await client.reassign(issue.id, to.id);
-    markPending([issue.id], false);
-    if (!result.ok) {
-      moveFailed(`Couldn't hand ${issue.identifier} to ${to.name}. ${result.message}`);
-      return;
-    }
-    if (showAnswer(result.team)) setStatus(`${issue.identifier} is ${to.name}'s now.`);
-    refocusPanel();
-  };
-  const applyNow = async (moves: Suggestion[]) => {
+  /** Makes moves in Linear, one at a time; `all` when they're today's, made after a yes. */
+  const makeMoves = async (moves: Suggestion[], all: boolean) => {
+    if (!team) throw new Error("no team to make moves in");
     const ids = moves.map(({ issue }) => issue.id);
-    setApplying(true);
+    setApplying(all);
     markPending(ids, true);
     setFailure(null);
-    const { moved, failed, team: after } = await applyMoves(client, moves);
+    const applied = await applyMoves(client, team.id, moves);
     markPending(ids, false);
     setApplying(false);
-    const made = listOf(moved.map(({ issue, to }) => `${issue.identifier} to ${to.name}`));
-    const shown = moved.length === 0 || showAnswer(after);
-    if (failed) {
-      const { move, message } = failed;
-      moveFailed(
-        `${moved.length > 0 ? `Handed ${made}. ` : ""}Couldn't hand ${move.issue.identifier} to ${move.to.name}, so the rest weren't made. ${message}`,
-      );
+    const said = describeMoves(moves, applied);
+    if ("failure" in said) {
+      // The board as read again after the failure; when it couldn't be, the old one stays.
+      if (applied.team) showAnswer(applied.team);
+      moveFailed(said.failure);
       return;
     }
-    if (shown) setStatus(`Handed ${made}. The board is planned again from here.`);
+    if (showAnswer(applied.team)) setStatus(said.status);
     refocusPanel();
   };
   const saveRules = async (rules: Rules) => {
@@ -349,8 +335,8 @@ function TeamBoard({
             runningLate={runningLate(people)}
             pending={pending}
             applying={applying}
-            onReassign={reassign}
-            onApplyNow={applyNow}
+            onReassign={(move) => makeMoves([move], false)}
+            onApplyNow={(moves) => makeMoves(moves, true)}
             onClose={() => setRebalancing(false)}
           />
         </div>

@@ -12,6 +12,7 @@ import {
   CLEAR_OVERRIDE_MUTATION,
   OVERRIDE_MUTATION,
   REASSIGN_MUTATION,
+  TEAM_QUERY,
   UPDATE_RULES_MUTATION,
 } from "../../web/src/mutations";
 import { Store } from "./db/store";
@@ -1023,6 +1024,12 @@ describe("the web app's board query", () => {
     const wanda = reassignIssue?.team?.people.find((p) => p.name === "Wanda Maximoff");
     expect(wanda?.matrix.do.map((issue) => issue.id)).toEqual(["demo-issue-avg-10"]);
     expect(reassignIssue?.team?.rebalanceNow).toBeInstanceOf(Array);
+  });
+
+  it("reads a team's board again, as it stands", async () => {
+    const { team } = await data<{ team: TeamBoardData }>(TEAM_QUERY, { teamId: DEMO_OPS_TEAM.id });
+    expect(team.name).toBe("S.H.I.E.L.D. Ops");
+    expect(team.people.length).toBeGreaterThan(0);
   });
 });
 

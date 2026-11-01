@@ -18,7 +18,7 @@ import {
   type Quadrant,
   type QuadrantRules,
 } from "../domain/quadrant";
-import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssues } from "../linear/demo";
+import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssue } from "../linear/demo";
 
 /** What the demo keeps for a visitor: the rules and quadrants they set, and who has which issue. */
 export interface DemoSaved {
@@ -43,13 +43,10 @@ const USER_PREFIX = "demo-user-";
 /** An id without its prefix: nothing that could be mistaken for a separator. */
 const SHORT_ID = /^[a-z0-9-]+$/;
 /**
- * The demo's own teams and issues. Nothing else is read back, so a cookie can't carry more than
- * the whole demo. Issue ids don't depend on the day.
+ * The demo's own teams and people (`demoIssue` knows its issues). Nothing else is read back, so a
+ * cookie can't carry more than the whole demo.
  */
 const TEAM_IDS = new Set([DEMO_TEAM.id, DEMO_OPS_TEAM.id]);
-const ISSUE_IDS = new Set(
-  [...TEAM_IDS].flatMap((team) => demoIssues("2000-01-01", team)).map(({ id }) => id),
-);
 const USER_IDS = new Set(
   [DEMO_TEAM, DEMO_OPS_TEAM].flatMap((team) => team.members.map(({ id }) => id)),
 );
@@ -98,10 +95,10 @@ export function decodeDemo(value: string | undefined): DemoSaved {
   }
   for (const [id, quadrant] of fields(issues, 2)) {
     const placed = QUADRANTS[index(quadrant)];
-    if (placed && ISSUE_IDS.has(ISSUE_PREFIX + id)) saved.overrides.set(ISSUE_PREFIX + id, placed);
+    if (placed && demoIssue(ISSUE_PREFIX + id)) saved.overrides.set(ISSUE_PREFIX + id, placed);
   }
   for (const [id, user] of fields(assignees, 2)) {
-    if (ISSUE_IDS.has(ISSUE_PREFIX + id) && USER_IDS.has(USER_PREFIX + user)) {
+    if (demoIssue(ISSUE_PREFIX + id) && USER_IDS.has(USER_PREFIX + user)) {
       saved.assignees.set(ISSUE_PREFIX + id, USER_PREFIX + user);
     }
   }

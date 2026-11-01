@@ -897,6 +897,14 @@ async function attempt<T>(
   }
 }
 
+function issueNotFound(issueId: string): IssueNotFound {
+  return {
+    __typename: "IssueNotFound",
+    message: "There's no such issue, or you can't see it.",
+    issueId,
+  };
+}
+
 /** Places an issue by hand, or with null hands it back to the rules. */
 async function placeByHand(
   context: GraphQLContext,
@@ -906,13 +914,7 @@ async function placeByHand(
 ): Promise<OverrideSuccess | IssueNotFound> {
   // Only issues the viewer can see, so nobody places issues in workspaces they aren't in.
   const issue = await workspace.issue(issueId);
-  if (!issue) {
-    return {
-      __typename: "IssueNotFound",
-      message: "There's no such issue, or you can't see it.",
-      issueId,
-    };
-  }
+  if (!issue) return issueNotFound(issueId);
   const [, rules] = await Promise.all([
     context.placements.setOverride(issue.id, quadrant),
     context.placements.rules(issue.team.id),
@@ -932,14 +934,9 @@ async function reassign(
   issueId: string,
   userId: string,
 ): Promise<ReassignSuccess | IssueNotFound> {
-  const notFound: IssueNotFound = {
-    __typename: "IssueNotFound",
-    message: "There's no such issue, or you can't see it.",
-    issueId,
-  };
   // Linear answers an issue the viewer can't see with an error, not a result to switch on.
   const before = await workspace.issue(issueId);
-  if (!before) return notFound;
+  if (!before) return issueNotFound(issueId);
   // Only to someone the board shows on the issue's team, so it lands on someone's matrix there.
   const { people } = await workspace.teamWork(before.team.id);
   if (!people.some((person) => person.id === userId)) {
@@ -949,7 +946,7 @@ async function reassign(
     );
   }
   const issue = await workspace.reassign(issueId, userId);
-  if (!issue) return notFound;
+  if (!issue) return issueNotFound(issueId);
   forgetWork(context);
   const [rules, overrides] = await Promise.all([
     context.placements.rules(issue.team.id),

@@ -129,14 +129,9 @@ export class LinearClient implements LinearSource {
     }
     // Rate limiting comes back as HTTP 400 with this code.
     if (codes.has("RATELIMITED")) throw new LinearRateLimitError(this.rateLimit.resetAt);
-    if (codes.has("FORBIDDEN")) {
-      throw new LinearForbiddenError(
-        `Linear refused: ${body.errors?.map((e) => e.message).join("; ")}`,
-      );
-    }
-    if (body.errors?.length || !body.data) {
-      throw new Error(`Linear API error: ${body.errors?.map((e) => e.message).join("; ")}`);
-    }
+    const messages = body.errors?.map((e) => e.message).join("; ");
+    if (codes.has("FORBIDDEN")) throw new LinearForbiddenError(`Linear refused: ${messages}`);
+    if (body.errors?.length || !body.data) throw new Error(`Linear API error: ${messages}`);
     return body.data;
   }
 }

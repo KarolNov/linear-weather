@@ -18,6 +18,7 @@ import {
   type Board,
   type BoardError,
   type BoardIssue,
+  listOf,
   type PersonMatrix as PersonMatrixData,
   QUADRANTS,
   type Quadrant,
@@ -120,8 +121,6 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
 }
 
 type Shown = Pick<Board, "team" | "people">;
-
-const names = new Intl.ListFormat("en-US", { type: "conjunction" });
 
 function TeamBoard({
   board: { teams, today },
@@ -250,7 +249,7 @@ function TeamBoard({
     const { moved, failed, team: after } = await applyMoves(client, moves);
     markPending(ids, false);
     setApplying(false);
-    const made = names.format(moved.map(({ issue, to }) => `${issue.identifier} to ${to.name}`));
+    const made = listOf(moved.map(({ issue, to }) => `${issue.identifier} to ${to.name}`));
     const shown = moved.length === 0 || showAnswer(after);
     if (failed) {
       const { move, message } = failed;

@@ -212,6 +212,18 @@ function inMemory(): DemoAssignments {
   };
 }
 
+/** Every demo issue by id, with its team. Ids and assignees don't depend on the day. */
+const BY_ID = new Map(
+  TEAMS.flatMap(({ team }) =>
+    demoIssues("2000-01-01", team.id).map((issue) => [issue.id, { team, issue }] as const),
+  ),
+);
+
+/** A demo issue, its team, and who the demo gives it to; undefined for an id it doesn't know. */
+export function demoIssue(id: string) {
+  return BY_ID.get(id);
+}
+
 export interface DemoLinearOptions {
   /** The demo's "today". Defaults to the current UTC date, read on every request. */
   today?: CalendarDate;
@@ -307,14 +319,11 @@ export class DemoLinear implements LinearSource {
    * can't see, or hand it to someone it doesn't know, and neither will the demo.
    */
   private reassign({ id, assigneeId }: ReassignIssueMutationVariables) {
-    const demo = TEAMS.find(({ team }) =>
-      demoIssues("2000-01-01", team.id).some((i) => i.id === id),
-    );
+    const demo = demoIssue(id);
     if (!demo) throw new Error("Linear API error: Entity not found: Issue");
     const member = demo.team.members.find((m) => m.id === assigneeId);
     if (!member) throw new Error("Linear API error: Entity not found: User");
-    const original = demoIssues("2000-01-01", demo.team.id).find((i) => i.id === id)?.assignee;
-    this.assignments.setAssignee(id, original?.id === member.id ? null : member.id);
+    this.assignments.setAssignee(id, demo.issue.assignee?.id === member.id ? null : member.id);
     this.issues = undefined;
     const { id: teamId, name, key } = demo.team;
     const issue = this.teamIssues(this.today(), teamId).find((i) => i.id === id);

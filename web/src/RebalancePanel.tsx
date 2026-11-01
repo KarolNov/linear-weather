@@ -5,6 +5,7 @@ import { Avatar, Button, Card, VisuallyHidden, WeatherIcon, weatherLabels } from
 import { colors, fonts, radii, space } from "ui/tokens.stylex";
 import {
   describeDay,
+  listOf,
   type Person,
   type Rebalance,
   type RunningLate,
@@ -87,8 +88,6 @@ export function ConfirmMoves({
   );
 }
 
-const names = new Intl.ListFormat("en-US", { type: "conjunction" });
-
 /**
  * Who could hand which issue to whom: for today's storms, and for the ones the forecast sees
  * coming. Each move is made in Linear in one click; today's can be made all at once, after a yes.
@@ -119,7 +118,7 @@ export function RebalancePanel({
   }, [cancelled]);
   const busy = (move: Suggestion) => applying || pending.has(move.issue.id);
   const moves = rebalanceNow.length + rebalanceForecast.length > 0;
-  const late = names.format(
+  const late = listOf(
     runningLate.map(({ person, overdue }) => `${person.name} (${overdue} overdue)`),
   );
   return (

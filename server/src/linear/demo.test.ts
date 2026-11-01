@@ -1,13 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { addDays, becomesUrgentOn, classify, DEFAULT_RULES } from "../domain/quadrant";
-import {
-  DEMO_OPS_TEAM,
-  DEMO_TEAM,
-  DEMO_VIEWER,
-  type DemoAssignments,
-  DemoLinear,
-  demoIssues,
-} from "./demo";
+import { DEMO_OPS_TEAM, DEMO_TEAM, DEMO_VIEWER, DemoLinear, demoIssues, inMemory } from "./demo";
 import {
   OpenIssuesDocument,
   type OpenIssuesQuery,
@@ -98,14 +91,7 @@ describe("DemoLinear", () => {
   const demo = new DemoLinear({ today: TODAY });
 
   it("keeps only issues handed to someone other than whoever the demo gives them to", async () => {
-    const kept = new Map<string, string>();
-    const assignments: DemoAssignments = {
-      assignee: (issueId) => kept.get(issueId),
-      setAssignee: (issueId, userId) => {
-        if (userId === null) kept.delete(issueId);
-        else kept.set(issueId, userId);
-      },
-    };
+    const assignments = inMemory();
     const linear = new DemoLinear({ today: TODAY, assignments });
     // AVG-10 is Tony's.
     const handed = await linear.request(ReassignIssueDocument, {
@@ -113,14 +99,14 @@ describe("DemoLinear", () => {
       assigneeId: "demo-user-wanda",
     });
     expect(handed.issueUpdate.issue?.assignee?.name).toBe("Wanda Maximoff");
-    expect(kept).toEqual(new Map([["demo-issue-avg-10", "demo-user-wanda"]]));
+    expect(assignments.assignee("demo-issue-avg-10")).toBe("demo-user-wanda");
 
     const back = await linear.request(ReassignIssueDocument, {
       id: "demo-issue-avg-10",
       assigneeId: "demo-user-tony",
     });
     expect(back.issueUpdate.issue?.assignee?.name).toBe("Tony Stark");
-    expect(kept).toEqual(new Map());
+    expect(assignments.assignee("demo-issue-avg-10")).toBeUndefined();
   });
 
   it("won't hand an issue to someone off its team, as Linear won't to someone it doesn't know", async () => {

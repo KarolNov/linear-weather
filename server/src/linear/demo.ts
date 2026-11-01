@@ -201,7 +201,7 @@ export interface DemoAssignments {
 }
 
 /** Assignments kept for as long as the DemoLinear lives: one request's, or one test's. */
-function inMemory(): DemoAssignments {
+export function inMemory(): DemoAssignments {
   const assignees = new Map<string, string>();
   return {
     assignee: (issueId) => assignees.get(issueId),

@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Avatar, Button, Card, VisuallyHidden, WeatherIcon, weatherLabels } from "ui";
 import { colors, fonts, radii, space } from "ui/tokens.stylex";
 import {
@@ -28,6 +28,19 @@ export interface RebalancePanelProps extends Rebalance {
   onClose: () => void;
 }
 
+/**
+ * Whether the moves the PM was asked to confirm are still today's plan: the same issues to the
+ * same people, in the same order. A move made meanwhile, or a board planned again, changes it.
+ */
+export function stillPlanned(asked: Suggestion[], planned: Suggestion[]): boolean {
+  return (
+    asked.length === planned.length &&
+    asked.every(
+      (move, i) => move.issue.id === planned[i]?.issue.id && move.to.id === planned[i]?.to.id,
+    )
+  );
+}
+
 /** Today's moves, as the PM is asked to make them: who gets what, in the order they'll be made. */
 export function ConfirmMoves({
   moves,
@@ -38,9 +51,12 @@ export function ConfirmMoves({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  // The button that opened it is gone, so the keyboard goes to the question.
+  const question = useRef<HTMLParagraphElement>(null);
+  useEffect(() => question.current?.focus(), []);
   return (
     <section aria-labelledby="confirm-moves" {...stylex.props(styles.confirm)}>
-      <p id="confirm-moves" {...stylex.props(styles.subheading)}>
+      <p id="confirm-moves" ref={question} tabIndex={-1} {...stylex.props(styles.subheading)}>
         Make {moves.length === 1 ? "this move" : `these ${moves.length} moves`} in Linear?
       </p>
       <ol {...stylex.props(styles.confirmList)}>
@@ -92,6 +108,15 @@ export function RebalancePanel({
 }: RebalancePanelProps) {
   // Today's moves as they stood when the PM asked to make them all, while they're asked to confirm.
   const [confirming, setConfirming] = useState<Suggestion[] | null>(null);
+  // Only while they're still the plan: a move made meanwhile closes the question.
+  const asked = confirming && stillPlanned(confirming, rebalanceNow) ? confirming : null;
+  // Cancelling gives the keyboard back to the button that asked.
+  const [cancelled, setCancelled] = useState(false);
+  useEffect(() => {
+    if (!cancelled) return;
+    setCancelled(false);
+    document.querySelector<HTMLElement>("[data-apply-now]")?.focus();
+  }, [cancelled]);
   const busy = (move: Suggestion) => applying || pending.has(move.issue.id);
   const moves = rebalanceNow.length + rebalanceForecast.length > 0;
   const late = names.format(
@@ -130,19 +155,22 @@ export function RebalancePanel({
             onReassign={onReassign}
           >
             {rebalanceNow.length > 0 &&
-              (confirming ? (
+              (asked ? (
                 <ConfirmMoves
-                  moves={confirming}
+                  moves={asked}
                   onConfirm={() => {
-                    onApplyNow(confirming);
+                    onApplyNow(asked);
                     setConfirming(null);
                   }}
-                  onCancel={() => setConfirming(null)}
+                  onCancel={() => {
+                    setConfirming(null);
+                    setCancelled(true);
+                  }}
                 />
               ) : (
                 <div>
                   <Button
-                    variant="glass"
+                    data-apply-now
                     disabled={applying || rebalanceNow.some(busy)}
                     aria-busy={applying || undefined}
                     onClick={() => setConfirming(rebalanceNow)}

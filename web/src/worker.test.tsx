@@ -9,7 +9,7 @@ import {
   runningLate,
   type Suggestion,
 } from "./board";
-import { ConfirmMoves, RebalancePanel } from "./RebalancePanel";
+import { ConfirmMoves, RebalancePanel, stillPlanned } from "./RebalancePanel";
 import { app, type Bindings } from "./worker";
 
 const avengers = { id: "t-avg", name: "Avengers", key: "AVG" };
@@ -335,6 +335,22 @@ describe("web worker", () => {
     expect(text).toMatch(
       /AVG-11 .*Tony Stark .*Wanda Maximoff .*AVG-12 .*Tony Stark .*Clint Barton/,
     );
+  });
+
+  it("only asks to confirm today's moves while they're still the ones planned", () => {
+    const clint = { id: "u-clint", name: "Clint Barton", avatarUrl: null };
+    const second = { ...nowMove, issue: { ...nowMove.issue, id: "i-12" }, to: clint };
+    expect(stillPlanned([nowMove, second], [nowMove, second])).toBe(true);
+    // Replanned after a move: a fresh answer, same moves.
+    expect(stillPlanned([nowMove, second], [{ ...nowMove }, { ...second }])).toBe(true);
+    // The first was made meanwhile, one at a time.
+    expect(stillPlanned([nowMove, second], [second])).toBe(false);
+    // Planned again with a move more.
+    expect(stillPlanned([nowMove], [nowMove, second])).toBe(false);
+    // Another issue to the same person.
+    expect(stillPlanned([second], [{ ...second, issue: nowMove.issue }])).toBe(false);
+    // Same issue, someone else to take it now.
+    expect(stillPlanned([second], [{ ...second, to: wanda }])).toBe(false);
   });
 
   it("finds who is running late, as their weather counts overdue work", () => {

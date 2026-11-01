@@ -206,11 +206,29 @@ function TeamBoard({
         : `${issue.identifier} is back with the rules.`,
     );
   };
-  // A suggestion's button goes once its move is made, so give the keyboard to the panel.
-  const refocusPanel = () => {
+  // A failed move's message sits below the panel, out of sight: take the keyboard, and the
+  // view, there. An earlier move's word in the status would contradict it.
+  const [failureFocus, setFailureFocus] = useState(false);
+  useEffect(() => {
+    if (!failureFocus) return;
+    setFailureFocus(false);
+    document.getElementById("board-failure")?.focus();
+  }, [failureFocus]);
+  const moveFailed = (message: string) => {
+    setStatus("");
+    setFailure(message);
+    setFailureFocus(true);
+  };
+  // A suggestion's button goes once its move is made, so give the keyboard to the panel once the
+  // board has redrawn, unless the PM went on to something else.
+  const [panelFocus, setPanelFocus] = useState(false);
+  useEffect(() => {
+    if (!panelFocus) return;
+    setPanelFocus(false);
     if (document.activeElement && document.activeElement !== document.body) return;
     document.getElementById("rebalance-heading")?.focus();
-  };
+  }, [panelFocus]);
+  const refocusPanel = () => setPanelFocus(true);
   const reassign = async (move: Suggestion) => {
     const { issue, to } = move;
     markPending([issue.id], true);
@@ -218,7 +236,7 @@ function TeamBoard({
     const result = await client.reassign(issue.id, to.id);
     markPending([issue.id], false);
     if (!result.ok) {
-      setFailure(`Couldn't hand ${issue.identifier} to ${to.name}. ${result.message}`);
+      moveFailed(`Couldn't hand ${issue.identifier} to ${to.name}. ${result.message}`);
       return;
     }
     if (showAnswer(result.team)) setStatus(`${issue.identifier} is ${to.name}'s now.`);
@@ -236,12 +254,12 @@ function TeamBoard({
     const shown = moved.length === 0 || showAnswer(after);
     if (failed) {
       const { move, message } = failed;
-      setFailure(
+      moveFailed(
         `${moved.length > 0 ? `Handed ${made}. ` : ""}Couldn't hand ${move.issue.identifier} to ${move.to.name}, so the rest weren't made. ${message}`,
       );
-    } else if (shown) {
-      setStatus(`Handed ${made}. The board is planned again from here.`);
+      return;
     }
+    if (shown) setStatus(`Handed ${made}. The board is planned again from here.`);
     refocusPanel();
   };
   const saveRules = async (rules: Rules) => {
@@ -339,14 +357,16 @@ function TeamBoard({
         </div>
       )}
       {failure && (
-        <Alert weather="rain">
-          <span {...stylex.props(styles.failure)}>
-            {failure}
-            <Button variant="quiet" onClick={() => setFailure(null)} xstyle={styles.expandAll}>
-              Dismiss
-            </Button>
-          </span>
-        </Alert>
+        <div id="board-failure" tabIndex={-1} {...stylex.props(styles.failureFocus)}>
+          <Alert weather="rain">
+            <span {...stylex.props(styles.failure)}>
+              {failure}
+              <Button variant="quiet" onClick={() => setFailure(null)} xstyle={styles.expandAll}>
+                Dismiss
+              </Button>
+            </span>
+          </Alert>
+        </div>
       )}
       <VisuallyHidden>
         <span role="status">{status}</span>
@@ -416,6 +436,7 @@ const weatherLegend: [Weather, string][] = [
 ];
 
 const styles = stylex.create({
+  failureFocus: { outline: "none" },
   header: {
     position: "sticky",
     top: 0,

@@ -43,15 +43,17 @@ export interface RebalanceOptions {
  * Moves that bring everyone's urgent load within the thresholds, in the order to make them.
  *
  * Greedy: while someone is under rain or in a storm by load, the busiest person hands one issue
- * to the least busy, picking the issue that leaves the two closest. It stops when nobody is
- * overloaded, or no single move helps.
+ * to the least busy, picking the issue that leaves the two closest. When they have nothing that
+ * helps (all overdue, say), the next busiest gives, or the next least busy takes. It stops when
+ * nobody is overloaded, or no single move helps.
  *
  * - **now** moves work that is urgent today.
  * - **forecast** heads off storms before they arrive, starting from the board as today's moves
  *   leave it. Week by week, it settles each week before looking at the next, moving work that
  *   isn't urgent yet but will be by that week's end. An issue weighs on every week from when it
  *   turns urgent until it's due, so a move must even out those weeks taken together, not just
- *   the one it's for: easing week 3 mustn't bury the taker in week 2.
+ *   the one it's for, and leave none of them less even: easing week 3 mustn't bury the taker in
+ *   week 2, which was settled already.
  *
  * Each issue moves at most once, and only if it narrows the gap between giver and taker.
  *
@@ -125,7 +127,9 @@ export function rebalance<I extends MatrixIssue, P extends { name: string }>(
       const round = all[at];
       if (!round) return;
       // Evens out the giver's and taker's load over every round the issue counts in: the change
-      // in the sum of their squared loads, which a fairer split lowers.
+      // in the sum of their squared loads, which a fairer split lowers. No round may get less
+      // even, so the taker never ends up above where the giver started, even in a week already
+      // settled.
       const fits = (issue: Placed<I>, giver: number, taker: number) => {
         if (moved.has(issue)) return false;
         const s = size(issue);
@@ -133,6 +137,7 @@ export function rebalance<I extends MatrixIssue, P extends { name: string }>(
         for (const { loads, movable } of all) {
           const [g, t] = [loads[giver], loads[taker]];
           if (g == null || t == null || !movable[giver]?.includes(issue)) continue;
+          if (t + s > g) return false;
           change += s * (s + t - g);
         }
         return change < 0;
@@ -193,8 +198,8 @@ interface Move<I> {
 }
 
 /**
- * The busiest person's best handover to the least busy, or null if nobody is overloaded or no
- * issue that `fits` narrows the gap between them.
+ * The best handover from the busiest overloaded person who has one, to the least busy person who
+ * can take it, or null if nobody is overloaded or no issue that `fits` narrows a gap.
  */
 function bestMove<I extends MatrixIssue>(
   { loads, teamAverage, movable }: Round<I>,
@@ -205,40 +210,41 @@ function bestMove<I extends MatrixIssue>(
 ): Move<I> | null {
   if (teamAverage === null) return null;
   const measured = loads.flatMap((load, i) => (load === null ? [] : [{ i, load }]));
-  const giver = measured.reduce<{ i: number; load: number } | null>(
-    (most, person) => (most === null || person.load > most.load ? person : most),
-    null,
-  );
-  if (!giver) return null;
-  const kind = weatherFor(giver.load, teamAverage, false, thresholds);
-  if (kind !== "rain" && kind !== "storm") return null;
-  const taker = measured
-    .filter(({ i }) => i !== giver.i && !overdue[i])
-    .reduce<{ i: number; load: number } | null>(
-      (least, person) => (least === null || person.load < least.load ? person : least),
-      null,
-    );
-  if (!taker) return null;
+  // Busiest first and least busy first; ties go to whoever comes first.
+  const givers = [...measured]
+    .sort((a, b) => b.load - a.load)
+    .filter(({ load }) => {
+      const kind = weatherFor(load, teamAverage, false, thresholds);
+      return kind === "rain" || kind === "storm";
+    });
+  const takers = measured.filter(({ i }) => !overdue[i]).sort((a, b) => a.load - b.load);
 
-  const gap = giver.load - taker.load;
-  const [issue] = (movable[giver.i] ?? [])
-    .filter((i) => size(i) > 0 && size(i) < gap && fits(i, giver.i, taker.i))
-    .sort(
-      (a, b) =>
-        // Leaves the two closest, then work that isn't important, then the least important.
-        Math.abs(gap - 2 * size(a)) - Math.abs(gap - 2 * size(b)) ||
-        Number(isImportant(a)) - Number(isImportant(b)) ||
-        byPriority(b.priority, a.priority),
-    );
-  if (!issue) return null;
-  return {
-    issue,
-    size: size(issue),
-    from: giver.i,
-    to: taker.i,
-    fromLoad: giver.load,
-    toLoad: taker.load,
-  };
+  for (const giver of givers) {
+    for (const taker of takers) {
+      const gap = giver.load - taker.load;
+      if (gap <= 0) break;
+      const [issue] = (movable[giver.i] ?? [])
+        .filter((i) => size(i) > 0 && size(i) < gap && fits(i, giver.i, taker.i))
+        .sort(
+          (a, b) =>
+            // Leaves the two closest, then work that isn't important, then the least important.
+            Math.abs(gap - 2 * size(a)) - Math.abs(gap - 2 * size(b)) ||
+            Number(isImportant(a)) - Number(isImportant(b)) ||
+            byPriority(b.priority, a.priority),
+        );
+      if (issue) {
+        return {
+          issue,
+          size: size(issue),
+          from: giver.i,
+          to: taker.i,
+          fromLoad: giver.load,
+          toLoad: taker.load,
+        };
+      }
+    }
+  }
+  return null;
 }
 
 function isImportant(issue: Placed<MatrixIssue>): boolean {

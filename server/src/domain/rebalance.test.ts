@@ -90,6 +90,26 @@ describe("rebalance now", () => {
     expect(suggestions.every(({ fromWeather }) => fromWeather === "storm")).toBe(true);
   });
 
+  it("lets the next busiest give when the busiest has nothing to hand over", () => {
+    // Ana's five are all overdue, so they stay; Ben is still in a storm (4 against 2.25).
+    const team = [
+      person(
+        "Ana",
+        times(5, () => issue("2026-10-10")),
+      ),
+      person(
+        "Ben",
+        times(4, () => issue(SOON)),
+      ),
+      person("Cy", []),
+      person("Dee", []),
+    ];
+    expect(moves(rebalance(team, "now", "issues", TODAY)).map(([, ...move]) => move)).toEqual([
+      ["Ben", "Cy", null],
+      ["Ben", "Dee", null],
+    ]);
+  });
+
   it("stops when no single move narrows the gap", () => {
     // Ana's 8 points are one issue: handing it to Ben (1) only swaps who is overloaded.
     const team = [
@@ -152,6 +172,45 @@ describe("rebalance forecast", () => {
       ["Ana", "Ben", 2],
       ["Ana", "Cy", 2],
     ]);
+  });
+
+  it("hands to the next least busy when the least busy can't take it", () => {
+    // Ana's work (due Nov 7) weighs on weeks 2 and 3; Wanda's (due Nov 14) on weeks 3 and 4.
+    // Wanda is free in week 2 but would be buried in week 3, so Ben takes Ana's.
+    const team = [
+      person(
+        "Ana",
+        times(4, () => issue("2026-11-07")),
+      ),
+      person("Ben", [issue("2026-11-07")]),
+      person(
+        "Wanda",
+        times(4, () => issue("2026-11-14")),
+      ),
+    ];
+    expect(moves(rebalance(team, "forecast", "issues", TODAY)).map(([, ...move]) => move)).toEqual([
+      ["Ana", "Ben", 2],
+      ["Wanda", "Ben", 3],
+    ]);
+  });
+
+  it("never leaves a week it already settled less even", () => {
+    // Week 2 is even: everyone holds two due Nov 13. In week 3 Ana also has three due Nov 14.
+    // Handing over one due Nov 13 would ease week 3 but put Ben above Ana in week 2.
+    const even = () => times(2, () => issue("2026-11-13"));
+    const later = times(3, () => issue("2026-11-14"));
+    const team = [
+      person("Ana", [...even(), ...later]),
+      person("Ben", even()),
+      person("Cy", even()),
+      person("Dee", even()),
+    ];
+    const suggestions = rebalance(team, "forecast", "issues", TODAY);
+    expect(moves(suggestions).map(([, ...move]) => move)).toEqual([
+      ["Ana", "Ben", 3],
+      ["Ana", "Cy", 3],
+    ]);
+    expect(suggestions.every(({ issue }) => later.some(({ id }) => id === issue.id))).toBe(true);
   });
 
   it("starts from the board as today's moves leave it", () => {

@@ -108,10 +108,10 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
   // The server decides it's the demo from the /graphql URL, not the page's.
   const endpoint = demo ? "/graphql?demo=true" : "/graphql";
   let queue: Promise<unknown> = Promise.resolve();
-  // The newest board any answer carried, for when the board can't be read again.
-  let latest: TeamBoardData | null = null;
+  // Each team's newest board any answer carried, for when the board can't be read again.
+  const latest = new Map<string, TeamBoardData>();
   const remember = (team: TeamBoardData | null | undefined) => {
-    if (team) latest = team;
+    if (team) latest.set(team.id, team);
     return team ?? null;
   };
 
@@ -188,8 +188,7 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
     reassign: (issueId, userId) => queued(REASSIGN_MUTATION, { issueId, userId }),
     // After the moves sent before it, so it reads what they left. Failing that, the newest board
     // an answer carried, which is no older than anything shown.
-    readTeam: (teamId) =>
-      inTurn(async () => (await read(teamId)) ?? (latest?.id === teamId ? latest : null)),
+    readTeam: (teamId) => inTurn(async () => (await read(teamId)) ?? latest.get(teamId) ?? null),
   } satisfies BoardClient;
 }
 

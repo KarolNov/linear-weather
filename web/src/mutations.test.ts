@@ -283,6 +283,33 @@ describe("applying moves", () => {
     expect(await run).toMatchObject({ moved: [moves[0]], team: { ...team, after: "card" } });
   });
 
+  it("keeps each team's newest board apart", async () => {
+    // A card moved meanwhile had changed team in Linear, so it answers with the other team's board.
+    const ops = { id: "t-ops", name: "Ops", key: "OPS" };
+    const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const { query, variables } = sent([_url, init]);
+      if (variables.teamId) return new Response("Bad Gateway", { status: 502 });
+      if (query.includes("overrideQuadrant")) {
+        return Response.json({
+          data: { overrideQuadrant: { __typename: "OverrideSuccess", team: ops } },
+        });
+      }
+      return Response.json({
+        data: {
+          reassignIssue:
+            variables.issueId === "i-1"
+              ? { __typename: "ReassignSuccess", team: { ...team, after: "i-1" } }
+              : { __typename: "LinearRateLimited", message: "Try later." },
+        },
+      });
+    });
+    const client = boardClient(false, fetch);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const run = applyMoves(client, team.id, moves);
+    void client.placeIssue("i-9", "drop");
+    expect(await run).toMatchObject({ moved: [moves[0]], team: { ...team, after: "i-1" } });
+  });
+
   it("never falls back to another team's board", async () => {
     const ops = { id: "t-ops", name: "Ops", key: "OPS" };
     const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {

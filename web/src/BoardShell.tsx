@@ -240,8 +240,8 @@ function TeamBoard({
     if (all) setApplying(false);
     const said = describeMoves(moves, applied);
     if ("failure" in said) {
-      // The board as read again after the failure, else after the last move made; with neither,
-      // the one shown stays.
+      // The board as read again after the failure, else the newest one an answer carried; with
+      // neither, the one shown stays.
       if (applied.team) showAnswer(applied.team);
       moveFailed(said.failure);
       return;

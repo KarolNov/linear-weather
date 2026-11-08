@@ -88,7 +88,10 @@ export interface BoardClient {
   placeIssue(issueId: string, quadrant: Quadrant | null): Promise<MutationResult>;
   /** Hands an issue to someone else on its team, in Linear. */
   reassign(issueId: string, userId: string): Promise<MutationResult>;
-  /** The team's board as it stands; null when it can't be read. */
+  /**
+   * The team's board as it stands, else the newest one an answer carried; null when there's
+   * neither.
+   */
   readTeam(teamId: string): Promise<TeamBoardData | null>;
 }
 
@@ -105,6 +108,12 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
   // The server decides it's the demo from the /graphql URL, not the page's.
   const endpoint = demo ? "/graphql?demo=true" : "/graphql";
   let queue: Promise<unknown> = Promise.resolve();
+  // The newest board any answer carried, for when the board can't be read again.
+  let latest: TeamBoardData | null = null;
+  const remember = (team: TeamBoardData | null | undefined) => {
+    if (team) latest = team;
+    return team ?? null;
+  };
 
   /** Sends one operation and hands back the answer's body. Throws on an HTTP error. */
   async function post<T>(query: string, variables: Record<string, unknown>): Promise<T> {
@@ -129,12 +138,12 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
       // That error nulls everything up to `data`, so there's no board to redraw from.
       if (errors.some((e) => (e.path?.length ?? 0) > 1)) {
         console.error(`Saved, but couldn't read the board back: ${errors.map((e) => e.message)}`);
-        return { ok: true, team: payload?.team ?? null };
+        return { ok: true, team: remember(payload?.team) };
       }
       if (!payload || errors.length > 0) {
         throw new Error(errors.map((e) => e.message).join("; ") || "no data");
       }
-      if (payload.team) return { ok: true, team: payload.team };
+      if (payload.team) return { ok: true, team: remember(payload.team) };
       return {
         ok: false,
         message: payload.message ?? "That didn't work. Please try again.",
@@ -163,7 +172,7 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
       const { data } = await post<{ data?: { team: TeamBoardData | null } | null }>(TEAM_QUERY, {
         teamId,
       });
-      return data?.team ?? null;
+      return remember(data?.team);
     } catch (error) {
       console.error(`Couldn't read the board again: ${error}`);
       return null;
@@ -177,8 +186,10 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
         ? queued(OVERRIDE_MUTATION, { issueId, quadrant: quadrant.toUpperCase() })
         : queued(CLEAR_OVERRIDE_MUTATION, { issueId }),
     reassign: (issueId, userId) => queued(REASSIGN_MUTATION, { issueId, userId }),
-    // After the moves sent before it, so it reads what they left.
-    readTeam: (teamId) => inTurn(() => read(teamId)),
+    // After the moves sent before it, so it reads what they left. Failing that, the newest board
+    // an answer carried, which is no older than anything shown.
+    readTeam: (teamId) =>
+      inTurn(async () => (await read(teamId)) ?? (latest?.id === teamId ? latest : null)),
   } satisfies BoardClient;
 }
 
@@ -211,8 +222,8 @@ export async function applyMoves(
     if (!result.ok) {
       applied.failed = { move, message: result.message };
       // What failed may have changed things too (it was reassigned in Linear meanwhile, say), so
-      // plan again from the board as it stands; failing that, from the last move made.
-      applied.team = (await client.readTeam(teamId)) ?? applied.team;
+      // plan again from the board as it stands.
+      applied.team = await client.readTeam(teamId);
       break;
     }
     applied.moved.push(move);

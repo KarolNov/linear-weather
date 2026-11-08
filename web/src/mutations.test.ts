@@ -253,6 +253,71 @@ describe("applying moves", () => {
     expect(applied).toMatchObject({ moved: [moves[0]], team: { ...team, after: "i-1" } });
   });
 
+  it("falls back to the newest board any answer carried, not the run's own", async () => {
+    // Move 1 answers, a card moved meanwhile answers with a newer board, move 2 fails, and the
+    // board can't be read again.
+    const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const { query, variables } = sent([_url, init]);
+      if (variables.teamId) return new Response("Bad Gateway", { status: 502 });
+      if (query.includes("overrideQuadrant")) {
+        return Response.json({
+          data: {
+            overrideQuadrant: { __typename: "OverrideSuccess", team: { ...team, after: "card" } },
+          },
+        });
+      }
+      return Response.json({
+        data: {
+          reassignIssue:
+            variables.issueId === "i-1"
+              ? { __typename: "ReassignSuccess", team: { ...team, after: "i-1" } }
+              : { __typename: "LinearRateLimited", message: "Try later." },
+        },
+      });
+    });
+    const client = boardClient(false, fetch);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const run = applyMoves(client, team.id, moves);
+    // Queued behind move 1, ahead of move 2.
+    void client.placeIssue("i-9", "drop");
+    expect(await run).toMatchObject({ moved: [moves[0]], team: { ...team, after: "card" } });
+  });
+
+  it("never falls back to another team's board", async () => {
+    const ops = { id: "t-ops", name: "Ops", key: "OPS" };
+    const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const { variables } = sent([_url, init]);
+      // A rules change carries a teamId too.
+      if (variables.input) {
+        return Response.json({
+          data: { updateQuadrantRules: { __typename: "UpdateRulesSuccess", team: ops } },
+        });
+      }
+      if (variables.teamId) return new Response("Bad Gateway", { status: 502 });
+      return Response.json({
+        data: { reassignIssue: { __typename: "LinearRateLimited", message: "Try later." } },
+      });
+    });
+    const client = boardClient(false, fetch);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await client.updateRules(ops.id, rules);
+    expect(await applyMoves(client, team.id, moves)).toMatchObject({ moved: [], team: null });
+  });
+
+  it("remembers a board it read, for when the next read fails", async () => {
+    let up = true;
+    const fetch = vi.fn(async () =>
+      up
+        ? Response.json({ data: { team: { ...team, after: "read" } } })
+        : new Response("Bad Gateway", { status: 502 }),
+    );
+    const client = boardClient(false, fetch);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await client.readTeam(team.id);
+    up = false;
+    expect(await client.readTeam(team.id)).toEqual({ ...team, after: "read" });
+  });
+
   describe("in words", () => {
     const failed = (n: number, message = "Try later.") => ({
       move: moves[n] as Suggestion,

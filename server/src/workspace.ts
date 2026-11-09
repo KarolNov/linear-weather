@@ -5,7 +5,7 @@
 
 import DataLoader from "dataloader";
 import type { LinearPriority } from "./domain/quadrant";
-import type { LinearSource } from "./linear/client";
+import { LinearInvalidInputError, type LinearSource } from "./linear/client";
 import {
   IssueByIdDocument,
   ReassignIssueDocument,
@@ -79,10 +79,18 @@ export class Workspace {
     return asked ?? all.find((t) => theirs.has(t.id)) ?? all[0] ?? null;
   }
 
-  /** An issue the viewer can see, open or not, with its team; null when they can't. */
+  /**
+   * An issue the viewer can see, open or not, with its team; null when they can't, or when the
+   * id isn't one Linear takes (a UUID, or an identifier like ENG-123).
+   */
   async issue(id: string): Promise<(TeamIssue & { team: Team }) | null> {
-    const { issues } = await this.linear.request(IssueByIdDocument, { id });
-    return (issues.nodes[0] as (TeamIssue & { team: Team }) | undefined) ?? null;
+    try {
+      const { issues } = await this.linear.request(IssueByIdDocument, { id });
+      return (issues.nodes[0] as (TeamIssue & { team: Team }) | undefined) ?? null;
+    } catch (error) {
+      if (error instanceof LinearInvalidInputError) return null;
+      throw error;
+    }
   }
 
   /**

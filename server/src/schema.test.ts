@@ -20,11 +20,12 @@ import { DEFAULT_RULES, MAX_URGENCY_WINDOW_DAYS } from "./domain/quadrant";
 import {
   LinearAuthError,
   LinearForbiddenError,
+  LinearInvalidInputError,
   LinearRateLimitError,
   type LinearSource,
 } from "./linear/client";
 import { DEMO_OPS_TEAM, DEMO_TEAM, DemoLinear } from "./linear/demo";
-import { ReassignIssueDocument, TeamsMembersDocument } from "./linear/generated";
+import { IssueByIdDocument, ReassignIssueDocument, TeamsMembersDocument } from "./linear/generated";
 import { type PlacementStore, Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
 import { Workspace } from "./workspace";
@@ -957,6 +958,35 @@ function loadOf(team: Loads | undefined, name: string) {
   const them = team?.people.find((p) => p.name === name);
   return them && { now: them.weather.load, week1: them.forecast[0]?.weather.load };
 }
+
+describe("an id Linear can't take", () => {
+  // Linear rejects an id that isn't one (not a UUID or an identifier like ENG-123) as invalid
+  // input, rather than finding no issue. The demo just finds none.
+  const demo = new DemoLinear({ today });
+  const strict: LinearSource = {
+    request: (document, ...variables) =>
+      document.toString() === IssueByIdDocument.toString()
+        ? Promise.reject(new LinearInvalidInputError("Argument Validation Error"))
+        : demo.request(document, ...variables),
+  };
+
+  it.each([
+    [
+      "reassignIssue",
+      `mutation { reassignIssue(issueId: "not-an-issue", userId: "demo-user-wanda") { __typename ... on IssueNotFound { issueId } } }`,
+    ],
+    [
+      "overrideQuadrant",
+      `mutation { overrideQuadrant(issueId: "not-an-issue", quadrant: DO) { __typename ... on IssueNotFound { issueId } } }`,
+    ],
+  ])("is IssueNotFound for %s", async (field, source) => {
+    const result = await run(source, {}, { linear: strict });
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      [field]: { __typename: "IssueNotFound", issueId: "not-an-issue" },
+    });
+  });
+});
 
 /** A Linear that fails every request this way. */
 function failingWith(error: Error): LinearSource {

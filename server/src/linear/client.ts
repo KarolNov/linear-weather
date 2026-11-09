@@ -20,6 +20,9 @@ export class LinearAuthError extends Error {}
 /** Linear won't let this token make the change, e.g. one granted without the `write` scope. */
 export class LinearForbiddenError extends Error {}
 
+/** Linear couldn't take the input, e.g. an issue id that isn't one. */
+export class LinearInvalidInputError extends Error {}
+
 /** Linear's rate limit is spent, or about to be. Retry after `resetAt` (epoch ms), if known. */
 export class LinearRateLimitError extends Error {
   constructor(readonly resetAt: number | null) {
@@ -131,6 +134,10 @@ export class LinearClient implements LinearSource {
     if (codes.has("RATELIMITED")) throw new LinearRateLimitError(this.rateLimit.resetAt);
     const messages = body.errors?.map((e) => e.message).join("; ");
     if (codes.has("FORBIDDEN")) throw new LinearForbiddenError(`Linear refused: ${messages}`);
+    // Typed by kind rather than code, as Linear's own SDK reads it.
+    if (body.errors?.some((e) => e.extensions?.type === "invalid input")) {
+      throw new LinearInvalidInputError(`Linear can't take that input: ${messages}`);
+    }
     if (body.errors?.length || !body.data) throw new Error(`Linear API error: ${messages}`);
     return body.data;
   }
@@ -154,5 +161,5 @@ function readRateLimit(headers: Headers): RateLimit {
 
 interface LinearError {
   message: string;
-  extensions?: { code?: string };
+  extensions?: { code?: string; type?: string };
 }

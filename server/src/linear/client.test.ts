@@ -3,6 +3,7 @@ import {
   LinearAuthError,
   LinearClient,
   LinearForbiddenError,
+  LinearInvalidInputError,
   LinearRateLimitError,
 } from "./client";
 import { TypedDocumentString } from "./generated";
@@ -200,6 +201,24 @@ describe("LinearClient", () => {
     );
     const client = new LinearClient("Bearer read-only");
     await expect(client.request(Hello)).rejects.toBeInstanceOf(LinearForbiddenError);
+  });
+
+  it("reports input Linear can't take, like an id that isn't one, as invalid input", async () => {
+    mockFetch(() =>
+      Response.json(
+        {
+          errors: [
+            {
+              message: "Argument Validation Error",
+              extensions: { type: "invalid input", code: "INPUT_ERROR", userError: true },
+            },
+          ],
+        },
+        { status: 400 },
+      ),
+    );
+    const client = new LinearClient("Bearer token");
+    await expect(client.request(Hello)).rejects.toBeInstanceOf(LinearInvalidInputError);
   });
 
   it("surfaces other GraphQL errors", async () => {

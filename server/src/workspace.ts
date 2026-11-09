@@ -8,6 +8,7 @@ import type { LinearPriority } from "./domain/quadrant";
 import type { LinearSource } from "./linear/client";
 import {
   IssueByIdDocument,
+  ReassignIssueDocument,
   type TeamSummaryFragment,
   TeamsDocument,
   TeamsMembersDocument,
@@ -25,6 +26,8 @@ export type TeamIssue = IssueCard & { priority: LinearPriority };
 export interface TeamWork {
   /** Team members by name, then anyone else holding the team's issues, e.g. after moving teams. */
   people: Assignee[];
+  /** The ids of the team's members: the people work can be handed to. */
+  memberIds: ReadonlySet<string>;
   issues: TeamIssue[];
   /** The same issues by assignee id; null holds the unassigned ones. */
   byAssignee: Map<string | null, TeamIssue[]>;
@@ -82,6 +85,21 @@ export class Workspace {
     return (issues.nodes[0] as (TeamIssue & { team: Team }) | undefined) ?? null;
   }
 
+  /**
+   * Hands an issue to someone else in Linear, and forgets its team's work so the rest of the
+   * request reads it from there. Null when Linear didn't make the change.
+   */
+  async reassign(issueId: string, userId: string): Promise<(TeamIssue & { team: Team }) | null> {
+    const { issueUpdate } = await this.linear.request(ReassignIssueDocument, {
+      id: issueId,
+      assigneeId: userId,
+    });
+    const issue = issueUpdate.success ? issueUpdate.issue : null;
+    if (!issue) return null;
+    this.work.delete(issue.team.id);
+    return issue as TeamIssue & { team: Team };
+  }
+
   teamWork(teamId: string): Promise<TeamWork> {
     let load = this.work.get(teamId);
     if (!load) {
@@ -120,6 +138,7 @@ export class Workspace {
     }
     return {
       people: [...members, ...[...outsiders.values()].toSorted(byName)],
+      memberIds,
       issues: issues as TeamIssue[],
       byAssignee,
     };

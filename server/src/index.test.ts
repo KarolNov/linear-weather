@@ -132,6 +132,28 @@ describe("POST /graphql", () => {
       });
     });
 
+    it("lets a visitor hand an issue to someone else, keeping it in their browser too", async () => {
+      const handOver = `mutation {
+        reassignIssue(issueId: "demo-issue-avg-10", userId: "demo-user-wanda") { __typename }
+      }`;
+      const holder = `{ team(id: "demo-team-avengers") {
+        people { name matrix { do { id } } }
+      } }`;
+      const holderOf = (data: Record<string, unknown>) =>
+        (
+          data as { team: { people: { name: string; matrix: { do: { id: string }[] } }[] } }
+        ).team.people.find((p) => p.matrix.do.some((issue) => issue.id === "demo-issue-avg-10"))
+          ?.name;
+
+      const visit = browser();
+      expect((await visit(handOver)).body.data).toEqual({
+        reassignIssue: { __typename: "ReassignSuccess" },
+      });
+      expect(holderOf((await visit(holder)).body.data)).toBe("Wanda Maximoff");
+      // Nobody else's demo changes.
+      expect(holderOf((await browser()(holder)).body.data)).toBe("Tony Stark");
+    });
+
     it("keeps each visitor's changes from every other visitor", async () => {
       await browser()(dropAvg1);
       expect(board((await browser()(placed)).body.data)).toEqual({ window: 14, dropped: [] });

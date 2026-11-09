@@ -44,7 +44,7 @@ export const app = new Hono<{ Bindings: Env }>()
     const demo = isDemo(c) ? DemoStore.fromCookie(getCookie(c, DEMO_COOKIE)) : null;
     const response = await yoga.fetch(c.req.raw, {
       workspace: () =>
-        (workspace ??= linearSource(c).then((linear) => linear && new Workspace(linear))),
+        (workspace ??= linearSource(c, demo).then((linear) => linear && new Workspace(linear))),
       placements: new Placements(demo ?? new Store(c.env.DB)),
       today: new Date().toISOString().slice(0, 10),
     });
@@ -112,10 +112,11 @@ function isDemo(c: AppContext): boolean {
 
 /**
  * Linear as the signed-in user sees it, or the mocked Avengers workspace for `?demo=true`, so
- * anyone can try the board without a Linear account.
+ * anyone can try the board without a Linear account. The demo hands issues over in the
+ * visitor's own cookie.
  */
-async function linearSource(c: AppContext): Promise<LinearSource | null> {
-  if (isDemo(c)) return new DemoLinear();
+async function linearSource(c: AppContext, demo: DemoStore | null): Promise<LinearSource | null> {
+  if (demo) return new DemoLinear({ assignments: demo });
   const authorization = await linearAuthorization(c);
   if (!authorization) return null;
   const client = new LinearClient(authorization);

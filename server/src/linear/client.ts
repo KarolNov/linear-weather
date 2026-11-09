@@ -17,6 +17,9 @@ const COMPLEXITY_PER_MS = 2_000_000 / 3_600_000;
 /** Linear rejected our credentials: the token was revoked or the API key deleted. */
 export class LinearAuthError extends Error {}
 
+/** Linear won't let this token make the change, e.g. one granted without the `write` scope. */
+export class LinearForbiddenError extends Error {}
+
 /** Linear's rate limit is spent, or about to be. Retry after `resetAt` (epoch ms), if known. */
 export class LinearRateLimitError extends Error {
   constructor(readonly resetAt: number | null) {
@@ -126,9 +129,9 @@ export class LinearClient implements LinearSource {
     }
     // Rate limiting comes back as HTTP 400 with this code.
     if (codes.has("RATELIMITED")) throw new LinearRateLimitError(this.rateLimit.resetAt);
-    if (body.errors?.length || !body.data) {
-      throw new Error(`Linear API error: ${body.errors?.map((e) => e.message).join("; ")}`);
-    }
+    const messages = body.errors?.map((e) => e.message).join("; ");
+    if (codes.has("FORBIDDEN")) throw new LinearForbiddenError(`Linear refused: ${messages}`);
+    if (body.errors?.length || !body.data) throw new Error(`Linear API error: ${messages}`);
     return body.data;
   }
 }

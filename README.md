@@ -123,9 +123,11 @@ type Mutation {
   updateQuadrantRules(teamId: ID!, input: QuadrantRulesInput!): UpdateRulesResult!
   overrideQuadrant(issueId: ID!, quadrant: Quadrant!): OverrideResult!
   clearOverride(issueId: ID!): OverrideResult!
+  reassignIssue(issueId: ID!, userId: ID!): ReassignResult!   # writes to Linear
 }
 union UpdateRulesResult = UpdateRulesSuccess | InvalidRules | TeamNotFound | Unauthorized | LinearRateLimited
 union OverrideResult = OverrideSuccess | IssueNotFound | Unauthorized | LinearRateLimited
+union ReassignResult = ReassignSuccess | IssueNotFound | Unauthorized | LinearRateLimited
 interface Error { message: String! }   # every failure above implements it
 ```
 
@@ -154,9 +156,10 @@ So the two lists read as one plan: make today's moves, then each week's in turn.
 
 Each mutation answers with a union: what it did, or one of the failures a client is expected to handle (bad rules, an id the viewer can't see, signed out, Linear's rate limit). They're ordinary types with fields of their own, like `InvalidRules.problems` (one per input field, for a settings form) or `LinearRateLimited.resetAt`, so clients see them in the schema and switch on `__typename`. Each implements `Error`, so `... on Error { message }` catches any a client doesn't single out. Top-level `errors` are left for the unexpected, like the database failing.
 
-- **Checked against Linear first.** A team must be one the viewer can see, and so must an issue, so nobody changes rules or places issues in workspaces they aren't in.
-- **The demo's changes stay in the visitor's browser.** Anyone can open `?demo=true`, so its mutations never reach D1: rules and overrides go in a compact `lw_demo` cookie (`server/src/db/demo-store.ts`, format in `demo-cookie.ts`), which every `?demo=true` request reads and any that changes something sets again. A cookie rather than localStorage, because the board renders on the server. The client still calls `/graphql?demo=true`, and sends mutations one at a time, since two in flight start from the same cookie and the last response wins. Clearing site data resets the demo.
-- **Derived fields follow on their own.** A success hands back the team (and, for overrides, the issue), and everything on them is derived when read. After `updateQuadrantRules`, `team { people { matrix { counts } } }` in the same response is already sorted by the new rules, with no code written for it. Writes go through the request's `Placements`, so nothing later in the response reads what was cached before.
+- **Checked against Linear first.** A team must be one the viewer can see, and so must an issue, so nobody changes rules or places issues in workspaces they aren't in. Whoever takes a reassigned issue must be a member of its team; anyone else, including someone who holds the team's issues from elsewhere, is a top-level `BAD_USER_INPUT` error, since the board never suggests them.
+- **Reassigning writes to Linear.** `reassignIssue` calls Linear's `issueUpdate` with the new assignee, which needs the OAuth `write` scope. Linear refusing the change (`FORBIDDEN`, e.g. a token without `write`) answers `Unauthorized`, like a revoked session.
+- **The demo's changes stay in the visitor's browser.** Anyone can open `?demo=true`, so its mutations never reach D1: rules, overrides and reassigned issues go in a compact `lw_demo` cookie (`server/src/db/demo-store.ts`, format in `demo-cookie.ts`), which every `?demo=true` request reads and any that changes something sets again. A cookie rather than localStorage, because the board renders on the server. The client still calls `/graphql?demo=true`, and sends mutations one at a time, since two in flight start from the same cookie and the last response wins. Clearing site data resets the demo.
+- **Derived fields follow on their own.** A success hands back the team (and, for overrides and reassignments, the issue), and everything on them is derived when read. After `updateQuadrantRules`, `team { people { matrix { counts } } }` in the same response is already sorted by the new rules, with no code written for it. Writes go through the request's `Placements`, and a reassignment drops the team's cached Linear work, so nothing later in the response reads what was cached before.
 
 The web Worker loads a page with one query (`BOARD_QUERY` in `web/src/board.ts`), and a server test runs that exact query against the schema so the two can't drift apart. The board's mutations (`web/src/mutations.ts`) are tested the same way. Each asks for the team's board back through the same `TeamBoard` fragment the page loads with, so after a rules change or a move the browser redraws from the answer and never works out a quadrant itself. Within a request each team's members and issues are fetched from Linear once and shared by every resolver that needs them (`server/src/workspace.ts`). Two per-request [DataLoaders](https://github.com/graphql/dataloader) batch the lookups, one for team members and one for open issues, so every team resolved in the same tick shares one Linear query of each kind.
 
@@ -205,6 +208,7 @@ Within a request, rules and overrides are read through two DataLoaders (`server/
 - Local dev applies them for you. To apply them by hand, run `pnpm --filter server db:migrate:local`.
 - Tests apply every migration to an empty database in workerd (`server/test/apply-migrations.ts`) and empty the tables after each test.
 - In production, `pnpm --filter server deploy` (`server/scripts/deploy.sh`, the server's Workers Builds deploy command) applies migrations, then deploys. On the very first deploy Wrangler creates the database while deploying, so the script migrates right after instead. A migration runs while the previous code is still live, so it should add rather than rename or drop.
+- **Deploy the server before the web.** The two Workers deploy on their own, and the web's queries and mutations are checked against the server's schema. A web Worker that's ahead asks for fields the live server doesn't have yet, like `reassignIssue`, and those requests fail until the server catches up. A server that's behind also rewrites the demo's `lw_demo` cookie without the parts it doesn't know, such as reassigned issues.
 - [Worker Previews](https://developers.cloudflare.com/workers/previews/) of other branches use a shared staging database, `linear-weather-preview`, and their own session store (the `previews` block in `server/wrangler.jsonc`). `pnpm --filter server preview` (`server/scripts/preview.sh`, the server's Workers Builds preview command) migrates that database, then deploys the Preview.
 
 ### Previews
@@ -258,6 +262,6 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 
 ## Status
 
-🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** lists suggested moves for now and for the coming weeks (applying them in Linear is #16).
+🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** suggests who should hand which issue to whom, now and before the storms the forecast sees; **Hand over** makes a move in Linear in one click, and **Make all of today's moves** makes the Now list's moves in order after a yes, stopping at the first that fails.
 # linear-weather
 Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

@@ -23,6 +23,7 @@ import {
   type Quadrant,
   type Rules,
   runningLate,
+  type Suggestion,
   type TeamBoardData,
   type Weather as TeamWeather,
   teamBoard,
@@ -30,7 +31,7 @@ import {
   type Viewer,
 } from "./board";
 import { entrance } from "./motion";
-import { boardClient } from "./mutations";
+import { applyMoves, boardClient, describeMoves } from "./mutations";
 import { PersonMatrix } from "./PersonMatrix";
 import { quadrantFill, quadrantInfo } from "./quadrants";
 import { RebalancePanel } from "./RebalancePanel";
@@ -137,6 +138,17 @@ function TeamBoard({
   const [rebalancing, setRebalancing] = useState(false);
   // Issues whose move hasn't answered yet.
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  const markPending = (issueIds: string[], on: boolean) =>
+    setPending((current) => {
+      const next = new Set(current);
+      for (const id of issueIds) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  // Today's moves are being made, one after another.
+  const [applying, setApplying] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   // Read out by screen readers; the board redrawing is the visible answer.
   const [status, setStatus] = useState("");
@@ -176,17 +188,10 @@ function TeamBoard({
     return true;
   };
   const place = async (issue: BoardIssue, to: Quadrant | null) => {
-    const markPending = (on: boolean) =>
-      setPending((current) => {
-        const next = new Set(current);
-        if (on) next.add(issue.id);
-        else next.delete(issue.id);
-        return next;
-      });
-    markPending(true);
+    markPending([issue.id], true);
     setFailure(null);
     const result = await client.placeIssue(issue.id, to);
-    markPending(false);
+    markPending([issue.id], false);
     setRefocus(issue.id);
     if (!result.ok) {
       setFailure(`Couldn't move ${issue.identifier}. ${result.message}`);
@@ -198,6 +203,51 @@ function TeamBoard({
         ? `Moved ${issue.identifier} to ${quadrantInfo[to].name}.`
         : `${issue.identifier} is back with the rules.`,
     );
+  };
+  // A failed move's message sits below the panel, out of sight: take the keyboard, and the
+  // view, there. An earlier move's word in the status would contradict it.
+  const [failureFocus, setFailureFocus] = useState(false);
+  useEffect(() => {
+    if (!failureFocus) return;
+    setFailureFocus(false);
+    document.getElementById("board-failure")?.focus();
+  }, [failureFocus]);
+  const moveFailed = (message: string) => {
+    setStatus("");
+    setFailure(message);
+    setFailureFocus(true);
+  };
+  // A suggestion's button goes once its move is made, so give the keyboard to the panel once the
+  // board has redrawn, unless the PM went on to something else.
+  const [panelFocus, setPanelFocus] = useState(false);
+  useEffect(() => {
+    if (!panelFocus) return;
+    setPanelFocus(false);
+    if (document.activeElement && document.activeElement !== document.body) return;
+    document.getElementById("rebalance-heading")?.focus();
+  }, [panelFocus]);
+  const refocusPanel = () => setPanelFocus(true);
+  /** Makes moves in Linear, one at a time; `all` when they're today's, made after a yes. */
+  const makeMoves = async (moves: Suggestion[], all: boolean) => {
+    if (!team) return;
+    const ids = moves.map(({ issue }) => issue.id);
+    // Only today's moves lock the panel; a single move answering mustn't unlock it mid-run.
+    if (all) setApplying(true);
+    markPending(ids, true);
+    setFailure(null);
+    const applied = await applyMoves(client, team.id, moves);
+    markPending(ids, false);
+    if (all) setApplying(false);
+    const said = describeMoves(moves, applied);
+    if ("failure" in said) {
+      // The board as read again after the failure, else the newest one an answer carried; with
+      // neither, the one shown stays.
+      if (applied.team) showAnswer(applied.team);
+      moveFailed(said.failure);
+      return;
+    }
+    if (showAnswer(applied.team)) setStatus(said.status);
+    refocusPanel();
   };
   const saveRules = async (rules: Rules) => {
     if (!team) throw new Error("no team to save rules for");
@@ -285,19 +335,25 @@ function TeamBoard({
             rebalanceNow={team.rebalanceNow}
             rebalanceForecast={team.rebalanceForecast}
             runningLate={runningLate(people)}
+            pending={pending}
+            applying={applying}
+            onReassign={(move) => makeMoves([move], false)}
+            onApplyNow={(moves) => makeMoves(moves, true)}
             onClose={() => setRebalancing(false)}
           />
         </div>
       )}
       {failure && (
-        <Alert weather="rain">
-          <span {...stylex.props(styles.failure)}>
-            {failure}
-            <Button variant="quiet" onClick={() => setFailure(null)} xstyle={styles.expandAll}>
-              Dismiss
-            </Button>
-          </span>
-        </Alert>
+        <div id="board-failure" tabIndex={-1} {...stylex.props(styles.failureFocus)}>
+          <Alert weather="rain">
+            <span {...stylex.props(styles.failure)}>
+              {failure}
+              <Button variant="quiet" onClick={() => setFailure(null)} xstyle={styles.expandAll}>
+                Dismiss
+              </Button>
+            </span>
+          </Alert>
+        </div>
       )}
       <VisuallyHidden>
         <span role="status">{status}</span>
@@ -367,6 +423,7 @@ const weatherLegend: [Weather, string][] = [
 ];
 
 const styles = stylex.create({
+  failureFocus: { outline: "none" },
   header: {
     position: "sticky",
     top: 0,

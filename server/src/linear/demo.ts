@@ -11,6 +11,9 @@ import {
   OpenIssuesDocument,
   type OpenIssuesQuery,
   type OpenIssuesQueryVariables,
+  ReassignIssueDocument,
+  type ReassignIssueMutation,
+  type ReassignIssueMutationVariables,
   TeamsDocument,
   TeamsMembersDocument,
   type TeamsMembersQuery,
@@ -187,17 +190,56 @@ export function demoIssues(today: CalendarDate, teamId: string = DEMO_TEAM.id): 
   }));
 }
 
+/**
+ * Who a visitor handed the demo's issues to, by issue id. The demo workspace is shared, so this
+ * is kept per visitor (in their cookie, by DemoStore) rather than in DemoLinear.
+ */
+export interface DemoAssignments {
+  assignee(issueId: string): string | undefined;
+  /** With null, the issue goes back to whoever the demo gives it to. */
+  setAssignee(issueId: string, userId: string | null): void;
+}
+
+/** Assignments kept for as long as the DemoLinear lives: one request's, or one test's. */
+export function inMemory(): DemoAssignments {
+  const assignees = new Map<string, string>();
+  return {
+    assignee: (issueId) => assignees.get(issueId),
+    setAssignee: (issueId, userId) => {
+      if (userId === null) assignees.delete(issueId);
+      else assignees.set(issueId, userId);
+    },
+  };
+}
+
+/** Every demo issue by id, with its team. Ids and assignees don't depend on the day. */
+const BY_ID = new Map(
+  TEAMS.flatMap(({ team }) =>
+    demoIssues("2000-01-01", team.id).map((issue) => [issue.id, { team, issue }] as const),
+  ),
+);
+
+/** A demo issue, its team, and who the demo gives it to; undefined for an id it doesn't know. */
+export function demoIssue(id: string) {
+  return BY_ID.get(id);
+}
+
 export interface DemoLinearOptions {
   /** The demo's "today". Defaults to the current UTC date, read on every request. */
   today?: CalendarDate;
+  /** Who issues were handed to. Defaults to none, and reassigning keeps them in memory. */
+  assignments?: DemoAssignments;
 }
 
 /** A `LinearSource` that answers from the mocked Avengers workspace instead of Linear. */
 export class DemoLinear implements LinearSource {
   /** The issues for the last teams and "today" asked about, so paging doesn't rebuild them. */
   private issues: { teams: string; today: CalendarDate; all: OpenIssue[] } | undefined;
+  private readonly assignments: DemoAssignments;
 
-  constructor(private readonly options: DemoLinearOptions = {}) {}
+  constructor(private readonly options: DemoLinearOptions = {}) {
+    this.assignments = options.assignments ?? inMemory();
+  }
 
   async request<TResult, TVariables>(
     document: TypedDocumentString<TResult, TVariables>,
@@ -222,6 +264,9 @@ export class DemoLinear implements LinearSource {
     if (query === IssueByIdDocument.toString()) {
       return this.issueById(variables as IssueByIdQueryVariables) as TResult;
     }
+    if (query === ReassignIssueDocument.toString()) {
+      return this.reassign(variables as ReassignIssueMutationVariables) as TResult;
+    }
     throw new Error(`The demo workspace can't answer this query yet:\n${query}`);
   }
 
@@ -238,7 +283,7 @@ export class DemoLinear implements LinearSource {
   private issueById({ id }: IssueByIdQueryVariables) {
     const today = this.today();
     const nodes = TEAMS.flatMap(({ team: { id: teamId, name, key } }) =>
-      demoIssues(today, teamId)
+      this.teamIssues(today, teamId)
         .filter((issue) => issue.id === id)
         .map((issue) => ({ ...issue, team: { id: teamId, name, key } })),
     );
@@ -252,7 +297,7 @@ export class DemoLinear implements LinearSource {
     if (this.issues?.today !== today || this.issues.teams !== teams) {
       const all = [teamIds]
         .flat()
-        .flatMap((id) => demoIssues(today, id).map((issue) => ({ ...issue, team: { id } })));
+        .flatMap((id) => this.teamIssues(today, id).map((issue) => ({ ...issue, team: { id } })));
       this.issues = { teams, today, all };
     }
     const { all } = this.issues;
@@ -267,6 +312,37 @@ export class DemoLinear implements LinearSource {
         pageInfo: { hasNextPage: end < all.length, endCursor: nodes.length ? String(end) : null },
       },
     } satisfies OpenIssuesQuery;
+  }
+
+  /**
+   * Like Linear's `issueUpdate` with a new assignee. Linear won't update an issue the viewer
+   * can't see, or hand it to someone it doesn't know, and neither will the demo.
+   */
+  private reassign({ id, assigneeId }: ReassignIssueMutationVariables) {
+    const demo = demoIssue(id);
+    if (!demo) throw new Error("Linear API error: Entity not found: Issue");
+    const member = demo.team.members.find((m) => m.id === assigneeId);
+    if (!member) throw new Error("Linear API error: Entity not found: User");
+    this.assignments.setAssignee(id, demo.issue.assignee?.id === member.id ? null : member.id);
+    this.issues = undefined;
+    const { id: teamId, name, key } = demo.team;
+    const issue = this.teamIssues(this.today(), teamId).find((i) => i.id === id);
+    return {
+      issueUpdate: {
+        success: true,
+        issue: issue ? { ...issue, team: { id: teamId, name, key } } : null,
+      },
+    } satisfies ReassignIssueMutation;
+  }
+
+  /** A team's issues, with whoever the visitor handed each to. */
+  private teamIssues(today: CalendarDate, teamId: string): IssueCard[] {
+    const members = TEAMS.find(({ team }) => team.id === teamId)?.team.members ?? [];
+    return demoIssues(today, teamId).map((issue) => {
+      const userId = this.assignments.assignee(issue.id);
+      const assignee = members.find((m) => m.id === userId);
+      return assignee ? { ...issue, assignee } : issue;
+    });
   }
 
   private today(): CalendarDate {

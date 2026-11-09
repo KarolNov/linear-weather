@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { addDays, becomesUrgentOn, classify, DEFAULT_RULES } from "../domain/quadrant";
-import { DEMO_OPS_TEAM, DEMO_TEAM, DEMO_VIEWER, DemoLinear, demoIssues } from "./demo";
+import { DEMO_OPS_TEAM, DEMO_TEAM, DEMO_VIEWER, DemoLinear, demoIssues, inMemory } from "./demo";
 import {
   OpenIssuesDocument,
   type OpenIssuesQuery,
+  ReassignIssueDocument,
   TeamsMembersDocument,
   ViewerDocument,
 } from "./generated";
@@ -88,6 +89,34 @@ describe("demoIssues", () => {
 
 describe("DemoLinear", () => {
   const demo = new DemoLinear({ today: TODAY });
+
+  it("keeps only issues handed to someone other than whoever the demo gives them to", async () => {
+    const assignments = inMemory();
+    const linear = new DemoLinear({ today: TODAY, assignments });
+    // AVG-10 is Tony's.
+    const handed = await linear.request(ReassignIssueDocument, {
+      id: "demo-issue-avg-10",
+      assigneeId: "demo-user-wanda",
+    });
+    expect(handed.issueUpdate.issue?.assignee?.name).toBe("Wanda Maximoff");
+    expect(assignments.assignee("demo-issue-avg-10")).toBe("demo-user-wanda");
+
+    const back = await linear.request(ReassignIssueDocument, {
+      id: "demo-issue-avg-10",
+      assigneeId: "demo-user-tony",
+    });
+    expect(back.issueUpdate.issue?.assignee?.name).toBe("Tony Stark");
+    expect(assignments.assignee("demo-issue-avg-10")).toBeUndefined();
+  });
+
+  it("won't hand an issue to someone off its team, as Linear won't to someone it doesn't know", async () => {
+    await expect(
+      new DemoLinear({ today: TODAY }).request(ReassignIssueDocument, {
+        id: "demo-issue-avg-10",
+        assigneeId: "demo-user-phil",
+      }),
+    ).rejects.toThrow("Entity not found: User");
+  });
 
   it("signs you in as Nick Fury", async () => {
     expect(await demo.request(ViewerDocument)).toEqual({ viewer: DEMO_VIEWER });

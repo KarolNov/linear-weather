@@ -303,3 +303,10 @@ export function describeWeek(endsOn: CalendarDate): string {
 export function describeDay(date: CalendarDate): string {
   return shortDate.format(Date.parse(date));
 }
+
+const conjunction = new Intl.ListFormat("en-US", { type: "conjunction" });
+
+/** Items as a sentence lists them, e.g. "AVG-1 to Ana, AVG-2 to Ben, and AVG-3 to Cy". */
+export function listOf(items: string[]): string {
+  return conjunction.format(items);
+}

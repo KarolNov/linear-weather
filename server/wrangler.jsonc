@@ -4,12 +4,18 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
-  // Login sessions (Linear OAuth tokens). Wrangler provisions the namespace on first deploy.
-  "kv_namespaces": [{ "binding": "SESSIONS" }],
-  // Team rules and quadrant overrides (src/db/tables.ts). Wrangler provisions the database on
-  // first deploy; `pnpm --filter server db:migrate:remote` then creates its tables.
+  // Login sessions (Linear OAuth tokens). Pinned by id: without one, a deploy that can't tell the
+  // live binding apart tries to create the namespace again and fails on its taken name.
+  "kv_namespaces": [{ "binding": "SESSIONS", "id": "b9184f0064d04b6a9992a4a2d89b29bb" }],
+  // Team rules and quadrant overrides (src/db/tables.ts), pinned by id like the sessions.
+  // `pnpm --filter server db:migrate:remote` creates its tables.
   "d1_databases": [
-    { "binding": "DB", "database_name": "linear-weather", "migrations_dir": "migrations" }
+    {
+      "binding": "DB",
+      "database_name": "linear-weather",
+      "database_id": "a71ccd43-3234-4cdb-aeef-2b33f9742768",
+      "migrations_dir": "migrations"
+    }
   ],
   // LINEAR_API_KEY is an optional dev shortcut, typed in src/env.d.ts.
   "secrets": { "required": ["LINEAR_CLIENT_ID", "LINEAR_CLIENT_SECRET", "LINEAR_WEBHOOK_SECRET"] },

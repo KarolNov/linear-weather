@@ -5,6 +5,7 @@
 import { type SQL, sql } from "drizzle-orm";
 import { check, integer, type SQLiteColumn, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import {
+  DEFAULT_RULES,
   type LinearPriority,
   MAX_URGENCY_WINDOW_DAYS,
   NO_DUE_DATE,
@@ -20,6 +21,10 @@ export const quadrantRules = sqliteTable(
     importantFrom: integer("important_from").$type<Exclude<LinearPriority, 0>>().notNull(),
     urgencyWindowDays: integer("urgency_window_days").notNull(),
     noDueDate: text("no_due_date", { enum: NO_DUE_DATE }).notNull(),
+    /** Added after the others, so rows from before take the default. */
+    dropAlertPercent: integer("drop_alert_percent")
+      .notNull()
+      .default(DEFAULT_RULES.dropAlertPercent),
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
@@ -33,6 +38,10 @@ export const quadrantRules = sqliteTable(
       sql`${isInteger(t.urgencyWindowDays)} AND ${t.urgencyWindowDays} BETWEEN 1 AND ${sql.raw(String(MAX_URGENCY_WINDOW_DAYS))}`,
     ),
     check("no_due_date_is_known", oneOf(t.noDueDate, NO_DUE_DATE)),
+    check(
+      "drop_alert_in_range",
+      sql`${isInteger(t.dropAlertPercent)} AND ${t.dropAlertPercent} BETWEEN 1 AND 99`,
+    ),
   ],
 );
 

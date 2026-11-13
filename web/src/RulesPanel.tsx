@@ -27,11 +27,13 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
   // Kept as typed, so clearing the field to retype it doesn't snap back to a number.
   const [windowDays, setWindowDays] = useState(String(rules.urgencyWindowDays));
   const [noDueDate, setNoDueDate] = useState(rules.noDueDate);
+  const [dropAlert, setDropAlert] = useState(String(rules.dropAlertPercent));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<{ message: string; problems: RuleProblem[] } | null>(null);
   const problem = (field: keyof Rules) => failure?.problems.find((p) => p.field === field);
   const windowProblem = problem("urgencyWindowDays");
   const importantProblem = problem("importantFrom");
+  const dropAlertProblem = problem("dropAlertPercent");
 
   const submit = async (event: Event) => {
     event.preventDefault();
@@ -41,6 +43,7 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
       importantFrom,
       urgencyWindowDays: Number(windowDays),
       noDueDate,
+      dropAlertPercent: Number(dropAlert),
     });
     setSaving(false);
     if (result.ok) onClose();
@@ -129,6 +132,32 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
               </label>
             ))}
           </fieldset>
+
+          <label {...stylex.props(styles.field)}>
+            <span {...stylex.props(styles.label)}>Flag backlog rot above</span>
+            <span {...stylex.props(styles.withUnit)}>
+              <input
+                type="number"
+                inputMode="numeric"
+                required
+                min={1}
+                max={99}
+                step={1}
+                value={dropAlert}
+                onInput={(event) => setDropAlert(event.currentTarget.value)}
+                aria-invalid={dropAlertProblem ? true : undefined}
+                aria-describedby={dropAlertProblem ? "rules-drop-problem" : undefined}
+                {...stylex.props(styles.input, styles.number)}
+              />
+              <span>% in Drop</span>
+            </span>
+            <span {...stylex.props(styles.hint)}>Of the team's open issues, assigned or not.</span>
+            {dropAlertProblem && (
+              <span id="rules-drop-problem" {...stylex.props(styles.problem)}>
+                {dropAlertProblem.message}
+              </span>
+            )}
+          </label>
         </div>
 
         {failure && failure.problems.length === 0 && (

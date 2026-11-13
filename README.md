@@ -12,6 +12,7 @@ Each developer's assigned issues are sorted into an **Eisenhower matrix** (Do / 
   - Issues with no due date count as not urgent
 
   A PM can still override any issue by hand.
+- **Backlog rot.** When more than 40% of a team's open issues (configurable per team) sit in Drop, the board's header flags it: a backlog filling with work nobody means to do.
 - **Weather (now).** Each person's current urgent load compared with the team average: ☀️ ⛅ 🌧️ ⛈️
 - **Forecast (next weeks).** Due dates show when each issue will turn urgent, so the app can project load week by week: `☀️ ☀️ 🌧️ ⛈️`, with why ("3 High-priority issues become urgent"). Undated work shows up as 🌫️ fog.
 - **Rebalance.** The app suggests reassignments to fix today's storm or the one coming in week 3, and applies them in Linear with one click.
@@ -110,8 +111,10 @@ type User {           # teamId defaults to the team it was reached through
   weather(teamId: ID, metric: LoadMetric): Weather!   # urgent load vs the team average
   forecast(teamId: ID, weeks: Int! = 4, metric: LoadMetric): [ForecastWeek!]!   # 1 to 12 weeks
 }
+type BacklogRot { drop: Int!  total: Int!  share: Float!  alertPercent: Int!  rotting: Boolean!  reason: String! }
 type Team {
   rules: QuadrantRules!  people: [User!]!  unassigned: Matrix!
+  backlogRot: BacklogRot!                 # Drop's share of all open issues, against rules.dropAlertPercent
   loadMetric: LoadMetric!                 # POINTS if every urgent issue is estimated, else ISSUES
   weather(metric: LoadMetric): Weather!   # how evenly urgent load is spread
   forecast(weeks: Int! = 4, metric: LoadMetric): TeamForecast!   # worst: the team's score
@@ -263,6 +266,6 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 
 ## Status
 
-🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** suggests who should hand which issue to whom, now and before the storms the forecast sees; **Hand over** makes a move in Linear in one click, and **Make all of today's moves** makes the Now list's moves in order after a yes, stopping at the first that fails.
+🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules, including when to flag backlog rot (too much in Drop), which the header then shows; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** suggests who should hand which issue to whom, now and before the storms the forecast sees; **Hand over** makes a move in Linear in one click, and **Make all of today's moves** makes the Now list's moves in order after a yes, stopping at the first that fails.
 # linear-weather
 Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

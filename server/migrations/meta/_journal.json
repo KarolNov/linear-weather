@@ -15,6 +15,13 @@
       "when": 1792660369273,
       "tag": "0001_cap_urgency_window",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794574958198,
+      "tag": "0002_drop_alert",
+      "breakpoints": true
     }
   ]
 }

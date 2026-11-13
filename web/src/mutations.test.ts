@@ -3,7 +3,12 @@ import type { Suggestion } from "./board";
 import { applyMoves, boardClient, describeMoves, REASSIGN_MUTATION } from "./mutations";
 
 const team = { id: "t-avg", name: "Avengers", key: "AVG" };
-const rules = { importantFrom: 2, urgencyWindowDays: 7, noDueDate: "URGENT" } as const;
+const rules = {
+  importantFrom: 2,
+  urgencyWindowDays: 7,
+  noDueDate: "URGENT",
+  dropAlertPercent: 30,
+} as const;
 
 /** A fetch whose answers the test hands out, one call at a time. */
 function controlledFetch() {

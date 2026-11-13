@@ -21,12 +21,15 @@ export interface QuadrantRules {
   urgencyWindowDays: number;
   /** Where issues without a due date land. */
   noDueDate: (typeof NO_DUE_DATE)[number];
+  /** The team is flagged for backlog rot when more than this percent of its open issues are in Drop. */
+  dropAlertPercent: number;
 }
 
 export const DEFAULT_RULES: QuadrantRules = {
   importantFrom: 3,
   urgencyWindowDays: 14,
   noDueDate: "notUrgent",
+  dropAlertPercent: 40,
 };
 
 /** The longest urgency window a team can pick. Past a year, every dated issue is urgent anyway. */
@@ -34,7 +37,7 @@ export const MAX_URGENCY_WINDOW_DAYS = 365;
 
 /** Something wrong with proposed rules, on the field a settings form would mark. */
 export interface RuleProblem {
-  field: "importantFrom" | "urgencyWindowDays";
+  field: "importantFrom" | "urgencyWindowDays" | "dropAlertPercent";
   message: string;
 }
 
@@ -48,7 +51,7 @@ export type RulesInput = Omit<QuadrantRules, "importantFrom"> & { importantFrom:
 export function parseRules(
   input: RulesInput,
 ): { rules: QuadrantRules; problems?: never } | { rules?: never; problems: RuleProblem[] } {
-  const { importantFrom, urgencyWindowDays, noDueDate } = input;
+  const { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent } = input;
   const problems: RuleProblem[] = [];
   if (!isImportantFrom(importantFrom)) {
     problems.push({
@@ -66,8 +69,14 @@ export function parseRules(
       message: `The urgency window must be 1 to ${MAX_URGENCY_WINDOW_DAYS} whole days.`,
     });
   }
+  if (!Number.isInteger(dropAlertPercent) || dropAlertPercent < 1 || dropAlertPercent > 99) {
+    problems.push({
+      field: "dropAlertPercent",
+      message: "The Drop alert must be 1 to 99 whole percent.",
+    });
+  }
   if (problems.length === 0 && isImportantFrom(importantFrom)) {
-    return { rules: { importantFrom, urgencyWindowDays, noDueDate } };
+    return { rules: { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent } };
   }
   return { problems };
 }

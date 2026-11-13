@@ -107,6 +107,15 @@ export interface Rules {
   /** Urgent when due in fewer than this many days, or overdue. */
   urgencyWindowDays: number;
   noDueDate: "URGENT" | "NOT_URGENT";
+  /** Flag backlog rot when more than this percent of open issues are in Drop: 1 to 99. */
+  dropAlertPercent: number;
+}
+
+/** Whether too much of the team's open work sits in Drop, against its alert. */
+export interface BacklogRot {
+  rotting: boolean;
+  /** E.g. "12 of 20 open issues (60%) are in Drop, over the team's 40% alert". */
+  reason: string;
 }
 
 /** The longest urgency window the server accepts (`MAX_URGENCY_WINDOW_DAYS`). */
@@ -129,7 +138,7 @@ export interface Board {
    * The team asked for, else the viewer's default, with its rules and weather. Null when there
    * are no teams.
    */
-  team: (Team & Rebalance & { rules: Rules; weather: Weather }) | null;
+  team: (Team & Rebalance & { rules: Rules; weather: Weather; backlogRot: BacklogRot }) | null;
   /** The team's people, then its unassigned issues if it has any. */
   people: PersonMatrix[];
 }
@@ -153,8 +162,9 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
   id
   name
   key
-  rules { importantFrom urgencyWindowDays noDueDate }
+  rules { importantFrom urgencyWindowDays noDueDate dropAlertPercent }
   weather { kind reason }
+  backlogRot { rotting reason }
   rebalanceNow: rebalanceSuggestions(horizon: NOW) { ...Suggestion }
   rebalanceForecast: rebalanceSuggestions(horizon: FORECAST) { ...Suggestion }
   people {
@@ -205,6 +215,7 @@ export type TeamBoardData = Team &
   Rebalance & {
     rules: Rules;
     weather: Weather;
+    backlogRot: BacklogRot;
     people: (Person & { matrix: Matrix; weather: PersonWeather; forecast: ForecastWeek[] })[];
     unassigned: Matrix;
   };

@@ -284,6 +284,7 @@ function TeamBoard({
               : "Open issues by person, soonest due first."}
           </p>
           <TeamForecast weather={team.weather} />
+          {team.backlogRot.rotting && <BacklogRotFlag reason={team.backlogRot.reason} />}
         </div>
         <div {...stylex.props(styles.controls)}>
           {withIssues.length > 0 && (
@@ -390,6 +391,22 @@ function TeamForecast({ weather }: { weather: TeamWeather }) {
   );
 }
 
+/**
+ * Too much of the team's open work sits in Drop: a backlog filling with things nobody means to
+ * do. Shown only past the team's alert, on a chip like the weather's so it reads on every sky.
+ */
+function BacklogRotFlag({ reason }: { reason: string }) {
+  return (
+    <p {...stylex.props(styles.forecast, styles.rot)}>
+      <WeatherIcon weather="fog" size={28} label="" />
+      <span>
+        <strong>Backlog rot:</strong> {reason}. Close what nobody will do, or give it a priority or
+        a due date.
+      </span>
+    </p>
+  );
+}
+
 function BoardUnavailable({ error }: { error?: BoardError }) {
   const resetAt = error?.kind === "rate_limited" && error.resetAt ? new Date(error.resetAt) : null;
   return (
@@ -489,6 +506,15 @@ const styles = stylex.create({
     fontSize: "0.9375rem",
     fontWeight: 600,
     lineHeight: 1.3,
+  },
+  // Its own line under the weather, edged in the fog it warns of.
+  rot: {
+    display: "flex",
+    width: "fit-content",
+    maxWidth: "100%",
+    borderColor: colors.fog,
+    borderWidth: 2,
+    fontWeight: 500,
   },
   board: { display: "flex", flexDirection: "column", gap: space.lg },
   boardHeader: {

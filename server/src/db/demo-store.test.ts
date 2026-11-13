@@ -5,7 +5,12 @@ import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssues } from "../linear/demo";
 import { DEMO_COOKIE, DEMO_COOKIE_MAX_AGE, decodeDemo, MAX_COOKIE_LENGTH } from "./demo-cookie";
 import { DemoStore } from "./demo-store";
 
-const strict = { importantFrom: 2, urgencyWindowDays: 7, noDueDate: "urgent" } as const;
+const strict = {
+  importantFrom: 2,
+  urgencyWindowDays: 7,
+  noDueDate: "urgent",
+  dropAlertPercent: DEFAULT_RULES.dropAlertPercent,
+} as const;
 const team = DEMO_TEAM.id;
 const [first, second] = ["demo-issue-avg-1", "demo-issue-avg-2"];
 
@@ -34,6 +39,17 @@ describe("DemoStore", () => {
       ]),
     );
     expect(await after.overrides([first, second])).toEqual(new Map([[first, "drop"]]));
+  });
+
+  it("keeps a Drop alert other than the default, and reads cookies from before it", async () => {
+    const before = DemoStore.fromCookie(undefined);
+    await before.setRules(team, { ...strict, dropAlertPercent: 25 });
+    expect(before.cookie()).toBe("1~avengers.2.7.0.25~");
+    const after = DemoStore.fromCookie(before.cookie());
+    expect(await after.rules([team])).toEqual(
+      new Map([[team, { ...strict, dropAlertPercent: 25 }]]),
+    );
+    expect(decodeDemo("1~avengers.2.7.0~").rules.get(team)).toEqual(strict);
   });
 
   it("keeps who the visitor handed issues to, and forgets those handed back", async () => {
@@ -113,6 +129,10 @@ describe("decodeDemo", () => {
       "ops.2.0.0",
       "ops.0.7.0",
       "ops.2.7.5.0",
+      "ops.2.7.0.0",
+      "ops.2.7.0.100",
+      "ops.2.7.0.4x",
+      "ops.2.7.0.25.1",
       "ops.2.7.2",
       "x.2.7.0",
     ];

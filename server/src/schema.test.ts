@@ -415,11 +415,42 @@ describe("stored rules and overrides", () => {
       importantFrom: 1,
       urgencyWindowDays: 1,
       noDueDate: "notUrgent",
+      dropAlertPercent: 40,
     });
     const board = await data<Board>(tony);
     expect(board.team.rules).toEqual({ urgencyWindowDays: 1 });
     // Only Urgent priority is important now, and only today or overdue is urgent.
     expect(tonyOf(board)?.counts).toEqual({ do: 2, schedule: 2, delegate: 2, drop: 7 });
+  });
+
+  it("flags backlog rot across the team, its unassigned issues included", async () => {
+    type Rot = {
+      team: {
+        backlogRot: { drop: number; rotting: boolean; reason: string };
+        people: { matrix: { counts: Counts } }[];
+        unassigned: { counts: Counts };
+      };
+    };
+    const rot = `{ team {
+      backlogRot { drop rotting reason }
+      people { matrix { counts { do schedule delegate drop } } }
+      unassigned { counts { do schedule delegate drop } }
+    } }`;
+    const { team } = await data<Rot>(rot);
+    expect(team.unassigned.counts.drop).toBeGreaterThan(0);
+    expect(team.backlogRot).toEqual({
+      drop:
+        team.people.reduce((n, { matrix }) => n + matrix.counts.drop, 0) +
+        team.unassigned.counts.drop,
+      rotting: false,
+      reason: "8 of 47 open issues (17%) are in Drop, within the team's 40% alert",
+    });
+
+    await new Store(env.DB).setRules(DEMO_TEAM.id, { ...DEFAULT_RULES, dropAlertPercent: 15 });
+    expect((await data<Rot>(rot)).team.backlogRot).toMatchObject({
+      rotting: true,
+      reason: "8 of 47 open issues (17%) are in Drop, over the team's 15% alert",
+    });
   });
 
   /** Counts the store reads a query makes. */
@@ -511,6 +542,30 @@ describe("mutations", () => {
       "{ team { rules { importantFrom urgencyWindowDays noDueDate } } }",
     );
     expect(team.rules).toEqual(strict);
+  });
+
+  it("sets the Drop alert, and keeps it when the input leaves it out", async () => {
+    const alertOf = async () =>
+      (
+        await data<{ team: { rules: { dropAlertPercent: number } } }>(
+          "{ team { rules { dropAlertPercent } } }",
+        )
+      ).team.rules.dropAlertPercent;
+    expect(await alertOf()).toBe(40);
+    await data(updateRules, { teamId: DEMO_TEAM.id, input: { ...strict, dropAlertPercent: 25 } });
+    expect(await alertOf()).toBe(25);
+    await data(updateRules, { teamId: DEMO_TEAM.id, input: strict });
+    expect(await alertOf()).toBe(25);
+  });
+
+  it("refuses a Drop alert outside 1 to 99", async () => {
+    const result = await data<RulesResult>(updateRules, {
+      teamId: DEMO_TEAM.id,
+      input: { ...strict, dropAlertPercent: 100 },
+    });
+    expect(result.updateQuadrantRules.problems).toEqual([
+      { field: "dropAlertPercent", message: "The Drop alert must be 1 to 99 whole percent." },
+    ]);
   });
 
   it("refuses rules it couldn't sort by, saying what's wrong with each field", async () => {
@@ -1018,7 +1073,12 @@ describe("the web app's board query", () => {
   }
 
   it("changes the rules and answers with the team's board", async () => {
-    const rules = { importantFrom: 1, urgencyWindowDays: 7, noDueDate: "URGENT" };
+    const rules = {
+      importantFrom: 1,
+      urgencyWindowDays: 7,
+      noDueDate: "URGENT",
+      dropAlertPercent: 25,
+    };
     const { updateQuadrantRules } = await data<Answer>(UPDATE_RULES_MUTATION, {
       teamId: DEMO_TEAM.id,
       input: rules,

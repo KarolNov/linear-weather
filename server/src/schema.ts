@@ -3,6 +3,7 @@
 
 import SchemaBuilder from "@pothos/core";
 import { GraphQLError } from "graphql";
+import { type BacklogRot, backlogRot } from "./domain/backlog";
 import {
   type ForecastWeek,
   forecast,
@@ -360,6 +361,10 @@ const QuadrantRulesRef = builder.objectRef<QuadrantRules>("QuadrantRules").imple
       description: "An issue is urgent when it's due in fewer than this many days, or overdue.",
     }),
     noDueDate: t.expose("noDueDate", { type: NoDueDateEnum }),
+    dropAlertPercent: t.exposeInt("dropAlertPercent", {
+      description:
+        "The team is flagged for backlog rot when more than this percent of its open issues are in Drop.",
+    }),
   }),
 });
 
@@ -375,6 +380,29 @@ const QuadrantRulesInput = builder.inputType("QuadrantRulesInput", {
       description: `Urgent when due in fewer than this many days, or overdue: 1 to ${MAX_URGENCY_WINDOW_DAYS}.`,
     }),
     noDueDate: t.field({ type: NoDueDateEnum, required: true }),
+    dropAlertPercent: t.int({
+      description:
+        "Flag backlog rot when more than this percent of open issues are in Drop: 1 to 99. Left out, it stays as it was.",
+    }),
+  }),
+});
+
+const BacklogRotRef = builder.objectRef<BacklogRot>("BacklogRot").implement({
+  description:
+    "How much of a team's open work sits in Drop (neither important nor urgent), against the team's alert.",
+  fields: (t) => ({
+    drop: t.exposeInt("drop", { description: "Open issues in Drop, assigned or not." }),
+    total: t.exposeInt("total", { description: "All the team's open issues." }),
+    share: t.exposeFloat("share", {
+      description: "Drop's share of the open issues, 0 to 1. 0 when there are none.",
+    }),
+    alertPercent: t.exposeInt("alertPercent", { description: "The team's dropAlertPercent." }),
+    rotting: t.exposeBoolean("rotting", {
+      description: "More than alertPercent of the open issues are in Drop, as a whole percent.",
+    }),
+    reason: t.exposeString("reason", {
+      description: `E.g. "12 of 20 open issues (60%) are in Drop, over the team's 40% alert".`,
+    }),
   }),
 });
 
@@ -615,6 +643,20 @@ TeamRef.implement({
     rules: t.field({
       type: QuadrantRulesRef,
       resolve: (team, _args, context) => context.placements.rules(team.id),
+    }),
+    backlogRot: t.field({
+      type: BacklogRotRef,
+      description:
+        "Whether too much of the team's open work, its people's and the unassigned, sits in Drop.",
+      resolve: async (team, _args, context) => {
+        const [people, unassigned, rules] = await Promise.all([
+          peopleMatrices(context, team.id),
+          teamMatrix(context, team.id, null),
+          context.placements.rules(team.id),
+        ]);
+        const matrices = [...people.map(({ matrix }) => matrix), unassigned];
+        return backlogRot(matrices.map(counts), rules.dropAlertPercent);
+      },
     }),
     people: t.field({
       type: [UserRef],
@@ -980,7 +1022,12 @@ builder.mutationType({
         attempt(
           context,
           async (workspace): Promise<UpdateRulesSuccess | InvalidRules | TeamNotFound> => {
-            const { rules, problems } = parseRules(input);
+            const { rules, problems } = parseRules({
+              ...input,
+              dropAlertPercent:
+                input.dropAlertPercent ??
+                (await context.placements.rules(String(teamId))).dropAlertPercent,
+            });
             if (problems) {
               return {
                 __typename: "InvalidRules",

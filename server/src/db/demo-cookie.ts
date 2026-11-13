@@ -2,9 +2,10 @@
 // JSON spends most of that on quotes (escaped to %22) and on the demo's long ids. So the cookie is
 // plain text in characters a cookie carries unescaped, with the ids' fixed prefixes dropped:
 //
-//   1~avengers.2.7.0!ops.3.30.1~avg-1.3!ops-4.1~avg-10.wanda
-//   │ └ rules: team.importantFrom.urgencyWindowDays.noDueDate
-//   │                             └ overrides: issue.quadrant
+//   1~avengers.2.7.0!ops.3.30.1.25~avg-1.3!ops-4.1~avg-10.wanda
+//   │ └ rules: team.importantFrom.urgencyWindowDays.noDueDate[.dropAlertPercent]
+//   │          (the alert left off at its default, as cookies from before it have it)
+//   │                                └ overrides: issue.quadrant
 //   │                                            └ assignees: issue.user, left off when empty
 //   └ format version
 //
@@ -12,6 +13,7 @@
 // since the cookie comes from the client.
 
 import {
+  DEFAULT_RULES,
   NO_DUE_DATE,
   parseRules,
   QUADRANTS,
@@ -53,8 +55,10 @@ const USER_IDS = new Set(
 
 export function encodeDemo({ rules, overrides, assignees }: DemoSaved): string {
   const teams = [...rules].map(
-    ([teamId, { importantFrom, urgencyWindowDays, noDueDate }]) =>
-      `${shorten(teamId, TEAM_PREFIX)}.${importantFrom}.${urgencyWindowDays}.${NO_DUE_DATE.indexOf(noDueDate)}`,
+    ([teamId, { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent }]) =>
+      `${shorten(teamId, TEAM_PREFIX)}.${importantFrom}.${urgencyWindowDays}.${NO_DUE_DATE.indexOf(noDueDate)}${
+        dropAlertPercent === DEFAULT_RULES.dropAlertPercent ? "" : `.${dropAlertPercent}`
+      }`,
   );
   const issues = [...overrides].map(
     ([issueId, quadrant]) => `${shorten(issueId, ISSUE_PREFIX)}.${QUADRANTS.indexOf(quadrant)}`,
@@ -83,13 +87,21 @@ export function decodeDemo(value: string | undefined): DemoSaved {
   if (!value || value.length > MAX_COOKIE_LENGTH) return saved;
   const [version, teams = "", issues = "", assignees = ""] = value.split("~");
   if (version !== VERSION) return saved;
-  for (const [id, importantFrom, urgencyWindowDays, noDueDate] of fields(teams, 4)) {
+  for (const [id, importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent] of fields(
+    teams,
+    4,
+    5,
+  )) {
     const undated = NO_DUE_DATE[index(noDueDate)];
     if (!undated || !TEAM_IDS.has(TEAM_PREFIX + id)) continue;
     const { rules } = parseRules({
       importantFrom: Number(importantFrom),
       urgencyWindowDays: Number(urgencyWindowDays),
       noDueDate: undated,
+      dropAlertPercent:
+        dropAlertPercent === undefined
+          ? DEFAULT_RULES.dropAlertPercent
+          : wholeNumber(dropAlertPercent),
     });
     if (rules) saved.rules.set(TEAM_PREFIX + id, rules);
   }
@@ -116,9 +128,14 @@ function shorten(id: string, prefix: string): string {
 }
 
 /** A list's entries, each split into its fields; entries with more or fewer are dropped. */
-function fields(list: string, count: number): string[][] {
+function fields(list: string, min: number, max = min): string[][] {
   const entries = list ? list.split("!").map((entry) => entry.split(".")) : [];
-  return entries.filter((entry) => entry.length === count);
+  return entries.filter((entry) => entry.length >= min && entry.length <= max);
+}
+
+/** Digits as a number; anything else as NaN, which parseRules turns away. */
+function wholeNumber(digits: string): number {
+  return /^\d+$/.test(digits) ? Number(digits) : Number.NaN;
 }
 
 /** An enum's index, or -1 when it isn't a whole number. */

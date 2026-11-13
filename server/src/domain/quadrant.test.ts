@@ -224,8 +224,8 @@ describe("parseRules", () => {
   it("accepts the defaults and the extremes", () => {
     for (const rules of [
       DEFAULT_RULES,
-      { importantFrom: 1, urgencyWindowDays: 1, noDueDate: "urgent" },
-      { importantFrom: 4, urgencyWindowDays: 365, noDueDate: "notUrgent" },
+      { importantFrom: 1, urgencyWindowDays: 1, noDueDate: "urgent", dropAlertPercent: 1 },
+      { importantFrom: 4, urgencyWindowDays: 365, noDueDate: "notUrgent", dropAlertPercent: 99 },
     ] satisfies QuadrantRules[]) {
       expect(parseRules(rules)).toEqual({ rules });
     }
@@ -241,6 +241,10 @@ describe("parseRules", () => {
       expect(problemFields({ ...DEFAULT_RULES, urgencyWindowDays })).toEqual(["urgencyWindowDays"]);
     },
   );
+
+  it.each([0, 100, 12.5, Number.NaN])("refuses a Drop alert of %s%%", (dropAlertPercent) => {
+    expect(problemFields({ ...DEFAULT_RULES, dropAlertPercent })).toEqual(["dropAlertPercent"]);
+  });
 
   it("reports every problem at once", () => {
     expect(parseRules({ ...DEFAULT_RULES, importantFrom: 0, urgencyWindowDays: 0 })).toEqual({

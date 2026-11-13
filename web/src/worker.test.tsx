@@ -68,7 +68,14 @@ function boardData(viewer: unknown, team: BoardData["team"] = defaultTeam) {
   return { today: "2026-10-18", viewer, teams: [avengers, ops], team };
 }
 
-const defaultRules: Rules = { importantFrom: 3, urgencyWindowDays: 14, noDueDate: "NOT_URGENT" };
+const defaultRules: Rules = {
+  importantFrom: 3,
+  urgencyWindowDays: 14,
+  noDueDate: "NOT_URGENT",
+  dropAlertPercent: 40,
+};
+
+const healthyBacklog = { rotting: false, reason: "1 of 4 open issues (25%) are in Drop" };
 
 const wanda = { id: "u-wanda", name: "Wanda Maximoff", avatarUrl: null };
 
@@ -108,6 +115,7 @@ const defaultTeam: BoardData["team"] = {
   ...avengers,
   rules: defaultRules,
   weather: { kind: "STORM", reason: "Tony Stark is in a storm" },
+  backlogRot: healthyBacklog,
   rebalanceNow: [nowMove],
   rebalanceForecast: [forecastMove],
   people: [
@@ -226,6 +234,20 @@ describe("web worker", () => {
     expect(page).toContain("Tony Stark is in a storm");
     expect(page).toContain('data-weather="storm"');
     expect(page).toContain('<meta name="theme-color" content="#2a2843" />');
+  });
+
+  it("flags backlog rot in the header only past the team's alert", async () => {
+    const reason = "12 of 20 open issues (60%) are in Drop, over the team's 40% alert";
+    const rotting = { ...defaultTeam, backlogRot: { rotting: true, reason } };
+    const { bindings } = serverReturning(fury, () =>
+      Response.json({ data: boardData(fury, rotting) }),
+    );
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain("Backlog rot:");
+    expect(page).toContain(reason);
+
+    const healthy = await (await app.request("/", {}, serverReturning(fury).bindings)).text();
+    expect(healthy).not.toContain("Backlog rot:");
   });
 
   it("marks issues placed by hand, saying where the rules would put them", async () => {
@@ -443,6 +465,7 @@ describe("web worker", () => {
       ...avengers,
       rules: defaultRules,
       weather: { kind: "SUNNY" as const, reason: "Nothing urgent anywhere" },
+      backlogRot: { rotting: false, reason: "No open issues" },
       rebalanceNow: [],
       rebalanceForecast: [],
       people: [

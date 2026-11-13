@@ -11,7 +11,12 @@ describe("Store", () => {
   });
 
   it("keeps a team's rules, and replaces them on the next save", async () => {
-    const rules = { importantFrom: 2, urgencyWindowDays: 7, noDueDate: "urgent" } as const;
+    const rules = {
+      importantFrom: 2,
+      urgencyWindowDays: 7,
+      noDueDate: "urgent",
+      dropAlertPercent: 25,
+    } as const;
     await store().setRules("team-a", rules);
     expect(await store().rules(["team-a"])).toEqual(new Map([["team-a", rules]]));
     await store().setRules("team-a", { ...rules, urgencyWindowDays: 21 });

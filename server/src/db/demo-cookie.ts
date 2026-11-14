@@ -2,16 +2,20 @@
 // JSON spends most of that on quotes (escaped to %22) and on the demo's long ids. So the cookie is
 // plain text in characters a cookie carries unescaped, with the ids' fixed prefixes dropped:
 //
-//   1~avengers.2.7.0!ops.3.30.1.25~avg-1.3!ops-4.1~avg-10.wanda
+//   1~avengers.2.7.0!ops.3.30.1.25~avg-1.3!ops-4.1~avg-10.wanda~tony.50
 //   │ └ rules: team.importantFrom.urgencyWindowDays.noDueDate[.dropAlertPercent]
 //   │          (the alert left off at its default, as cookies from before it have it)
 //   │                                └ overrides: issue.quadrant
-//   │                                            └ assignees: issue.user, left off when empty
+//   │                                            └ assignees: issue.user
+//   │                                                         └ capacities: user.percent
 //   └ format version
+//
+// Trailing sections are left off when empty, as cookies from before them have them.
 //
 // Enums are their index in QUADRANTS / NO_DUE_DATE. Everything read back is checked again,
 // since the cookie comes from the client.
 
+import { FULL_TIME, parseCapacity } from "../domain/capacity";
 import {
   DEFAULT_RULES,
   NO_DUE_DATE,
@@ -22,12 +26,17 @@ import {
 } from "../domain/quadrant";
 import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssue } from "../linear/demo";
 
-/** What the demo keeps for a visitor: the rules and quadrants they set, and who has which issue. */
+/**
+ * What the demo keeps for a visitor: the rules and quadrants they set, who has which issue, and
+ * who works part time.
+ */
 export interface DemoSaved {
   rules: Map<string, QuadrantRules>;
   overrides: Map<string, Quadrant>;
   /** User ids by issue id, for issues handed to someone the demo doesn't give them to. */
   assignees: Map<string, string>;
+  /** Capacities by user id, for anyone not full time. */
+  capacities: Map<string, number>;
 }
 
 export const DEMO_COOKIE = "lw_demo";
@@ -53,7 +62,7 @@ const USER_IDS = new Set(
   [DEMO_TEAM, DEMO_OPS_TEAM].flatMap((team) => team.members.map(({ id }) => id)),
 );
 
-export function encodeDemo({ rules, overrides, assignees }: DemoSaved): string {
+export function encodeDemo({ rules, overrides, assignees, capacities }: DemoSaved): string {
   const teams = [...rules].map(
     ([teamId, { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent }]) =>
       `${shorten(teamId, TEAM_PREFIX)}.${importantFrom}.${urgencyWindowDays}.${NO_DUE_DATE.indexOf(noDueDate)}${
@@ -63,17 +72,15 @@ export function encodeDemo({ rules, overrides, assignees }: DemoSaved): string {
   const issues = [...overrides].map(
     ([issueId, quadrant]) => `${shorten(issueId, ISSUE_PREFIX)}.${QUADRANTS.indexOf(quadrant)}`,
   );
-  const sections = [VERSION, teams.join("!"), issues.join("!")];
-  if (assignees.size > 0) {
-    sections.push(
-      [...assignees]
-        .map(
-          ([issueId, userId]) =>
-            `${shorten(issueId, ISSUE_PREFIX)}.${shorten(userId, USER_PREFIX)}`,
-        )
-        .join("!"),
-    );
-  }
+  const handed = [...assignees].map(
+    ([issueId, userId]) => `${shorten(issueId, ISSUE_PREFIX)}.${shorten(userId, USER_PREFIX)}`,
+  );
+  // Hundredths, as parseCapacity keeps them, so a whole percent.
+  const parts = [...capacities].map(
+    ([userId, factor]) => `${shorten(userId, USER_PREFIX)}.${Math.round(factor * 100)}`,
+  );
+  const sections = [VERSION, teams.join("!"), issues.join("!"), handed.join("!"), parts.join("!")];
+  while (sections.length > 3 && sections.at(-1) === "") sections.pop();
   return sections.join("~");
 }
 
@@ -83,9 +90,14 @@ export function encodeDemo({ rules, overrides, assignees }: DemoSaved): string {
  * at all, or from another version, reads as nothing saved.
  */
 export function decodeDemo(value: string | undefined): DemoSaved {
-  const saved: DemoSaved = { rules: new Map(), overrides: new Map(), assignees: new Map() };
+  const saved: DemoSaved = {
+    rules: new Map(),
+    overrides: new Map(),
+    assignees: new Map(),
+    capacities: new Map(),
+  };
   if (!value || value.length > MAX_COOKIE_LENGTH) return saved;
-  const [version, teams = "", issues = "", assignees = ""] = value.split("~");
+  const [version, teams = "", issues = "", assignees = "", capacities = ""] = value.split("~");
   if (version !== VERSION) return saved;
   for (const [id, importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent] of fields(
     teams,
@@ -112,6 +124,13 @@ export function decodeDemo(value: string | undefined): DemoSaved {
   for (const [id, user] of fields(assignees, 2)) {
     if (demoIssue(ISSUE_PREFIX + id) && USER_IDS.has(USER_PREFIX + user)) {
       saved.assignees.set(ISSUE_PREFIX + id, USER_PREFIX + user);
+    }
+  }
+  for (const [user, percent] of fields(capacities, 2)) {
+    const parsed = parseCapacity(wholeNumber(percent ?? "") / 100);
+    // Full time is nothing to keep, as setCapacity has it.
+    if (USER_IDS.has(USER_PREFIX + user) && "factor" in parsed && parsed.factor !== FULL_TIME) {
+      saved.capacities.set(USER_PREFIX + user, parsed.factor);
     }
   }
   return saved;

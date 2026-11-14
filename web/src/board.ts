@@ -124,6 +124,11 @@ export const MAX_URGENCY_WINDOW_DAYS = 365;
 export interface PersonMatrix {
   /** Null for the team's unassigned issues. */
   assignee: Person | null;
+  /**
+   * How much of a full-time week they work, more than 0 up to 1. Their weather compares their
+   * load with the team average times this. Null for the unassigned issues.
+   */
+  capacity: number | null;
   matrix: Matrix;
   /** Null for the unassigned issues: nobody's load. */
   weather: PersonWeather | null;
@@ -171,6 +176,7 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
     id
     name
     avatarUrl
+    capacity
     weather { kind reason overdue }
     forecast { startsOn endsOn weather { kind reason } summary turningUrgent { identifier } }
     matrix { ${MATRIX_FIELDS} }
@@ -216,7 +222,12 @@ export type TeamBoardData = Team &
     rules: Rules;
     weather: Weather;
     backlogRot: BacklogRot;
-    people: (Person & { matrix: Matrix; weather: PersonWeather; forecast: ForecastWeek[] })[];
+    people: (Person & {
+      capacity: number;
+      matrix: Matrix;
+      weather: PersonWeather;
+      forecast: ForecastWeek[];
+    })[];
     unassigned: Matrix;
   };
 
@@ -234,14 +245,23 @@ export function teamBoard({
   unassigned,
   ...team
 }: TeamBoardData): Pick<Board, "team" | "people"> {
-  const matrices: PersonMatrix[] = people.map(({ matrix, weather, forecast, ...assignee }) => ({
-    assignee,
-    matrix,
-    weather,
-    forecast,
-  }));
+  const matrices: PersonMatrix[] = people.map(
+    ({ matrix, weather, forecast, capacity, ...assignee }) => ({
+      assignee,
+      capacity,
+      matrix,
+      weather,
+      forecast,
+    }),
+  );
   if (total(unassigned) > 0) {
-    matrices.push({ assignee: null, matrix: unassigned, weather: null, forecast: null });
+    matrices.push({
+      assignee: null,
+      capacity: null,
+      matrix: unassigned,
+      weather: null,
+      forecast: null,
+    });
   }
   return { team, people: matrices };
 }
@@ -263,6 +283,16 @@ export function runningLate(people: PersonMatrix[]): RunningLate[] {
       ? [{ person: assignee, overdue: weather.overdue }]
       : [],
   );
+}
+
+/** The capacities the board offers, full time first. Any other the server holds is offered too. */
+export const CAPACITIES = [1, 0.8, 0.6, 0.5, 0.4, 0.2];
+
+/** A capacity as the board names it, e.g. "Full time", "Half time" or "80% time". */
+export function describeCapacity(factor: number): string {
+  if (factor === 1) return "Full time";
+  if (factor === 0.5) return "Half time";
+  return `${Math.round(factor * 100)}% time`;
 }
 
 /** The number of issues in a matrix. */

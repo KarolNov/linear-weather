@@ -13,7 +13,7 @@ Each developer's assigned issues are sorted into an **Eisenhower matrix** (Do / 
 
   A PM can still override any issue by hand.
 - **Backlog rot.** When more than 40% of a team's open issues (configurable per team) sit in Drop, the board's header flags it: a backlog filling with work nobody means to do.
-- **Weather (now).** Each person's current urgent load compared with the team average: ☀️ ⛅ 🌧️ ⛈️
+- **Weather (now).** Each person's current urgent load compared with their fair share: the team average, scaled by how much of a full-time week they work (their **capacity**, set on the board). ☀️ ⛅ 🌧️ ⛈️
 - **Forecast (next weeks).** Due dates show when each issue will turn urgent, so the app can project load week by week: `☀️ ☀️ 🌧️ ⛈️`, with why ("3 High-priority issues become urgent"). Undated work shows up as 🌫️ fog.
 - **Rebalance.** The app suggests reassignments to fix today's storm or the one coming in week 3, and applies them in Linear with one click.
 
@@ -29,7 +29,7 @@ Everything deploys to Cloudflare Workers.
 |---|---|
 | Workspace | [pnpm](https://pnpm.io) workspaces: `server/`, `web/` and `ui/` (shared Preact components) |
 | Server | [Hono](https://hono.dev) Worker hosting [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server) with a code-first [Pothos](https://pothos-graphql.dev) schema |
-| Storage | [D1](https://developers.cloudflare.com/d1/) (Cloudflare's SQLite) for team rules and hand-placed issues, through [Drizzle ORM](https://orm.drizzle.team). Linear tokens live in KV |
+| Storage | [D1](https://developers.cloudflare.com/d1/) (Cloudflare's SQLite) for team rules, hand-placed issues and people's capacity, through [Drizzle ORM](https://orm.drizzle.team). Linear tokens live in KV |
 | Web | [Preact](https://preactjs.com) server-rendered by a Hono Worker, hydrated in the browser; built with [Vite](https://vite.dev) and the [Cloudflare Vite plugin](https://developers.cloudflare.com/workers/vite-plugin/) |
 | Styling | [StyleX](https://stylexjs.com), compiled at build time by `@stylexjs/unplugin`. Theme tokens (sky gradients, weather colours) live in `ui/src/tokens.stylex.ts` |
 | Tests | [Vitest](https://vitest.dev); server tests run inside workerd via [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/) |
@@ -107,8 +107,9 @@ type Suggestion {     # "Move AVG-11 (Delegate) from Tony → Wanda (☀️ now)
 }
 
 type User {           # teamId defaults to the team it was reached through
+  capacity: Float!    # share of a full-time week, 0.5 = half time; the same on every team
   matrix(teamId: ID): Matrix!
-  weather(teamId: ID, metric: LoadMetric): Weather!   # urgent load vs the team average
+  weather(teamId: ID, metric: LoadMetric): Weather!   # urgent load vs teamAverage × capacity
   forecast(teamId: ID, weeks: Int! = 4, metric: LoadMetric): [ForecastWeek!]!   # 1 to 12 weeks
 }
 type BacklogRot { drop: Int!  total: Int!  share: Float!  alertPercent: Int!  rotting: Boolean!  reason: String! }
@@ -127,16 +128,22 @@ type Mutation {
   overrideQuadrant(issueId: ID!, quadrant: Quadrant!): OverrideResult!
   clearOverride(issueId: ID!): OverrideResult!
   reassignIssue(issueId: ID!, userId: ID!): ReassignResult!   # writes to Linear
+  setCapacity(teamId: ID!, userId: ID!, factor: Float!): SetCapacityResult!   # answers with that team
 }
 union UpdateRulesResult = UpdateRulesSuccess | InvalidRules | TeamNotFound | Unauthorized | LinearRateLimited
 union OverrideResult = OverrideSuccess | IssueNotFound | Unauthorized | LinearRateLimited
 union ReassignResult = ReassignSuccess | IssueNotFound | Unauthorized | LinearRateLimited
+union SetCapacityResult = SetCapacitySuccess | InvalidCapacity | TeamNotFound | UserNotFound | Unauthorized | LinearRateLimited
 interface Error { message: String! }   # every failure above implements it
 ```
 
+### Fair share
+
+Weather compares each person with their **fair share** of the team's urgent load, not the plain average. `teamAverage` is the team's load per full-time person, `Σload / Σcapacity` over everyone whose load can be measured, and a person's fair share is `teamAverage × capacity`. So someone at half time with 6 urgent issues on a team averaging 6 per full-time person reads "6 urgent issues at half time, 2.0× their share". With everyone at full time it's the mean, as before. It depends only on totals, so handing an issue from one person to another doesn't move it, which rebalancing relies on.
+
 ### The forecast
 
-`forecast(weeks:)` takes a field argument, so one query can ask for 4 weeks on the board and 12 somewhere else, each with its own alias. (A REST API would need a query string or another endpoint.) Each week projects every matrix to the week's last day (`server/src/domain/forecast.ts`) and reads the weather as it is now, against that week's team average. The projection assumes:
+`forecast(weeks:)` takes a field argument, so one query can ask for 4 weeks on the board and 12 somewhere else, each with its own alias. (A REST API would need a query string or another endpoint.) Each week projects every matrix to the week's last day (`server/src/domain/forecast.ts`) and reads the weather as it is now, against that week's fair share. The projection assumes:
 
 - **Issues turn urgent when their due dates say** (`becomesUrgentOn`), and issues placed by hand stay where they were put.
 - **Work is done by its due date**, so it leaves the load once that's passed. Work that's already overdue has missed its date, so it stays, and keeps the weather stormy, until it's done.
@@ -147,7 +154,7 @@ The team's `worst` week is the most lopsided one (storm, then rain, then fog, th
 
 ### Rebalancing
 
-`Team.rebalanceSuggestions(horizon:)` lists moves that would bring everyone's urgent load within the weather's thresholds, in the order to make them (`server/src/domain/rebalance.ts`). It's greedy: while someone is under rain or in a storm by load, the busiest person hands the least busy one issue, the one that leaves the two closest, and the weather is read again.
+`Team.rebalanceSuggestions(horizon:)` lists moves that would bring everyone's urgent load within the weather's thresholds, in the order to make them (`server/src/domain/rebalance.ts`). It's greedy: while someone is under rain or in a storm by load, the busiest person for their capacity hands the least busy one issue, the one that evens the two out most (lowers `load² / capacity` summed over both the most; with everyone full time, the one that leaves them closest), and the weather is read again.
 
 - **`NOW`** moves work that is urgent today.
 - **`FORECAST`** heads storms off before they arrive, starting from the board as the `NOW` moves leave it. It settles the weeks in order, each before the next, moving work that isn't urgent yet but will be by that week's end. An issue weighs on every week from when it turns urgent until it's due, so a move has to even out the giver's and taker's load across all those weeks together (their sum of squares has to drop). Otherwise, easing week 3 could bury the taker in week 2, and the next round would send the issue back.
@@ -198,10 +205,11 @@ Linear holds the issues. What only this app knows lives in a D1 database (bindin
 
 - **`quadrant_rules`**: one row per team that changed its rules. Teams without a row use the defaults above, so a new team needs no setup.
 - **`quadrant_override`**: issues a PM placed by hand, keyed by Linear's issue id, so an override follows the issue if it moves teams. An overridden issue reports `quadrantSource: OVERRIDE`, and its `placementReason` still says where the rules would put it. `becomesUrgentOn` keeps following the due date.
+- **`member_capacity`**: how much of a full-time week someone works, more than 0 up to 1, keyed by Linear's user id so it's the same on every team. Only people who aren't full time have a row. Someone split across two teams counts at their full capacity on each, so both boards overestimate them.
 
 CHECK constraints keep values the board can't use out of the database, including non-integer rules that GraphQL's `Int` couldn't send.
 
-Within a request, rules and overrides are read through two DataLoaders (`server/src/placements.ts`), so every team and person resolved in the same tick shares one query for rules and one for overrides. The ids go in as a single JSON parameter (`IN (SELECT value FROM json_each(?))`), because D1 binds at most 100 parameters per statement and a team can have thousands of open issues. If D1 fails, the board still loads, using the default rules and no hand placements, and the error is logged.
+Within a request, rules, overrides and capacities are read through DataLoaders (`server/src/placements.ts`), so every team and person resolved in the same tick shares one query for each. The ids go in as a single JSON parameter (`IN (SELECT value FROM json_each(?))`), because D1 binds at most 100 parameters per statement and a team can have thousands of open issues. If D1 fails, the board still loads, using the default rules, no hand placements and everyone full time, and the error is logged.
 
 ### Migrations
 

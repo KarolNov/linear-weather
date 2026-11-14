@@ -121,6 +121,7 @@ const defaultTeam: BoardData["team"] = {
   people: [
     {
       ...tony,
+      capacity: 1,
       matrix: tonysMatrix,
       weather: { kind: "STORM" as const, reason: "4 urgent points", overdue: 0 },
       forecast: [
@@ -227,6 +228,14 @@ describe("web worker", () => {
     expect(page).toContain("No date");
   });
 
+  it("shows how much each person works, to change from the board", async () => {
+    const { bindings } = serverReturning(fury);
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain("Tony Stark's capacity");
+    expect(page).toContain('<option selected value="1">Full time</option>');
+    expect(page).toContain(">Half time</option>");
+  });
+
   it("shows the team's weather and why, and lets it set the sky and the browser's chrome", async () => {
     const { bindings } = serverReturning(fury);
     const page = await (await app.request("/", {}, bindings)).text();
@@ -257,6 +266,7 @@ describe("web worker", () => {
       people: [
         {
           ...tony,
+          capacity: 1,
           matrix: {
             ...emptyMatrix,
             counts: { ...emptyMatrix.counts, do: 1 },
@@ -379,17 +389,19 @@ describe("web worker", () => {
     const people: PersonMatrix[] = [
       {
         assignee: tony,
+        capacity: 1,
         matrix: tonysMatrix,
         weather: { kind: "STORM", reason: "2 issues overdue", overdue: 2 },
         forecast: [],
       },
       {
         assignee: wanda,
+        capacity: 1,
         matrix: emptyMatrix,
         weather: { kind: "SUNNY", reason: "Nothing overdue", overdue: 0 },
         forecast: [],
       },
-      { assignee: null, matrix: tonysMatrix, weather: null, forecast: null },
+      { assignee: null, capacity: null, matrix: tonysMatrix, weather: null, forecast: null },
     ];
     expect(runningLate(people)).toEqual([{ person: tony, overdue: 2 }]);
   });
@@ -471,6 +483,7 @@ describe("web worker", () => {
       people: [
         {
           ...tony,
+          capacity: 1,
           matrix: emptyMatrix,
           weather: { kind: "SUNNY" as const, reason: "Nothing urgent", overdue: 0 },
           forecast: [],

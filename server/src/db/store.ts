@@ -1,11 +1,12 @@
-// Team rules and hand-placed issues, kept in D1. Linear knows nothing about either.
+// Team rules, hand-placed issues and people's capacity, kept in D1. Linear knows nothing of them.
 
 import { eq, sql } from "drizzle-orm";
 import { type DrizzleD1Database, drizzle } from "drizzle-orm/d1";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
+import { FULL_TIME } from "../domain/capacity";
 import type { Overrides } from "../domain/matrix";
 import { DEFAULT_RULES, type Quadrant, type QuadrantRules } from "../domain/quadrant";
-import { quadrantOverride, quadrantRules } from "./tables";
+import { memberCapacity, quadrantOverride, quadrantRules } from "./tables";
 
 export class Store {
   private readonly db: DrizzleD1Database;
@@ -59,6 +60,29 @@ export class Store {
   /** Hands the issue back to the rules. */
   async clearOverride(issueId: string): Promise<void> {
     await this.db.delete(quadrantOverride).where(eq(quadrantOverride.issueId, issueId));
+  }
+
+  /** The capacity of whichever of these people don't work full time. */
+  async capacities(userIds: readonly string[]): Promise<Map<string, number>> {
+    if (userIds.length === 0) return new Map();
+    const rows = await this.db
+      .select({ userId: memberCapacity.userId, factor: memberCapacity.factor })
+      .from(memberCapacity)
+      .where(inIds(memberCapacity.userId, userIds));
+    return new Map(rows.map((row) => [row.userId, row.factor]));
+  }
+
+  /** How much of a full-time week someone works. Full time is nothing to keep. */
+  async setCapacity(userId: string, factor: number): Promise<void> {
+    if (factor === FULL_TIME) {
+      await this.db.delete(memberCapacity).where(eq(memberCapacity.userId, userId));
+      return;
+    }
+    const row = { factor, updatedAt: new Date().toISOString() };
+    await this.db
+      .insert(memberCapacity)
+      .values({ userId, ...row })
+      .onConflictDoUpdate({ target: memberCapacity.userId, set: row });
   }
 }
 

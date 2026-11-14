@@ -146,6 +146,63 @@ describe("rebalance now", () => {
   });
 });
 
+describe("rebalance with capacity", () => {
+  it("picks the busiest for their capacity, not by load alone", () => {
+    // 12 over 2.5 people: 4.8 per full-time person. Ana's share is 2.4, so her 4 is 1.67×; Ben's
+    // 5 is 1.04×. Everyone full time, Ben would be the busiest and nobody overloaded.
+    const team = [
+      {
+        ...person(
+          "Ana",
+          times(4, () => issue(SOON)),
+        ),
+        capacity: 0.5,
+      },
+      person(
+        "Ben",
+        times(5, () => issue(SOON)),
+      ),
+      person(
+        "Cy",
+        times(3, () => issue(SOON)),
+      ),
+    ];
+    const suggestions = rebalance(team, "now", "issues", TODAY);
+    expect(moves(suggestions).map(([, ...move]) => move)).toEqual([["Ana", "Cy", null]]);
+    expect(suggestions[0]?.reason).toMatch(/^Ana goes from 1\.67× to 1\.25× their share, Cy from /);
+    expect(suggestions[0]?.fromWeather).toBe("cloudy");
+    expect(
+      rebalance(
+        team.map(({ name, matrix }) => ({ name, matrix })),
+        "now",
+        "issues",
+        TODAY,
+      ),
+    ).toEqual([]);
+  });
+
+  it("hands a part-timer only their share", () => {
+    // 9 over 2.5 people: 3.6 per full-time person, so Ben's share is 1.8. Full time, he'd take 3.
+    const team = [
+      person(
+        "Ana",
+        times(6, () => issue(SOON)),
+      ),
+      { ...person("Ben", []), capacity: 0.5 },
+      person(
+        "Cy",
+        times(3, () => issue(SOON)),
+      ),
+    ];
+    expect(moves(rebalance(team, "now", "issues", TODAY)).map(([, ...move]) => move)).toEqual([
+      ["Ana", "Ben", null],
+      ["Ana", "Ben", null],
+    ]);
+    const fullTime = team.map(({ name, matrix }) => ({ name, matrix }));
+    expect(rebalance(fullTime, "now", "issues", TODAY)).toHaveLength(3);
+  });
+});
+
 describe("rebalance forecast", () => {
   it("moves work before it turns urgent, in the week the storm would arrive", () => {
     // Due Nov 18: urgent from Nov 5, in the third week.

@@ -8,6 +8,7 @@ import {
   type LoadMetric,
   list,
   loadMetricFor,
+  type Staffed,
   teamWeather,
   type Weather,
   type WeatherKind,
@@ -21,7 +22,7 @@ export interface ForecastWeek<I> {
   /** The week's first day: today for the first week, then every 7 days. */
   startsOn: CalendarDate;
   endsOn: CalendarDate;
-  /** The urgent load expected by the week's end, against that week's team average. */
+  /** The urgent load expected by the week's end, against that week's fair share. */
   weather: Weather;
   /** Issues the rules make urgent during the week (not those already urgent), most pressing first. */
   turningUrgent: Placed<I>[];
@@ -53,13 +54,14 @@ export function isForecastHorizon(weeks: number): boolean {
  *   overdue has missed that, so it stays (and keeps the weather stormy) until it's done.
  *
  * Undated work never turns urgent, so someone holding it with nothing urgent projected is fog,
- * as it is now.
+ * as it is now. Each week compares people with their fair share of that week's load, as the
+ * weather now does.
  *
  * Without a `metric`, load is counted in points only if every issue urgent in any projected
  * week is estimated, so work arriving later can't turn a week to fog for want of an estimate.
  */
 export function forecast<I extends MatrixIssue>(
-  people: readonly { name: string; matrix: Matrix<I> }[],
+  people: readonly Staffed<I>[],
   metric: LoadMetric | null,
   today: CalendarDate,
   weeks: number,
@@ -82,7 +84,11 @@ export function forecast<I extends MatrixIssue>(
     return { startsOn, endsOn: addDays(startsOn, 6) };
   });
   const projections = spans.map(({ endsOn }) =>
-    people.map(({ name, matrix }) => ({ name, matrix: project(matrix, from, today, endsOn) })),
+    people.map(({ name, matrix, capacity }) => ({
+      name,
+      capacity,
+      matrix: project(matrix, from, today, endsOn),
+    })),
   );
   const counted =
     metric ?? loadMetricFor(projections.flatMap((projected) => projected.map((p) => p.matrix)));

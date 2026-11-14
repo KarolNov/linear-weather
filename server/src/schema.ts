@@ -4,6 +4,7 @@
 import SchemaBuilder from "@pothos/core";
 import { GraphQLError } from "graphql";
 import { type BacklogRot, backlogRot } from "./domain/backlog";
+import { parseCapacity } from "./domain/capacity";
 import {
   type ForecastWeek,
   forecast,
@@ -97,17 +98,20 @@ function teamMatrix(
   });
 }
 
-/** Each of a team's people with their matrix. */
+/** Each of a team's people with their matrix and capacity. */
 async function peopleMatrices(
   context: GraphQLContext,
   teamId: string,
-): Promise<{ person: Assignee; matrix: Matrix<TeamIssue> }[]> {
+): Promise<{ person: Assignee; matrix: Matrix<TeamIssue>; capacity: number }[]> {
   const { people } = await (await signedIn(context)).teamWork(teamId);
   return Promise.all(
-    people.map(async (person) => ({
-      person,
-      matrix: await teamMatrix(context, teamId, person.id),
-    })),
+    people.map(async (person) => {
+      const [matrix, capacity] = await Promise.all([
+        teamMatrix(context, teamId, person.id),
+        context.placements.capacity(person.id),
+      ]);
+      return { person, matrix, capacity };
+    }),
   );
 }
 
@@ -132,7 +136,7 @@ async function teamWeatherOf(
   return once(context, `weather:${teamId}:${metric}`, async () => {
     const people = await peopleMatrices(context, teamId);
     const weather = teamWeather(
-      people.map(({ person, matrix }) => ({ name: person.name, matrix })),
+      people.map(({ person, matrix, capacity }) => ({ name: person.name, matrix, capacity })),
       metric,
       context.today,
     );
@@ -159,7 +163,7 @@ async function teamForecastOf(
   return once(context, `forecast:${teamId}:${metric ?? "auto"}:${weeks}`, async () => {
     const people = await peopleMatrices(context, teamId);
     const projected = forecast(
-      people.map(({ person, matrix }) => ({ name: person.name, matrix })),
+      people.map(({ person, matrix, capacity }) => ({ name: person.name, matrix, capacity })),
       metric ?? null,
       context.today,
       weeks,
@@ -183,10 +187,11 @@ function rebalanceNowOf(context: GraphQLContext, teamId: string, metric: LoadMet
     // Work goes only to members: someone holding the team's issues from elsewhere may have left.
     const { memberIds } = await (await signedIn(context)).teamWork(teamId);
     return rebalanceNow(
-      people.map(({ person, matrix }) => ({
+      people.map(({ person, matrix, capacity }) => ({
         ...person,
         teamId,
         matrix,
+        capacity,
         takesWork: memberIds.has(person.id),
       })),
       metric,
@@ -276,7 +281,8 @@ const NoDueDateEnum = builder.enumType("NoDueDate", {
 });
 
 const WeatherKindEnum = builder.enumType("WeatherKind", {
-  description: "How heavy urgent (Do + Delegate) load is, against the team's average.",
+  description:
+    "How heavy urgent (Do + Delegate) load is, against a fair share of the team's: the team average, scaled by capacity.",
   values: {
     SUNNY: {
       value: "sunny",
@@ -311,26 +317,28 @@ const LoadMetricEnum = builder.enumType("LoadMetric", {
 });
 
 const WeatherRef = builder.objectRef<Weather>("Weather").implement({
-  description: "The weather now: urgent (Do + Delegate) load against the team's average.",
+  description:
+    "The weather now: urgent (Do + Delegate) load against a fair share of the team's: the team average, scaled by capacity.",
   fields: (t) => ({
     kind: t.expose("kind", { type: WeatherKindEnum }),
     metric: t.expose("metric", { type: LoadMetricEnum }),
     load: t.exposeFloat("load", {
       nullable: true,
       description:
-        "A person's urgent load; for a team, its busiest person's. Null when it can't be measured.",
+        "A person's urgent load; for a team, the load of whoever is busiest for their capacity, so compare it with teamAverage times their capacity, not teamAverage alone. Null when it can't be measured.",
     }),
     teamAverage: t.exposeFloat("teamAverage", {
       nullable: true,
       description:
-        "The mean urgent load of the team's people whose load could be measured. Null when fewer than two could: nobody to compare with.",
+        "The team's urgent load per full-time person: the load of everyone who could be measured, over their capacities added up. With everyone full time, the mean. A person's fair share is this times their capacity. Null when fewer than two could be measured: nobody to compare with.",
     }),
     overdue: t.exposeInt("overdue", {
       description:
         "Urgent (Do or Delegate) issues past their due date, which mean a storm whatever the load; for a team, everyone's.",
     }),
     reason: t.exposeString("reason", {
-      description: 'Why, e.g. "13 urgent points, 3.07× the team average; 2 issues overdue".',
+      description:
+        'Why, e.g. "13 urgent points, 3.07× the team average; 2 issues overdue" or "6 urgent issues at half time, 1.6× their share".',
     }),
   }),
 });
@@ -555,6 +563,11 @@ UserRef.implement({
     id: t.exposeID("id"),
     name: t.exposeString("name"),
     avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
+    capacity: t.float({
+      description:
+        "How much of a full-time week they work, more than 0 up to 1: 0.5 is half time. The same on every team. Weather compares their urgent load with the team average times this.",
+      resolve: (user, _args, context) => context.placements.capacity(user.id),
+    }),
     organization: t.field({
       type: OrganizationRef,
       // A Linear user belongs to one workspace: the signed-in user's.
@@ -795,6 +808,20 @@ interface IssueNotFound {
   message: string;
   issueId: string;
 }
+interface UserNotFound {
+  __typename: "UserNotFound";
+  message: string;
+  userId: string;
+}
+interface InvalidCapacity {
+  __typename: "InvalidCapacity";
+  message: string;
+}
+interface SetCapacitySuccess {
+  __typename: "SetCapacitySuccess";
+  user: UserModel;
+  team: Team;
+}
 interface InvalidRules {
   __typename: "InvalidRules";
   message: string;
@@ -816,7 +843,14 @@ interface ReassignSuccess {
 }
 
 /** Every failure, so the Error interface resolves to whichever this is. */
-type Failure = Unauthorized | LinearRateLimited | TeamNotFound | IssueNotFound | InvalidRules;
+type Failure =
+  | Unauthorized
+  | LinearRateLimited
+  | TeamNotFound
+  | IssueNotFound
+  | UserNotFound
+  | InvalidRules
+  | InvalidCapacity;
 
 const ErrorRef = builder.interfaceRef<Failure>("Error").implement({
   description: "A mutation that didn't happen, and why, for showing the user.",
@@ -852,6 +886,32 @@ const IssueNotFoundRef = builder.objectRef<IssueNotFound>("IssueNotFound").imple
   interfaces: [ErrorRef],
   fields: (t) => ({ issueId: t.exposeID("issueId") }),
 });
+
+const UserNotFoundRef = builder.objectRef<UserNotFound>("UserNotFound").implement({
+  description: "Nobody with this id on the team: not a member, and holding none of its issues.",
+  interfaces: [ErrorRef],
+  fields: (t) => ({ userId: t.exposeID("userId") }),
+});
+
+const InvalidCapacityRef = builder.objectRef<InvalidCapacity>("InvalidCapacity").implement({
+  description: "A capacity that isn't more than 0 and at most 1. Nothing was saved.",
+  interfaces: [ErrorRef],
+  fields: () => ({}),
+});
+
+const SetCapacitySuccessRef = builder
+  .objectRef<SetCapacitySuccess>("SetCapacitySuccess")
+  .implement({
+    description:
+      "The capacity is saved. Everything weighed by it, like each weather, forecast and rebalance, follows: ask for it here.",
+    fields: (t) => ({
+      user: t.expose("user", { type: UserRef }),
+      team: t.expose("team", {
+        type: TeamRef,
+        description: "The team asked about, for its board.",
+      }),
+    }),
+  });
 
 const RuleProblemRef = builder.objectRef<RuleProblem>("RuleProblem").implement({
   description: "One thing wrong with proposed rules.",
@@ -897,6 +957,18 @@ const UpdateRulesResultRef = builder.unionType("UpdateRulesResult", {
     UpdateRulesSuccessRef,
     InvalidRulesRef,
     TeamNotFoundRef,
+    UnauthorizedRef,
+    LinearRateLimitedRef,
+  ],
+  resolveType: (result) => result.__typename,
+});
+
+const SetCapacityResultRef = builder.unionType("SetCapacityResult", {
+  types: [
+    SetCapacitySuccessRef,
+    InvalidCapacityRef,
+    TeamNotFoundRef,
+    UserNotFoundRef,
     UnauthorizedRef,
     LinearRateLimitedRef,
   ],
@@ -974,6 +1046,40 @@ async function placeByHand(
     issue: place(issue, rules, context.today, quadrant ?? undefined),
     team: issue.team,
   };
+}
+
+/** Sets how much of a full-time week someone on a team works. */
+async function setCapacity(
+  context: GraphQLContext,
+  workspace: Workspace,
+  teamId: string,
+  userId: string,
+  factor: number,
+): Promise<SetCapacitySuccess | InvalidCapacity | TeamNotFound | UserNotFound> {
+  const parsed = parseCapacity(factor);
+  if ("problem" in parsed) return { __typename: "InvalidCapacity", message: parsed.problem };
+  const team = (await workspace.teams()).find(({ id }) => id === teamId);
+  if (!team) {
+    return {
+      __typename: "TeamNotFound",
+      message: "There's no such team, or you can't see it.",
+      teamId,
+    };
+  }
+  // Only someone the viewer sees on the team, so nobody sets capacities for workspaces they
+  // aren't in.
+  const { people } = await workspace.teamWork(team.id);
+  const person = people.find(({ id }) => id === userId);
+  if (!person) {
+    return {
+      __typename: "UserNotFound",
+      message: `There's nobody with that id on ${team.name}.`,
+      userId,
+    };
+  }
+  await context.placements.setCapacity(person.id, parsed.factor);
+  forgetWork(context);
+  return { __typename: "SetCapacitySuccess", user: { ...person, teamId: team.id }, team };
 }
 
 /** Hands an issue to someone else in Linear. */
@@ -1065,6 +1171,23 @@ builder.mutationType({
       args: { issueId: t.arg.id({ required: true }) },
       resolve: (_root, { issueId }, context) =>
         attempt(context, (workspace) => placeByHand(context, workspace, String(issueId), null)),
+    }),
+    setCapacity: t.field({
+      type: SetCapacityResultRef,
+      description:
+        "Sets how much of a full-time week someone works, on every team: 0.5 for half time, 1 for full time. Kept to hundredths.",
+      args: {
+        teamId: t.arg.id({
+          required: true,
+          description: "A team they're on or hold issues in, whose board to answer with.",
+        }),
+        userId: t.arg.id({ required: true }),
+        factor: t.arg.float({ required: true, description: "More than 0, up to 1." }),
+      },
+      resolve: (_root, { teamId, userId, factor }, context) =>
+        attempt(context, (workspace) =>
+          setCapacity(context, workspace, String(teamId), String(userId), factor),
+        ),
     }),
     reassignIssue: t.field({
       type: ReassignResultRef,

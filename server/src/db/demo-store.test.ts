@@ -66,6 +66,22 @@ describe("DemoStore", () => {
     expect(after.changed).toBe(false);
   });
 
+  it("keeps who works part time, and forgets anyone set back to full time", async () => {
+    const before = DemoStore.fromCookie(undefined);
+    await before.setCapacity("demo-user-tony", 0.5);
+    await before.setCapacity("demo-user-maria", 0.33);
+    await before.setCapacity("demo-user-maria", 1);
+    expect(before.changed).toBe(true);
+    expect(before.cookie()).toBe("1~~~~tony.50");
+
+    const after = DemoStore.fromCookie(before.cookie());
+    expect(await after.capacities(["demo-user-tony", "demo-user-maria"])).toEqual(
+      new Map([["demo-user-tony", 0.5]]),
+    );
+    await after.setCapacity("demo-user-steve", 1);
+    expect(after.changed).toBe(false);
+  });
+
   it("has changed after handing back an issue its cookie had handed over", () => {
     const store = DemoStore.fromCookie("1~~~avg-10.wanda");
     store.setAssignee("demo-issue-avg-10", null);
@@ -105,6 +121,11 @@ describe("DemoStore", () => {
         await store.setOverride(issue.id, "drop");
         // The longest id that's a member of both teams.
         store.setAssignee(issue.id, "demo-user-natasha");
+      }
+      for (const { id: userId } of id === DEMO_TEAM.id
+        ? DEMO_TEAM.members
+        : DEMO_OPS_TEAM.members) {
+        await store.setCapacity(userId, 0.33);
       }
     }
     const cookie = generateCookie(DEMO_COOKIE, store.cookie(), {
@@ -149,6 +170,13 @@ describe("decodeDemo", () => {
     );
   });
 
+  it("drops whoever in the cookie isn't a demo user with a capacity it could have", () => {
+    const capacities = ["tony.50", "steve.0", "thor.101", "clint.5x", "nobody.50", "wanda.33.1"];
+    expect(decodeDemo(`1~~~~${capacities.join("!")}`).capacities).toEqual(
+      new Map([["demo-user-tony", 0.5]]),
+    );
+  });
+
   it.each([
     ["empty", ""],
     ["from another version", "2~avengers.2.7.0~avg-1.3"],
@@ -159,6 +187,7 @@ describe("decodeDemo", () => {
       rules: new Map(),
       overrides: new Map(),
       assignees: new Map(),
+      capacities: new Map(),
     });
   });
 });

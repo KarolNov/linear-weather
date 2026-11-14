@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Suggestion } from "./board";
-import { applyMoves, boardClient, describeMoves, REASSIGN_MUTATION } from "./mutations";
+import {
+  applyMoves,
+  boardClient,
+  describeMoves,
+  REASSIGN_MUTATION,
+  SET_CAPACITY_MUTATION,
+} from "./mutations";
 
 const team = { id: "t-avg", name: "Avengers", key: "AVG" };
 const rules = {
@@ -112,6 +118,20 @@ describe("board client", () => {
     expect(sent(fetch.mock.calls[0])).toEqual({
       query: REASSIGN_MUTATION,
       variables: { issueId: "i-1", userId: "u-wanda" },
+    });
+  });
+
+  it("sets how much someone works, answering with the team's board", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json({ data: { setCapacity: { __typename: "SetCapacitySuccess", team } } }),
+    );
+    expect(await boardClient(false, fetch).setCapacity("t-avg", "u-tony", 0.5)).toEqual({
+      ok: true,
+      team,
+    });
+    expect(sent(fetch.mock.calls[0])).toEqual({
+      query: SET_CAPACITY_MUTATION,
+      variables: { teamId: "t-avg", userId: "u-tony", factor: 0.5 },
     });
   });
 

@@ -67,4 +67,27 @@ describe("Store", () => {
       ]),
     );
   });
+
+  it("keeps who works part time, and forgets anyone set back to full time", async () => {
+    await store().setCapacity("user-ana", 0.5);
+    await store().setCapacity("user-ben", 0.8);
+    await store().setCapacity("user-ben", 0.6);
+    expect(await store().capacities(["user-ana", "user-ben", "user-cy"])).toEqual(
+      new Map([
+        ["user-ana", 0.5],
+        ["user-ben", 0.6],
+      ]),
+    );
+    await store().setCapacity("user-ana", 1);
+    expect(await store().capacities(["user-ana", "user-ben"])).toEqual(
+      new Map([["user-ben", 0.6]]),
+    );
+    expect(await store().capacities([])).toEqual(new Map());
+  });
+
+  it.each([0, -0.5, 1.5])("refuses a capacity of %d", async (factor) => {
+    await expect(store().setCapacity("user-ana", factor)).rejects.toMatchObject({
+      cause: { message: expect.stringContaining("CHECK constraint failed") },
+    });
+  });
 });

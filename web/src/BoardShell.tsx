@@ -18,6 +18,8 @@ import {
   type Board,
   type BoardError,
   type BoardIssue,
+  describeCapacity,
+  type Person,
   type PersonMatrix as PersonMatrixData,
   QUADRANTS,
   type Quadrant,
@@ -249,6 +251,21 @@ function TeamBoard({
     if (showAnswer(applied.team)) setStatus(said.status);
     refocusPanel();
   };
+  /** Sets how much of a full-time week someone works; their weather and the rebalance follow. */
+  const changeCapacity = async (person: Person, factor: number) => {
+    if (!team) return;
+    markPending([person.id], true);
+    setFailure(null);
+    const result = await client.setCapacity(team.id, person.id, factor);
+    markPending([person.id], false);
+    if (!result.ok) {
+      setFailure(`Couldn't change ${person.name}'s capacity. ${result.message}`);
+      return;
+    }
+    if (showAnswer(result.team)) {
+      setStatus(`${person.name} works ${describeCapacity(factor).toLowerCase()} now.`);
+    }
+  };
   const saveRules = async (rules: Rules) => {
     if (!team) throw new Error("no team to save rules for");
     setFailure(null);
@@ -368,6 +385,9 @@ function TeamBoard({
             expanded={expanded.has(keyOf(person))}
             onExpandedChange={(open) => setOne(keyOf(person), open)}
             onPlace={place}
+            onCapacityChange={(factor) =>
+              person.assignee && changeCapacity(person.assignee, factor)
+            }
             pending={pending}
             xstyle={[
               entrance.board,

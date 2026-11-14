@@ -1,4 +1,4 @@
-// The demo's rules and hand-placed issues, kept in the visitor's own browser instead of D1. The
+// The demo's rules, hand-placed issues and capacities, kept in the visitor's own browser instead of D1. The
 // demo workspace is shared, so writes keyed by its fixed ids would reach every visitor. Each
 // request starts from the visitor's cookie, and a response that changed anything sets it again.
 // A cookie rather than localStorage, because the board renders on the server: it arrives with
@@ -6,6 +6,7 @@
 // at a time: two in flight start from the same cookie, and the last response wins. The cookie's
 // format is in demo-cookie.ts.
 
+import { FULL_TIME } from "../domain/capacity";
 import type { Overrides } from "../domain/matrix";
 import { DEFAULT_RULES, type Quadrant, type QuadrantRules } from "../domain/quadrant";
 import type { DemoAssignments } from "../linear/demo";
@@ -20,6 +21,7 @@ export class DemoStore implements PlacementStore, DemoAssignments {
     private readonly savedRules: Map<string, QuadrantRules>,
     private readonly savedOverrides: Map<string, Quadrant>,
     private readonly savedAssignees: Map<string, string>,
+    private readonly savedCapacities: Map<string, number>,
   ) {}
 
   /**
@@ -27,8 +29,8 @@ export class DemoStore implements PlacementStore, DemoAssignments {
    * rules or a quadrant is dropped, as if never set; a cookie that isn't ours at all is ignored.
    */
   static fromCookie(value: string | undefined): DemoStore {
-    const { rules, overrides, assignees } = decodeDemo(value);
-    return new DemoStore(rules, overrides, assignees);
+    const { rules, overrides, assignees, capacities } = decodeDemo(value);
+    return new DemoStore(rules, overrides, assignees, capacities);
   }
 
   /** The cookie's new value. */
@@ -37,6 +39,7 @@ export class DemoStore implements PlacementStore, DemoAssignments {
       rules: this.savedRules,
       overrides: this.savedOverrides,
       assignees: this.savedAssignees,
+      capacities: this.savedCapacities,
     });
   }
 
@@ -51,6 +54,23 @@ export class DemoStore implements PlacementStore, DemoAssignments {
       if (quadrant) overrides.set(id, quadrant);
     }
     return overrides;
+  }
+
+  async capacities(userIds: readonly string[]): Promise<Map<string, number>> {
+    const capacities = new Map<string, number>();
+    for (const id of userIds) {
+      const factor = this.savedCapacities.get(id);
+      if (factor !== undefined) capacities.set(id, factor);
+    }
+    return capacities;
+  }
+
+  async setCapacity(userId: string, factor: number): Promise<void> {
+    if (factor === FULL_TIME) this.changed = this.savedCapacities.delete(userId) || this.changed;
+    else {
+      this.savedCapacities.set(userId, factor);
+      this.changed = true;
+    }
   }
 
   async setRules(teamId: string, rules: QuadrantRules): Promise<void> {

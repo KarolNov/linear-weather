@@ -12,6 +12,7 @@ import {
   CLEAR_OVERRIDE_MUTATION,
   OVERRIDE_MUTATION,
   REASSIGN_MUTATION,
+  SET_CAPACITY_MUTATION,
   TEAM_QUERY,
   UPDATE_RULES_MUTATION,
 } from "../../web/src/mutations";
@@ -64,12 +65,14 @@ async function data<T>(source: string, variables?: Record<string, unknown>): Pro
 
 type Counts = Record<"do" | "schedule" | "delegate" | "drop", number>;
 
-/** A store's writes, for a stand-in that only changes how it reads. */
+/** A store's writes and capacities, for a stand-in that only changes how it reads placements. */
 function writesTo(store: Store): Omit<PlacementStore, "rules" | "overrides"> {
   return {
     setRules: (teamId, rules) => store.setRules(teamId, rules),
     setOverride: (issueId, quadrant) => store.setOverride(issueId, quadrant),
     clearOverride: (issueId) => store.clearOverride(issueId),
+    capacities: (userIds) => store.capacities(userIds),
+    setCapacity: (userId, factor) => store.setCapacity(userId, factor),
   };
 }
 
@@ -492,6 +495,7 @@ describe("stored rules and overrides", () => {
       ...writesTo(new Store(env.DB)),
       rules: () => Promise.reject(new Error("D1_ERROR: no such table: quadrant_rules")),
       overrides: () => Promise.reject(new Error("D1_ERROR: no such table: quadrant_override")),
+      capacities: () => Promise.reject(new Error("D1_ERROR: no such table: member_capacity")),
     };
     const result = await run(tony, {}, { store: down, log: () => {} });
     expect(result.errors).toBeUndefined();
@@ -734,6 +738,84 @@ describe("mutations", () => {
       issueId: "someone-elses",
     });
     expect(await new Store(env.DB).overrides(["someone-elses"])).toEqual(new Map());
+  });
+});
+
+describe("capacity", () => {
+  const setCapacity = `mutation ($teamId: ID!, $userId: ID!, $factor: Float!) {
+    setCapacity(teamId: $teamId, userId: $userId, factor: $factor) {
+      __typename
+      ... on Error { message }
+      ... on SetCapacitySuccess {
+        user { name capacity }
+        team { people { name capacity weather { kind reason } } }
+      }
+    }
+  }`;
+  type Result = {
+    setCapacity: {
+      __typename: string;
+      message?: string;
+      user?: { name: string; capacity: number };
+      team?: { people: { name: string; capacity: number; weather: { reason: string } }[] };
+    };
+  };
+  const natasha = "demo-user-natasha";
+
+  it("is full time until set", async () => {
+    const { team } = await data<{ team: { people: { capacity: number }[] } }>(
+      "{ team { people { capacity } } }",
+    );
+    expect(team.people.every(({ capacity }) => capacity === 1)).toBe(true);
+  });
+
+  it("weighs someone's weather by their capacity, on every team they're on", async () => {
+    const { setCapacity: result } = await data<Result>(setCapacity, {
+      teamId: DEMO_TEAM.id,
+      userId: natasha,
+      factor: 0.5,
+    });
+    expect(result.__typename).toBe("SetCapacitySuccess");
+    expect(result.user).toEqual({ name: "Natasha Romanoff", capacity: 0.5 });
+    // 24 urgent issues over 5.5 people: Natasha's share is 2.18.
+    expect(result.team?.people.find((p) => p.name === "Natasha Romanoff")).toMatchObject({
+      capacity: 0.5,
+      weather: { reason: "4 urgent issues at half time, 1.83× their share; 1 issue overdue" },
+    });
+
+    // Kept, and the same on her other team.
+    const { team } = await data<{ team: { people: { name: string; capacity: number }[] } }>(
+      "query ($id: ID) { team(id: $id) { people { name capacity } } }",
+      { id: DEMO_OPS_TEAM.id },
+    );
+    expect(team.people.find((p) => p.name === "Natasha Romanoff")?.capacity).toBe(0.5);
+
+    // Back to full time.
+    const back = await data<Result>(setCapacity, {
+      teamId: DEMO_TEAM.id,
+      userId: natasha,
+      factor: 1,
+    });
+    expect(back.setCapacity.user?.capacity).toBe(1);
+  });
+
+  it.each([
+    [{ factor: 0 }, "InvalidCapacity", "Capacity is a share of full time: more than 0, up to 1."],
+    [{ factor: 1.5 }, "InvalidCapacity", "Capacity is a share of full time: more than 0, up to 1."],
+    [{ userId: "demo-user-maria" }, "UserNotFound", "There's nobody with that id on Avengers."],
+    [{ teamId: "team-nobody" }, "TeamNotFound", "There's no such team, or you can't see it."],
+  ])("refuses %o", async (bad, typename, message) => {
+    const { setCapacity: result } = await data<Result>(setCapacity, {
+      teamId: DEMO_TEAM.id,
+      userId: natasha,
+      factor: 0.5,
+      ...bad,
+    });
+    expect(result).toEqual({ __typename: typename, message });
+    const { team } = await data<{ team: { people: { capacity: number }[] } }>(
+      "{ team { people { capacity } } }",
+    );
+    expect(team.people.every(({ capacity }) => capacity === 1)).toBe(true);
   });
 });
 
@@ -1114,6 +1196,18 @@ describe("the web app's board query", () => {
     const wanda = reassignIssue?.team?.people.find((p) => p.name === "Wanda Maximoff");
     expect(wanda?.matrix.do.map((issue) => issue.id)).toEqual(["demo-issue-avg-10"]);
     expect(reassignIssue?.team?.rebalanceNow).toBeInstanceOf(Array);
+  });
+
+  it("sets someone's capacity, answering with the team's board weighed by it", async () => {
+    const { setCapacity } = await data<Answer>(SET_CAPACITY_MUTATION, {
+      teamId: DEMO_TEAM.id,
+      userId: "demo-user-tony",
+      factor: 0.5,
+    });
+    expect(setCapacity?.__typename).toBe("SetCapacitySuccess");
+    const tony = setCapacity?.team?.people.find((p) => p.name === "Tony Stark");
+    expect(tony?.capacity).toBe(0.5);
+    expect(tony?.weather.reason).toContain("at half time");
   });
 
   it("reads a team's board again, as it stands", async () => {

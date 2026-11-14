@@ -1,9 +1,16 @@
-// Our own data, kept in D1 (Cloudflare's SQLite): how each team sorts issues, and the issues a
-// PM placed by hand. Linear stays the source of truth for everything else.
+// Our own data, kept in D1 (Cloudflare's SQLite): how each team sorts issues, the issues a PM
+// placed by hand, and how much each person works. Linear stays the source of truth for everything else.
 // After changing a table, run `pnpm --filter server db:generate` and commit the migration.
 
 import { type SQL, sql } from "drizzle-orm";
-import { check, integer, type SQLiteColumn, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  check,
+  integer,
+  real,
+  type SQLiteColumn,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 import {
   DEFAULT_RULES,
   type LinearPriority,
@@ -55,6 +62,21 @@ export const quadrantOverride = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [check("quadrant_is_known", oneOf(t.quadrant, QUADRANTS))],
+);
+
+/**
+ * How much of a full-time week someone works, e.g. 0.5. One row per person who isn't full time;
+ * anyone without one is. Keyed by Linear's user id, so it's the same on every team they're on.
+ */
+export const memberCapacity = sqliteTable(
+  "member_capacity",
+  {
+    /** Linear's user id. */
+    userId: text("user_id").primaryKey(),
+    factor: real("factor").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [check("factor_in_range", sql`${t.factor} > 0 AND ${t.factor} <= 1`)],
 );
 
 /** SQLite's INTEGER columns still keep 1.5 as a REAL, which GraphQL's Int can't send. */

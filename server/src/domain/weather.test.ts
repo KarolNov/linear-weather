@@ -265,4 +265,70 @@ describe("teamWeather", () => {
     expect(foggy.team).toMatchObject({ kind: "fog", load: null, teamAverage: null });
     expect(teamWeather([], "issues", TODAY).team.kind).toBe("fog");
   });
+
+  describe("with capacity", () => {
+    const six = () => matrixOf(...Array.from({ length: 6 }, () => doIssue()));
+
+    it("compares each person with their fair share: the team's load per full-time person, scaled", () => {
+      const { people } = teamWeather(
+        [
+          { name: "Ana", matrix: six(), capacity: 0.5 },
+          { name: "Ben", matrix: six() },
+          { name: "Cy", matrix: matrixOf(doIssue(), doIssue(), doIssue()) },
+        ],
+        "issues",
+        TODAY,
+      );
+      // 15 urgent issues over 2.5 people: 6 per full-time person, so Ana's share is 3.
+      expect(people.map((p) => [p.kind, p.load, p.teamAverage])).toEqual([
+        ["storm", 6, 6],
+        ["cloudy", 6, 6],
+        ["sunny", 3, 6],
+      ]);
+      expect(people[0]?.reason).toBe("6 urgent issues at half time, 2.0× their share");
+      expect(people[1]?.reason).toBe("6 urgent issues, 1.0× the team average");
+    });
+
+    it("names other capacities as a percent of full time", () => {
+      const { people } = teamWeather(
+        [
+          { name: "Ana", matrix: matrixOf(doIssue(), doIssue(), doIssue()), capacity: 0.6 },
+          { name: "Ben", matrix: matrixOf(doIssue(), doIssue()) },
+        ],
+        "issues",
+        TODAY,
+      );
+      // 5 over 1.6: Ana's share is 1.875, Ben's 3.125.
+      expect(people[0]?.reason).toBe("3 urgent issues at 60% time, 1.6× their share");
+      expect(people[1]?.reason).toBe("2 urgent issues, 0.64× the team average");
+    });
+
+    it("leaves out the capacity of anyone who can't be measured", () => {
+      const { people } = teamWeather(
+        [
+          { name: "Ana", matrix: matrixOf(doIssue(), doIssue()) },
+          { name: "Ben", matrix: matrixOf(doIssue(), doIssue()), capacity: 0.5 },
+          { name: "Thor", matrix: matrixOf(undated), capacity: 0.5 },
+        ],
+        "issues",
+        TODAY,
+      );
+      // 4 over 1.5, not over 2.
+      expect(people[0]?.teamAverage).toBeCloseTo(4 / 1.5);
+      expect(people.map((p) => p.kind)).toEqual(["cloudy", "rain", "fog"]);
+    });
+
+    it("counts the team's busiest person by their share, not by load alone", () => {
+      const { team } = teamWeather(
+        [
+          { name: "Ana", matrix: matrixOf(doIssue(), doIssue(), doIssue()), capacity: 0.25 },
+          { name: "Ben", matrix: matrixOf(doIssue(), doIssue(), doIssue(), doIssue()) },
+          { name: "Cy", matrix: matrixOf(doIssue(), doIssue(), doIssue(), doIssue()) },
+        ],
+        "issues",
+        TODAY,
+      );
+      expect(team).toMatchObject({ kind: "storm", load: 3, reason: "Ana is in a storm" });
+    });
+  });
 });

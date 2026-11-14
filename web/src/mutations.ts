@@ -1,4 +1,5 @@
-// Changing the board from the browser: a team's rules, where one issue sits, or who has it. Every mutation
+// Changing the board from the browser: a team's rules, where one issue sits, who has it, or how much
+// someone works. Every mutation
 // asks for the team's board back, so the page redraws from the answer with nothing derived here.
 
 import {
@@ -53,6 +54,15 @@ export const REASSIGN_MUTATION = `mutation ReassignIssue($issueId: ID!, $userId:
 
 ${TEAM_BOARD_FRAGMENTS}`;
 
+export const SET_CAPACITY_MUTATION = `mutation SetCapacity($teamId: ID!, $userId: ID!, $factor: Float!) {
+  setCapacity(teamId: $teamId, userId: $userId, factor: $factor) {
+    ${RESULT_FIELDS}
+    ... on SetCapacitySuccess { team { ...TeamBoard } }
+  }
+}
+
+${TEAM_BOARD_FRAGMENTS}`;
+
 /** A team's board as it stands, to plan again from after a move failed. */
 export const TEAM_QUERY = `query Team($teamId: ID!) {
   team(id: $teamId) { ...TeamBoard }
@@ -88,6 +98,8 @@ export interface BoardClient {
   placeIssue(issueId: string, quadrant: Quadrant | null): Promise<MutationResult>;
   /** Hands an issue to someone else on its team, in Linear. */
   reassign(issueId: string, userId: string): Promise<MutationResult>;
+  /** How much of a full-time week someone works, on every team; answers with this team's board. */
+  setCapacity(teamId: string, userId: string, factor: number): Promise<MutationResult>;
   /**
    * The team's board as it stands, else the newest one an answer carried; null when there's
    * neither.
@@ -186,6 +198,8 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
         ? queued(OVERRIDE_MUTATION, { issueId, quadrant: quadrant.toUpperCase() })
         : queued(CLEAR_OVERRIDE_MUTATION, { issueId }),
     reassign: (issueId, userId) => queued(REASSIGN_MUTATION, { issueId, userId }),
+    setCapacity: (teamId, userId, factor) =>
+      queued(SET_CAPACITY_MUTATION, { teamId, userId, factor }),
     // After the moves sent before it, so it reads what they left. Failing that, the newest board
     // an answer carried, which is no older than anything shown.
     readTeam: (teamId) => inTurn(async () => (await read(teamId)) ?? latest.get(teamId) ?? null),

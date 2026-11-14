@@ -1,9 +1,10 @@
-// How one GraphQL request places issues: team rules and hand-placed issues from the store.
-// Resolvers for every team and person on a page ask in the same tick, so DataLoader batches them
-// into one query for rules and one for overrides, like Workspace does for Linear. Writes go
+// How one GraphQL request places issues and weighs load: team rules, hand-placed issues and
+// people's capacity from the store. Resolvers for every team and person on a page ask in the same
+// tick, so DataLoader batches them into one query for each, like Workspace does for Linear. Writes go
 // through here too, so the rest of a mutation's response reads what it just wrote.
 
 import DataLoader from "dataloader";
+import { FULL_TIME } from "./domain/capacity";
 import type { Overrides } from "./domain/matrix";
 import { DEFAULT_RULES, type Quadrant, type QuadrantRules } from "./domain/quadrant";
 
@@ -11,6 +12,8 @@ import { DEFAULT_RULES, type Quadrant, type QuadrantRules } from "./domain/quadr
 export interface PlacementSource {
   rules(teamIds: readonly string[]): Promise<ReadonlyMap<string, QuadrantRules>>;
   overrides(issueIds: readonly string[]): Promise<Overrides>;
+  /** The capacity of whichever of these people don't work full time. */
+  capacities(userIds: readonly string[]): Promise<ReadonlyMap<string, number>>;
 }
 
 /** The Store as placing issues reads and changes it. */
@@ -18,6 +21,8 @@ export interface PlacementStore extends PlacementSource {
   setRules(teamId: string, rules: QuadrantRules): Promise<void>;
   setOverride(issueId: string, quadrant: Quadrant): Promise<void>;
   clearOverride(issueId: string): Promise<void>;
+  /** How much of a full-time week someone works; FULL_TIME forgets it. */
+  setCapacity(userId: string, factor: number): Promise<void>;
 }
 
 export class Placements {
@@ -28,6 +33,10 @@ export class Placements {
   private readonly overrideLoader = new DataLoader<string, Quadrant | null>(async (issueIds) => {
     const overrides = await this.read(() => this.source.overrides(issueIds), new Map());
     return issueIds.map((id) => overrides.get(id) ?? null);
+  });
+  private readonly capacityLoader = new DataLoader<string, number>(async (userIds) => {
+    const capacities = await this.read(() => this.source.capacities(userIds), new Map());
+    return userIds.map((id) => capacities.get(id) ?? FULL_TIME);
   });
 
   constructor(
@@ -50,6 +59,16 @@ export class Placements {
     return overrides;
   }
 
+  /** How much of a full-time week someone works: 1 unless set. */
+  capacity(userId: string): Promise<number> {
+    return this.capacityLoader.load(userId);
+  }
+
+  async setCapacity(userId: string, factor: number): Promise<void> {
+    await this.source.setCapacity(userId, factor);
+    this.capacityLoader.clear(userId).prime(userId, factor);
+  }
+
   async setRules(teamId: string, rules: QuadrantRules): Promise<void> {
     await this.source.setRules(teamId, rules);
     this.rulesLoader.clear(teamId).prime(teamId, rules);
@@ -63,8 +82,8 @@ export class Placements {
   }
 
   /**
-   * Linear still answers when our database doesn't, so the board falls back to the default rules
-   * and no hand placements rather than going blank.
+   * Linear still answers when our database doesn't, so the board falls back to the default rules,
+   * no hand placements and everyone full time rather than going blank.
    */
   private async read<T>(load: () => Promise<T>, fallback: T): Promise<T> {
     try {

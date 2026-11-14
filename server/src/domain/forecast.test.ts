@@ -51,6 +51,25 @@ describe("forecast", () => {
     expect(ben?.map((w) => w.weather.load)).toEqual([1, 0, 0, 0]);
   });
 
+  it("compares each week with everyone's fair share, scaled by capacity", () => {
+    // From the third week Ana holds 3 and Ben 3: 6 over 1.5 people, so Ana's share is 2.
+    const due = () => issue("2026-11-18");
+    const { people } = forecast(
+      [
+        { ...person("Ana", [due(), due(), due()]), capacity: 0.5 },
+        person("Ben", [due(), due(), due()]),
+      ],
+      "issues",
+      TODAY,
+      3,
+    );
+    expect(people[0]?.[2]?.weather).toMatchObject({
+      kind: "rain",
+      teamAverage: 4,
+      reason: "3 urgent issues at half time, 1.5× their share",
+    });
+  });
+
   it("counts work as done after its due date, but keeps overdue work, and its storm", () => {
     const { people } = forecast(
       [

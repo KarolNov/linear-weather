@@ -1,11 +1,13 @@
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { Avatar, Card, WeatherIcon, weatherLabels } from "ui";
+import { Avatar, Card, VisuallyHidden, WeatherIcon, weatherLabels } from "ui";
 import { colors, fonts, media, motion, radii, space } from "ui/tokens.stylex";
 import {
   type BoardIssue,
+  CAPACITIES,
   type CalendarDate,
   total as countIssues,
+  describeCapacity,
   describeWeek,
   type ForecastWeek,
   type PersonMatrix as Person,
@@ -25,7 +27,9 @@ export interface PersonMatrixProps {
   onExpandedChange: (expanded: boolean) => void;
   /** Places an issue by hand, or with null hands it back to the rules. */
   onPlace?: (issue: BoardIssue, quadrant: Quadrant | null) => void;
-  /** Issues whose move is on its way to the server. */
+  /** Sets how much of a full-time week they work. Without it, a capacity is only shown. */
+  onCapacityChange?: (factor: number) => void;
+  /** Issues whose move, and people whose capacity, is on its way to the server. */
   pending?: ReadonlySet<string>;
   xstyle?: stylex.StyleXStyles;
 }
@@ -35,11 +39,12 @@ export interface PersonMatrixProps {
  * Picking a quadrant opens the list narrowed to it; picking it again shows every quadrant.
  */
 export function PersonMatrix({
-  person: { assignee, matrix, weather, forecast },
+  person: { assignee, capacity, matrix, weather, forecast },
   today,
   expanded,
   onExpandedChange,
   onPlace,
+  onCapacityChange,
   pending,
   xstyle,
 }: PersonMatrixProps) {
@@ -127,6 +132,30 @@ export function PersonMatrix({
           <h2 {...stylex.props(styles.name)}>{name}</h2>
           <span {...stylex.props(styles.total)}>
             {total === 0 ? "Nothing open" : `${total} open ${total === 1 ? "issue" : "issues"}`}
+            {assignee && capacity !== null && (
+              <>
+                {" · "}
+                {onCapacityChange ? (
+                  <label>
+                    <VisuallyHidden>{`${name}'s capacity`}</VisuallyHidden>
+                    <select
+                      value={capacity}
+                      disabled={pending?.has(assignee.id)}
+                      onChange={(event) => onCapacityChange(Number(event.currentTarget.value))}
+                      {...stylex.props(styles.capacity)}
+                    >
+                      {capacityChoices(capacity).map((factor) => (
+                        <option key={factor} value={factor}>
+                          {describeCapacity(factor)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  describeCapacity(capacity)
+                )}
+              </>
+            )}
           </span>
         </div>
         {weather && (
@@ -254,6 +283,11 @@ export function PersonMatrix({
  * The weeks ahead as a strip of small icons. Each explains itself on hover, and on a press for
  * keyboards, touch and screen readers.
  */
+/** The capacities to offer: the board's, plus whatever the server holds if it isn't one of them. */
+function capacityChoices(current: number): number[] {
+  return CAPACITIES.includes(current) ? CAPACITIES : [...CAPACITIES, current].sort((a, b) => b - a);
+}
+
 function Forecast({ name, weeks }: { name: string; weeks: ForecastWeek[] }) {
   const [picked, setPicked] = useState<CalendarDate | null>(null);
   const explain = ({ endsOn, weather, summary, turningUrgent }: ForecastWeek) => {
@@ -367,6 +401,19 @@ const styles = stylex.create({
     whiteSpace: "nowrap",
   },
   total: { fontSize: "0.8125rem", color: colors.inkMuted },
+  capacity: {
+    font: "inherit",
+    color: "inherit",
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderRadius: radii.sm,
+    padding: 0,
+    cursor: { default: "pointer", ":disabled": "progress" },
+    textDecorationLine: "underline",
+    textDecorationStyle: "dotted",
+    textUnderlineOffset: "3px",
+    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+  },
   grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" },
   cell: {
     display: "flex",

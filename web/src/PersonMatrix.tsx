@@ -141,7 +141,13 @@ export function PersonMatrix({
                     <select
                       value={capacity}
                       disabled={pending?.has(assignee.id)}
-                      onChange={(event) => onCapacityChange(Number(event.currentTarget.value))}
+                      onChange={(event) => {
+                        const select = event.currentTarget;
+                        onCapacityChange(Number(select.value));
+                        // Shows the saved capacity until the answer redraws the board, so a
+                        // failed save doesn't leave the pick showing.
+                        select.value = String(capacity);
+                      }}
                       {...stylex.props(styles.capacity)}
                     >
                       {capacityChoices(capacity).map((factor) => (
@@ -279,15 +285,15 @@ export function PersonMatrix({
   );
 }
 
-/**
- * The weeks ahead as a strip of small icons. Each explains itself on hover, and on a press for
- * keyboards, touch and screen readers.
- */
 /** The capacities to offer: the board's, plus whatever the server holds if it isn't one of them. */
 function capacityChoices(current: number): number[] {
   return CAPACITIES.includes(current) ? CAPACITIES : [...CAPACITIES, current].sort((a, b) => b - a);
 }
 
+/**
+ * The weeks ahead as a strip of small icons. Each explains itself on hover, and on a press for
+ * keyboards, touch and screen readers.
+ */
 function Forecast({ name, weeks }: { name: string; weeks: ForecastWeek[] }) {
   const [picked, setPicked] = useState<CalendarDate | null>(null);
   const explain = ({ endsOn, weather, summary, turningUrgent }: ForecastWeek) => {

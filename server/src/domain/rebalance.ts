@@ -80,7 +80,8 @@ type Holding<P, I> = P & { matrix: Matrix<I>; takesWork?: boolean; capacity?: nu
  *   those weeks taken together, not just the one it's for, and leave none of them less even:
  *   easing week 3 mustn't bury the taker in week 2, which was settled already.
  *
- * Each issue moves at most once, and only if it narrows the gap between giver and taker.
+ * Each issue moves at most once, and only if it evens giver and taker out for their capacities
+ * (lowers their `load² / capacity`), which with everyone full time narrows the gap between them.
  *
  * Nobody takes on work while they have overdue issues, or while their load can't be measured, or
  * when they can't take work at all (`takesWork: false`, e.g. someone off the team).

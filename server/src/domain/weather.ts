@@ -117,7 +117,9 @@ export function urgentLoad(
 export interface Weather {
   kind: WeatherKind;
   metric: LoadMetric;
-  /** A person's urgent load; for a team, its busiest person's. Null when it can't be measured. */
+  /** A person's urgent load; for a team, the load of whoever is busiest for their capacity,
+   * so compare it with `teamAverage × capacity`, not `teamAverage` alone.
+   * Null when it can't be measured. */
   load: number | null;
   /** The team's urgent load per full-time person: everyone's whose load could be measured,
    * over their capacities added up. With everyone full time, the mean. Null when fewer than two

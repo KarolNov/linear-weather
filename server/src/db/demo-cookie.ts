@@ -15,7 +15,7 @@
 // Enums are their index in QUADRANTS / NO_DUE_DATE. Everything read back is checked again,
 // since the cookie comes from the client.
 
-import { parseCapacity } from "../domain/capacity";
+import { FULL_TIME, parseCapacity } from "../domain/capacity";
 import {
   DEFAULT_RULES,
   NO_DUE_DATE,
@@ -128,7 +128,8 @@ export function decodeDemo(value: string | undefined): DemoSaved {
   }
   for (const [user, percent] of fields(capacities, 2)) {
     const parsed = parseCapacity(wholeNumber(percent ?? "") / 100);
-    if (USER_IDS.has(USER_PREFIX + user) && "factor" in parsed) {
+    // Full time is nothing to keep, as setCapacity has it.
+    if (USER_IDS.has(USER_PREFIX + user) && "factor" in parsed && parsed.factor !== FULL_TIME) {
       saved.capacities.set(USER_PREFIX + user, parsed.factor);
     }
   }

@@ -325,7 +325,7 @@ const WeatherRef = builder.objectRef<Weather>("Weather").implement({
     load: t.exposeFloat("load", {
       nullable: true,
       description:
-        "A person's urgent load; for a team, its busiest person's. Null when it can't be measured.",
+        "A person's urgent load; for a team, the load of whoever is busiest for their capacity, so compare it with teamAverage times their capacity, not teamAverage alone. Null when it can't be measured.",
     }),
     teamAverage: t.exposeFloat("teamAverage", {
       nullable: true,

@@ -385,10 +385,8 @@ function TeamBoard({
             expanded={expanded.has(keyOf(person))}
             onExpandedChange={(open) => setOne(keyOf(person), open)}
             onPlace={place}
-            onCapacityChange={
-              person.assignee
-                ? (factor) => person.assignee && changeCapacity(person.assignee, factor)
-                : undefined
+            onCapacityChange={(factor) =>
+              person.assignee && changeCapacity(person.assignee, factor)
             }
             pending={pending}
             xstyle={[

@@ -198,8 +198,12 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
         ? queued(OVERRIDE_MUTATION, { issueId, quadrant: quadrant.toUpperCase() })
         : queued(CLEAR_OVERRIDE_MUTATION, { issueId }),
     reassign: (issueId, userId) => queued(REASSIGN_MUTATION, { issueId, userId }),
-    setCapacity: (teamId, userId, factor) =>
-      queued(SET_CAPACITY_MUTATION, { teamId, userId, factor }),
+    setCapacity: async (teamId, userId, factor) => {
+      const result = await queued(SET_CAPACITY_MUTATION, { teamId, userId, factor });
+      // Capacity counts on every team, so other teams' boards kept here are out of date.
+      if (result.ok) for (const id of [...latest.keys()]) if (id !== teamId) latest.delete(id);
+      return result;
+    },
     // After the moves sent before it, so it reads what they left. Failing that, the newest board
     // an answer carried, which is no older than anything shown.
     readTeam: (teamId) => inTurn(async () => (await read(teamId)) ?? latest.get(teamId) ?? null),

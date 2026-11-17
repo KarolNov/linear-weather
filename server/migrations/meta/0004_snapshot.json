@@ -1,0 +1,217 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "f6daa13b-067b-4223-935a-22f7ebb9e8cb",
+  "prevId": "7a7d7ba1-7f12-4b7d-ab64-e40fd06287d8",
+  "tables": {
+    "member_capacity": {
+      "name": "member_capacity",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "factor": {
+          "name": "factor",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "factor_in_range": {
+          "name": "factor_in_range",
+          "value": "\"member_capacity\".\"factor\" > 0 AND \"member_capacity\".\"factor\" <= 1"
+        }
+      }
+    },
+    "quadrant_override": {
+      "name": "quadrant_override",
+      "columns": {
+        "issue_id": {
+          "name": "issue_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "quadrant": {
+          "name": "quadrant",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "quadrant_is_known": {
+          "name": "quadrant_is_known",
+          "value": "\"quadrant_override\".\"quadrant\" IN ('do', 'schedule', 'delegate', 'drop')"
+        }
+      }
+    },
+    "quadrant_rules": {
+      "name": "quadrant_rules",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "important_from": {
+          "name": "important_from",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "urgency_window_days": {
+          "name": "urgency_window_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "no_due_date": {
+          "name": "no_due_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "drop_alert_percent": {
+          "name": "drop_alert_percent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 40
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "important_from_is_a_priority": {
+          "name": "important_from_is_a_priority",
+          "value": "typeof(\"quadrant_rules\".\"important_from\") = 'integer' AND \"quadrant_rules\".\"important_from\" BETWEEN 1 AND 4"
+        },
+        "urgency_window_in_range": {
+          "name": "urgency_window_in_range",
+          "value": "typeof(\"quadrant_rules\".\"urgency_window_days\") = 'integer' AND \"quadrant_rules\".\"urgency_window_days\" BETWEEN 1 AND 365"
+        },
+        "no_due_date_is_known": {
+          "name": "no_due_date_is_known",
+          "value": "\"quadrant_rules\".\"no_due_date\" IN ('urgent', 'notUrgent')"
+        },
+        "drop_alert_in_range": {
+          "name": "drop_alert_in_range",
+          "value": "typeof(\"quadrant_rules\".\"drop_alert_percent\") = 'integer' AND \"quadrant_rules\".\"drop_alert_percent\" BETWEEN 1 AND 99"
+        }
+      }
+    },
+    "time_off": {
+      "name": "time_off",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "starts_on": {
+          "name": "starts_on",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ends_on": {
+          "name": "ends_on",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "time_off_user_id": {
+          "name": "time_off_user_id",
+          "columns": ["user_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "starts_on_is_a_date": {
+          "name": "starts_on_is_a_date",
+          "value": "\"time_off\".\"starts_on\" GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]'"
+        },
+        "ends_on_is_a_date": {
+          "name": "ends_on_is_a_date",
+          "value": "\"time_off\".\"ends_on\" GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]'"
+        },
+        "ends_after_it_starts": {
+          "name": "ends_after_it_starts",
+          "value": "\"time_off\".\"starts_on\" <= \"time_off\".\"ends_on\""
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

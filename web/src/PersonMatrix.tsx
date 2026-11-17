@@ -13,10 +13,12 @@ import {
   type PersonMatrix as Person,
   QUADRANTS,
   type Quadrant,
+  type TimeOff,
 } from "./board";
 import { IssueCard } from "./IssueCard";
 import { entrance } from "./motion";
 import { quadrantFill, quadrantInfo } from "./quadrants";
+import { TimeOffList } from "./TimeOff";
 import { weatherIcon } from "./weather";
 
 export interface PersonMatrixProps {
@@ -29,7 +31,10 @@ export interface PersonMatrixProps {
   onPlace?: (issue: BoardIssue, quadrant: Quadrant | null) => void;
   /** Sets how much of a full-time week they work. Without it, a capacity is only shown. */
   onCapacityChange?: (factor: number) => void;
-  /** Issues whose move, and people whose capacity, is on its way to the server. */
+  /** Marks them away; resolves to whether it was saved. Without it, time off is only shown. */
+  onAddTimeOff?: (startsOn: CalendarDate, endsOn: CalendarDate) => Promise<boolean>;
+  onRemoveTimeOff?: (timeOff: TimeOff) => void;
+  /** Issues whose move, and people whose capacity or time off, is on its way to the server. */
   pending?: ReadonlySet<string>;
   xstyle?: stylex.StyleXStyles;
 }
@@ -39,12 +44,14 @@ export interface PersonMatrixProps {
  * Picking a quadrant opens the list narrowed to it; picking it again shows every quadrant.
  */
 export function PersonMatrix({
-  person: { assignee, capacity, matrix, weather, forecast },
+  person: { assignee, capacity, timeOff, matrix, weather, forecast },
   today,
   expanded,
   onExpandedChange,
   onPlace,
   onCapacityChange,
+  onAddTimeOff,
+  onRemoveTimeOff,
   pending,
   xstyle,
 }: PersonMatrixProps) {
@@ -174,6 +181,17 @@ export function PersonMatrix({
           </span>
         )}
       </header>
+
+      {assignee && timeOff && (
+        <TimeOffList
+          name={name}
+          timeOff={timeOff}
+          today={today}
+          onAdd={onAddTimeOff}
+          onRemove={onRemoveTimeOff}
+          pending={pending?.has(assignee.id)}
+        />
+      )}
 
       {forecast && forecast.length > 0 && <Forecast name={name} weeks={forecast} />}
 

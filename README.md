@@ -13,7 +13,7 @@ Each developer's assigned issues are sorted into an **Eisenhower matrix** (Do / 
 
   A PM can still override any issue by hand.
 - **Backlog rot.** When more than 40% of a team's open issues (configurable per team) sit in Drop, the board's header flags it: a backlog filling with work nobody means to do.
-- **Weather (now).** Each person's current urgent load compared with their fair share: the team average, scaled by how much of a full-time week they work (their **capacity**, set on the board). ☀️ ⛅ 🌧️ ⛈️
+- **Weather (now).** Each person's current urgent load compared with their fair share: the team average, scaled by how much of a full-time week they work (their **capacity**, set on the board). ☀️ ⛅ 🌧️ ⛈️ Someone on **time off** (added on the board) is 🌙 away: out of the average, and any urgent work they still hold storms the team.
 - **Forecast (next weeks).** Due dates show when each issue will turn urgent, so the app can project load week by week: `☀️ ☀️ 🌧️ ⛈️`, with why ("3 High-priority issues become urgent"). Undated work shows up as 🌫️ fog.
 - **Rebalance.** The app suggests reassignments to fix today's storm or the one coming in week 3, and applies them in Linear with one click.
 
@@ -29,7 +29,7 @@ Everything deploys to Cloudflare Workers.
 |---|---|
 | Workspace | [pnpm](https://pnpm.io) workspaces: `server/`, `web/` and `ui/` (shared Preact components) |
 | Server | [Hono](https://hono.dev) Worker hosting [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server) with a code-first [Pothos](https://pothos-graphql.dev) schema |
-| Storage | [D1](https://developers.cloudflare.com/d1/) (Cloudflare's SQLite) for team rules, hand-placed issues and people's capacity, through [Drizzle ORM](https://orm.drizzle.team). Linear tokens live in KV |
+| Storage | [D1](https://developers.cloudflare.com/d1/) (Cloudflare's SQLite) for team rules, hand-placed issues, and people's capacity and time off, through [Drizzle ORM](https://orm.drizzle.team). Linear tokens live in KV |
 | Web | [Preact](https://preactjs.com) server-rendered by a Hono Worker, hydrated in the browser; built with [Vite](https://vite.dev) and the [Cloudflare Vite plugin](https://developers.cloudflare.com/workers/vite-plugin/) |
 | Styling | [StyleX](https://stylexjs.com), compiled at build time by `@stylexjs/unplugin`. Theme tokens (sky gradients, weather colours) live in `ui/src/tokens.stylex.ts` |
 | Tests | [Vitest](https://vitest.dev); server tests run inside workerd via [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/) |
@@ -91,7 +91,7 @@ type Matrix {         # each list most pressing first
   counts: QuadrantCounts!  points: QuadrantPoints!
 }
 
-enum WeatherKind { SUNNY CLOUDY RAIN STORM FOG }
+enum WeatherKind { SUNNY CLOUDY RAIN STORM FOG AWAY }   # AWAY: a person off all of the period, never a team
 enum LoadMetric { POINTS ISSUES }
 type Weather { kind: WeatherKind!  metric: LoadMetric!  load: Float  teamAverage: Float  overdue: Int!  reason: String! }
 type ForecastWeek {   # the urgent load expected by the week's last day
@@ -108,10 +108,12 @@ type Suggestion {     # "Move AVG-11 (Delegate) from Tony → Wanda (☀️ now)
 
 type User {           # teamId defaults to the team it was reached through
   capacity: Float!    # share of a full-time week, 0.5 = half time; the same on every team
+  timeOff: [TimeOff!]!   # not over yet, soonest first; the same on every team
   matrix(teamId: ID): Matrix!
   weather(teamId: ID, metric: LoadMetric): Weather!   # urgent load vs teamAverage × capacity
   forecast(teamId: ID, weeks: Int! = 4, metric: LoadMetric): [ForecastWeek!]!   # 1 to 12 weeks
 }
+type TimeOff { id: ID!  startsOn: Date!  endsOn: Date! }   # both days included
 type BacklogRot { drop: Int!  total: Int!  share: Float!  alertPercent: Int!  rotting: Boolean!  reason: String! }
 type Team {
   rules: QuadrantRules!  people: [User!]!  unassigned: Matrix!
@@ -129,17 +131,24 @@ type Mutation {
   clearOverride(issueId: ID!): OverrideResult!
   reassignIssue(issueId: ID!, userId: ID!): ReassignResult!   # writes to Linear
   setCapacity(teamId: ID!, userId: ID!, factor: Float!): SetCapacityResult!   # answers with that team
+  addTimeOff(teamId: ID!, userId: ID!, startsOn: Date!, endsOn: Date!): TimeOffResult!
+  removeTimeOff(teamId: ID!, userId: ID!, timeOffId: ID!): TimeOffResult!
 }
 union UpdateRulesResult = UpdateRulesSuccess | InvalidRules | TeamNotFound | Unauthorized | LinearRateLimited
 union OverrideResult = OverrideSuccess | IssueNotFound | Unauthorized | LinearRateLimited
 union ReassignResult = ReassignSuccess | IssueNotFound | Unauthorized | LinearRateLimited
 union SetCapacityResult = SetCapacitySuccess | InvalidCapacity | TeamNotFound | UserNotFound | Unauthorized | LinearRateLimited
+union TimeOffResult = TimeOffSuccess | InvalidTimeOff | TimeOffNotFound | TeamNotFound | UserNotFound | Unauthorized | LinearRateLimited
 interface Error { message: String! }   # every failure above implements it
 ```
 
 ### Fair share
 
 Weather compares each person with their **fair share** of the team's urgent load, not the plain average. `teamAverage` is the team's load per full-time person, `Σload / Σcapacity` over everyone whose load can be measured, and a person's fair share is `teamAverage × capacity`. So someone at half time with 6 urgent issues on a team averaging 6 per full-time person reads "6 urgent issues at half time, 2.0× their share". With everyone at full time it's the mean, as before. It depends only on totals, so handing an issue from one person to another doesn't move it, which rebalancing relies on.
+
+### Time off
+
+Someone off all of today is **away** (`AWAY`, "Away until Nov 20, holding 3 urgent issues"). They're left out of `Σload / Σcapacity`, so the others' shares cover their absence. Urgent work they still hold is work nobody is doing, so the team turns stormy ("Natasha is away with 4 urgent issues") and rebalancing moves that work first. Stretches that meet, overlap or have only a weekend between them read as one, so "until" names the day before they're back.
 
 ### The forecast
 
@@ -149,6 +158,7 @@ Weather compares each person with their **fair share** of the team's urgent load
 - **Work is done by its due date**, so it leaves the load once that's passed. Work that's already overdue has missed its date, so it stays, and keeps the weather stormy, until it's done.
 - **Load is counted in points only if every issue urgent in any week is estimated** (unless `metric` says otherwise), so an unestimated issue arriving later doesn't fog a week.
 - **Undated work never turns urgent.** Someone holding it with nothing urgent projected is 🌫️ fog, a nudge to set dates.
+- **Time off lowers a week's capacity** by the working days missed: `capacity × days present / 5`, so a full-timer off two days reads "at 60% time (2 days off)". Off all five, they're away that week.
 
 The team's `worst` week is the most lopsided one (storm, then rain, then fog, then cloudy), the earliest of equals.
 
@@ -158,7 +168,8 @@ The team's `worst` week is the most lopsided one (storm, then rain, then fog, th
 
 - **`NOW`** moves work that is urgent today.
 - **`FORECAST`** heads storms off before they arrive, starting from the board as the `NOW` moves leave it. It settles the weeks in order, each before the next, moving work that isn't urgent yet but will be by that week's end. An issue weighs on every week from when it turns urgent until it's due, so a move has to even out the giver's and taker's load across all those weeks together (their sum of squares has to drop). Otherwise, easing week 3 could bury the taker in week 2, and the next round would send the issue back.
-- **What doesn't move:** overdue work, since moving it only moves the storm. Nobody running late takes on more, and nobody whose load can't be measured does either. Each issue moves at most once, and only if it narrows the gap, so the list always ends.
+- **Away first:** urgent work held by someone away (today, or in the week it turns urgent) moves before anything else, overdue or not, most pressing first, each issue to whoever is least busy then. Nobody takes on work for a week they're away.
+- **What doesn't move:** otherwise, overdue work, since moving it only moves the storm. Nobody running late takes on more, and nobody whose load can't be measured does either. Each issue moves at most once, and only if it narrows the gap, so the list always ends.
 
 So the two lists read as one plan: make today's moves, then each week's in turn. The forecast list never repeats today's moves.
 
@@ -168,7 +179,7 @@ Each mutation answers with a union: what it did, or one of the failures a client
 
 - **Checked against Linear first.** A team must be one the viewer can see, and so must an issue, so nobody changes rules or places issues in workspaces they aren't in. Whoever takes a reassigned issue must be a member of its team; anyone else, including someone who holds the team's issues from elsewhere, is a top-level `BAD_USER_INPUT` error, since the board never suggests them.
 - **Reassigning writes to Linear.** `reassignIssue` calls Linear's `issueUpdate` with the new assignee, which needs the OAuth `write` scope. Linear refusing the change (`FORBIDDEN`, e.g. a token without `write`) answers `Unauthorized`, like a revoked session.
-- **The demo's changes stay in the visitor's browser.** Anyone can open `?demo=true`, so its mutations never reach D1: rules, overrides and reassigned issues go in a compact `lw_demo` cookie (`server/src/db/demo-store.ts`, format in `demo-cookie.ts`), which every `?demo=true` request reads and any that changes something sets again. A cookie rather than localStorage, because the board renders on the server. The client still calls `/graphql?demo=true`, and sends mutations one at a time, since two in flight start from the same cookie and the last response wins. Clearing site data resets the demo.
+- **The demo's changes stay in the visitor's browser.** Anyone can open `?demo=true`, so its mutations never reach D1: rules, overrides, reassigned issues, capacities and time off go in a compact `lw_demo` cookie (`server/src/db/demo-store.ts`, format in `demo-cookie.ts`), which every `?demo=true` request reads and any that changes something sets again. A cookie rather than localStorage, because the board renders on the server. The client still calls `/graphql?demo=true`, and sends mutations one at a time, since two in flight start from the same cookie and the last response wins. Clearing site data resets the demo.
 - **Derived fields follow on their own.** A success hands back the team (and, for overrides and reassignments, the issue), and everything on them is derived when read. After `updateQuadrantRules`, `team { people { matrix { counts } } }` in the same response is already sorted by the new rules, with no code written for it. Writes go through the request's `Placements`, and a reassignment drops the team's cached Linear work, so nothing later in the response reads what was cached before.
 
 The web Worker loads a page with one query (`BOARD_QUERY` in `web/src/board.ts`), and a server test runs that exact query against the schema so the two can't drift apart. The board's mutations (`web/src/mutations.ts`) are tested the same way. Each asks for the team's board back through the same `TeamBoard` fragment the page loads with, so after a rules change or a move the browser redraws from the answer and never works out a quadrant itself. Within a request each team's members and issues are fetched from Linear once and shared by every resolver that needs them (`server/src/workspace.ts`). Two per-request [DataLoaders](https://github.com/graphql/dataloader) batch the lookups, one for team members and one for open issues, so every team resolved in the same tick shares one Linear query of each kind.
@@ -206,10 +217,11 @@ Linear holds the issues. What only this app knows lives in a D1 database (bindin
 - **`quadrant_rules`**: one row per team that changed its rules. Teams without a row use the defaults above, so a new team needs no setup.
 - **`quadrant_override`**: issues a PM placed by hand, keyed by Linear's issue id, so an override follows the issue if it moves teams. An overridden issue reports `quadrantSource: OVERRIDE`, and its `placementReason` still says where the rules would put it. `becomesUrgentOn` keeps following the due date.
 - **`member_capacity`**: how much of a full-time week someone works, more than 0 up to 1, keyed by Linear's user id so it's the same on every team. Only people who aren't full time have a row. Someone split across two teams counts at their full capacity on each, so both boards overestimate them.
+- **`time_off`**: stretches someone is away, `starts_on` to `ends_on` as calendar dates with both days included, keyed by Linear's user id. Rows stay once they're over; the board only reads what isn't. Each person can have at most 8 stretches coming up.
 
 CHECK constraints keep values the board can't use out of the database, including non-integer rules that GraphQL's `Int` couldn't send.
 
-Within a request, rules, overrides and capacities are read through DataLoaders (`server/src/placements.ts`), so every team and person resolved in the same tick shares one query for each. The ids go in as a single JSON parameter (`IN (SELECT value FROM json_each(?))`), because D1 binds at most 100 parameters per statement and a team can have thousands of open issues. If D1 fails, the board still loads, using the default rules, no hand placements and everyone full time, and the error is logged.
+Within a request, rules, overrides, capacities and time off are read through DataLoaders (`server/src/placements.ts`), so every team and person resolved in the same tick shares one query for each. The ids go in as a single JSON parameter (`IN (SELECT value FROM json_each(?))`), because D1 binds at most 100 parameters per statement and a team can have thousands of open issues. If D1 fails, the board still loads, using the default rules, no hand placements and everyone full time and present, and the error is logged.
 
 ### Migrations
 

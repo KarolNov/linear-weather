@@ -19,7 +19,16 @@ import {
 } from "./matrix";
 import { addDays, type CalendarDate } from "./quadrant";
 import {
+  type Away,
+  type Staffing,
+  shortDate,
+  staffingFor,
+  staffingOn,
+  type TimeOff,
+} from "./time-off";
+import {
   DEFAULT_THRESHOLDS,
+  fairShare,
   type LoadMetric,
   loadMetricFor,
   ratioOf,
@@ -46,7 +55,7 @@ export interface Suggestion<P, I> {
   /** The taker's weather after the move, now or in that week. */
   toWeather: WeatherKind;
   /** E.g. "Ana goes from 2.1× to 1.4× the team average, Ben from 0.5× to 1.1×", or "their
-   * share" when either works part time. */
+   * share" when either works part time, or "Ana is away until Nov 20; Ben goes from …". */
   reason: string;
 }
 
@@ -57,10 +66,15 @@ export interface RebalanceOptions {
 }
 
 /**
- * Someone and the issues they hold, whether they can be handed more (by default they can), and
- * how much of a full-time week they work (1 if left out).
+ * Someone and the issues they hold, whether they can be handed more (by default they can), how
+ * much of a full-time week they work (1 if left out), and any time off.
  */
-type Holding<P, I> = P & { matrix: Matrix<I>; takesWork?: boolean; capacity?: number };
+type Holding<P, I> = P & {
+  matrix: Matrix<I>;
+  takesWork?: boolean;
+  capacity?: number;
+  timeOff?: readonly TimeOff[];
+};
 
 /**
  * Moves that bring everyone's urgent load within the thresholds, in the order to make them.
@@ -83,9 +97,13 @@ type Holding<P, I> = P & { matrix: Matrix<I>; takesWork?: boolean; capacity?: nu
  * Each issue moves at most once, and only if it evens giver and taker out for their capacities
  * (lowers their `load² / capacity`), which with everyone full time narrows the gap between them.
  *
+ * Urgent work held by someone away goes first, overdue or not, since nobody is doing it: most
+ * pressing first, each to whoever is least busy for their capacity then. Ahead, that's the work
+ * urgent in a week they're away all of.
+ *
  * Nobody takes on work while they have overdue issues, or while their load can't be measured, or
- * when they can't take work at all (`takesWork: false`, e.g. someone off the team).
- * Overdue issues stay put: moving them only moves the storm. Without a `metric`, load is counted
+ * when they can't take work at all (`takesWork: false`, e.g. someone off the team), or in a week
+ * they're away. Otherwise overdue issues stay put: moving them only moves the storm. Without a `metric`, load is counted
  * as the weather (now) or forecast would count it on today's board.
  */
 export function rebalance<I extends MatrixIssue, P extends { name: string }>(
@@ -109,19 +127,23 @@ export function rebalanceNow<I extends MatrixIssue, P extends { name: string }>(
   const { state, settle, suggestions, after } = balancer(people, today, thresholds);
   // Counted the same way all the way through, whoever ends up holding what.
   const counted = metric ?? loadMetricFor(state.map(({ matrix }) => matrix));
+  const staffing = state.map(({ capacity, timeOff }) => staffingOn(capacity, timeOff, today));
   settle(
     () => {
-      const weather = teamWeather(state, counted, today, thresholds);
+      const weather = teamWeather(staffed(state, staffing), counted, today, thresholds);
       return [
         {
           week: null,
           loads: weather.people.map(({ load }) => load),
           teamAverage: weather.team.teamAverage,
+          capacities: staffing.map(({ capacity }) => capacity),
+          away: staffing.map(({ away }) => away ?? null),
+          urgent: state.map(({ matrix }) => new Set([...matrix.do, ...matrix.delegate])),
           movable: state.map(
-            ({ matrix }) =>
+            ({ matrix }, i) =>
               new Set(
                 [...matrix.do, ...matrix.delegate].filter(
-                  (i) => i.dueDate === null || i.dueDate >= today,
+                  (issue) => staffing[i]?.away || issue.dueDate === null || issue.dueDate >= today,
                 ),
               ),
           ),
@@ -153,15 +175,21 @@ export function rebalanceAhead<I extends MatrixIssue, P extends { name: string }
       .map((i) => [i, urgentFrom(i, today)]),
   );
   const from: UrgentFrom = (issue) => firstUrgent.get(issue as Placed<I>) ?? null;
-  const ends = Array.from({ length: weeks }, (_, week) => addDays(today, 7 * week + 6));
+  const spans = Array.from({ length: weeks }, (_, week) => {
+    const startsOn = addDays(today, 7 * week);
+    return { startsOn, endsOn: addDays(startsOn, 6) };
+  });
+  // Time off doesn't move with the work.
+  const staffing = spans.map(({ startsOn, endsOn }) =>
+    state.map(({ capacity, timeOff }) => staffingFor(capacity, timeOff, startsOn, endsOn)),
+  );
   /** Everyone's matrix as it should stand at each week's end, as the moves so far leave it. */
   const projectAll = () =>
-    ends.map((endsOn) =>
-      state.map(({ name, matrix, capacity }) => ({
-        name,
-        capacity,
-        matrix: project(matrix, from, today, endsOn),
-      })),
+    spans.map(({ endsOn }, week) =>
+      staffed(
+        state.map(({ name, matrix }) => ({ name, matrix: project(matrix, from, today, endsOn) })),
+        staffing[week] ?? [],
+      ),
     );
   // As the forecast counts it: points only if every issue urgent in any week is estimated.
   const counted =
@@ -174,12 +202,15 @@ export function rebalanceAhead<I extends MatrixIssue, P extends { name: string }
         week: week + 1,
         loads: weather.people.map(({ load }) => load),
         teamAverage: weather.team.teamAverage,
-        // Urgent by the week's end, but not today.
+        capacities: projected.map(({ capacity }) => capacity ?? FULL_TIME),
+        away: projected.map(({ away }) => away ?? null),
+        urgent: projected.map(({ matrix }) => new Set([...matrix.do, ...matrix.delegate])),
+        // Urgent by the week's end, but not today; anything urgent, from someone away.
         movable: projected.map(
-          ({ matrix }) =>
+          ({ matrix, away }) =>
             new Set(
               [...matrix.do, ...matrix.delegate].filter(
-                (i) => i.quadrant === "schedule" || i.quadrant === "drop",
+                (i) => away || i.quadrant === "schedule" || i.quadrant === "drop",
               ),
             ),
         ),
@@ -189,22 +220,31 @@ export function rebalanceAhead<I extends MatrixIssue, P extends { name: string }
   return suggestions;
 }
 
+/** People as the weather reads them over a period, with their staffing for it. */
+function staffed<I extends MatrixIssue>(
+  people: readonly { name: string; matrix: Matrix<I> }[],
+  staffing: readonly Staffing[],
+) {
+  return people.map(({ name, matrix }, i) => ({ name, matrix, ...staffing[i] }));
+}
+
 /** Moves made on copies of `people`'s matrices, so each round reads the weather earlier ones leave. */
 function balancer<I extends MatrixIssue, P extends { name: string }>(
   people: readonly Holding<P, I>[],
   today: CalendarDate,
   thresholds: WeatherThresholds,
 ) {
-  const state = people.map(({ name, matrix, capacity }) => ({
+  const state = people.map(({ name, matrix, capacity, timeOff }) => ({
     name,
     capacity,
+    timeOff,
     matrix: copy(matrix),
   }));
-  const capacities = people.map(({ capacity }) => capacity ?? FULL_TIME);
   const overdue = state.map(({ matrix }) => urgentLoad(matrix, "issues", today).overdue > 0);
   const takes = people.map(({ takesWork }) => takesWork !== false);
   const suggestions: Suggestion<P, I>[] = [];
   const moved = new Set<Placed<I>>();
+  const isOverdue = (issue: MatrixIssue) => issue.dueDate !== null && issue.dueDate < today;
 
   /** Makes moves in one round until it's balanced, or no move helps. */
   function settle(rounds: () => Round<I>[], at: number, counted: LoadMetric) {
@@ -217,21 +257,27 @@ function balancer<I extends MatrixIssue, P extends { name: string }>(
       // Evens out the giver's and taker's load over every round the issue counts in: the change
       // in the sum of their `load² / capacity`, which a fairer split lowers. No round may get
       // less even, so the taker never ends up busier for their capacity than the giver started,
-      // even in a week already settled.
+      // even in a week already settled. Nobody takes work in a round they're away, and any move
+      // off someone away helps: nobody else would do it.
       const fits = (issue: Placed<I>, giver: number, taker: number) => {
         if (moved.has(issue)) return false;
         const s = size(issue);
-        const [cg, ct] = [capacities[giver] ?? FULL_TIME, capacities[taker] ?? FULL_TIME];
+        const fromAway = round.away[giver] != null;
         let change = 0;
-        for (const { loads, movable } of all) {
+        for (const { loads, movable, capacities, away, urgent } of all) {
+          // Never to someone away while it's urgent, even in a round it can't be moved in.
+          if (away[taker] && urgent[giver]?.has(issue)) return false;
+          if (!movable[giver]?.has(issue)) continue;
+          if (fromAway || away[giver]) continue;
           const [g, t] = [loads[giver], loads[taker]];
-          if (g == null || t == null || !movable[giver]?.has(issue)) continue;
+          if (g == null || t == null) continue;
+          const [cg, ct] = [capacities[giver] ?? FULL_TIME, capacities[taker] ?? FULL_TIME];
           if ((t + s) / ct > g / cg) return false;
           change += unevenness(s, { load: g, capacity: cg }, { load: t, capacity: ct });
         }
-        return change < 0;
+        return fromAway || change < 0;
       };
-      const move = bestMove(round, capacities, overdue, takes, size, fits, thresholds);
+      const move = bestMove(round, overdue, takes, size, fits, thresholds);
       if (!move) return;
       const { issue } = move;
       moved.add(issue);
@@ -239,26 +285,63 @@ function balancer<I extends MatrixIssue, P extends { name: string }>(
       const taker = state[move.to] as (typeof state)[number];
       giver.matrix[issue.quadrant] = giver.matrix[issue.quadrant].filter((i) => i !== issue);
       taker.matrix[issue.quadrant] = [...taker.matrix[issue.quadrant], issue];
-
-      // Both were measured before and after, and the fair share depends only on totals, so it
-      // doesn't move.
-      const average = round.teamAverage as number;
-      const [cg, ct] = [capacities[move.from] ?? FULL_TIME, capacities[move.to] ?? FULL_TIME];
-      const [fromShare, toShare] = [average * cg, average * ct];
-      const fromAfter = move.fromLoad - move.size;
-      const toAfter = move.toLoad + move.size;
-      const ratio = (load: number, share: number) => times(ratioOf(load, share));
-      const against = cg === FULL_TIME && ct === FULL_TIME ? "the team average" : "their share";
+      const takerWasLate = overdue[move.to] ?? false;
+      if (isOverdue(issue)) overdue[move.to] = true;
       suggestions.push({
         issue,
         from: people[move.from] as P,
         to: people[move.to] as P,
         week: round.week,
-        fromWeather: weatherFor(fromAfter, fromShare, overdue[move.from] ?? false, thresholds),
-        toWeather: weatherFor(toAfter, toShare, false, thresholds),
-        reason: `${giver.name} goes from ${ratio(move.fromLoad, fromShare)} to ${ratio(fromAfter, fromShare)} ${against}, ${taker.name} from ${ratio(move.toLoad, toShare)} to ${ratio(toAfter, toShare)}`,
+        ...describeMove(round, move, giver.name, taker.name, takerWasLate || isOverdue(issue)),
       });
     }
+  }
+
+  /** The two's weather after a move, and why it helps. */
+  function describeMove(
+    { loads, teamAverage, capacities, away }: Round<I>,
+    move: Move<I>,
+    giverName: string,
+    takerName: string,
+    takerLate: boolean,
+  ): Pick<Suggestion<P, I>, "fromWeather" | "toWeather" | "reason"> {
+    const [cg, ct] = [capacities[move.from] ?? FULL_TIME, capacities[move.to] ?? FULL_TIME];
+    const ratio = (load: number, share: number) => times(ratioOf(load, share));
+    const toAfter = move.toLoad + move.size;
+    if (move.fromLoad === null) {
+      const gone = away[move.from];
+      // Their work joins the fair share as the taker takes it on.
+      const after = fairShare(
+        loads.map((load, i) =>
+          i === move.to && load !== null ? load + move.size : away[i] ? null : load,
+        ),
+        capacities,
+      );
+      const [before, share] = [shareOf(teamAverage, ct), shareOf(after, ct)];
+      const against = ct === FULL_TIME ? "the team average" : "their share";
+      // With nothing urgent among those present, there's no share to compare with before.
+      const taker = !share
+        ? `${takerName} takes it on`
+        : !before
+          ? `${takerName} goes to ${ratio(toAfter, share)} ${against}`
+          : `${takerName} goes from ${ratio(move.toLoad, before)} to ${ratio(toAfter, share)} ${against}`;
+      return {
+        fromWeather: "away",
+        toWeather: weatherFor(toAfter, share, takerLate, thresholds),
+        reason: `${giverName} is ${gone ? `away until ${shortDate(gone.until)}` : "away"}; ${taker}`,
+      };
+    }
+    // Both were measured before and after, and the fair share depends only on totals, so it
+    // doesn't move.
+    const average = teamAverage as number;
+    const [fromShare, toShare] = [average * cg, average * ct];
+    const fromAfter = move.fromLoad - move.size;
+    const against = cg === FULL_TIME && ct === FULL_TIME ? "the team average" : "their share";
+    return {
+      fromWeather: weatherFor(fromAfter, fromShare, overdue[move.from] ?? false, thresholds),
+      toWeather: weatherFor(toAfter, toShare, takerLate, thresholds),
+      reason: `${giverName} goes from ${ratio(move.fromLoad, fromShare)} to ${ratio(fromAfter, fromShare)} ${against}, ${takerName} from ${ratio(move.toLoad, toShare)} to ${ratio(toAfter, toShare)}`,
+    };
   }
 
   const after = (): Holding<P, I>[] =>
@@ -273,6 +356,12 @@ interface Round<I> {
   /** Each person's urgent load, null when it can't be measured. */
   loads: (number | null)[];
   teamAverage: number | null;
+  /** How much of a full-time week each person works then, their time off taken off. */
+  capacities: number[];
+  /** Who is away all of it. */
+  away: (Away | null)[];
+  /** What each person holds that's urgent then. */
+  urgent: Set<Placed<I>>[];
   /** What each person could hand over. */
   movable: Set<Placed<I>>[];
 }
@@ -282,7 +371,8 @@ interface Move<I> {
   size: number;
   from: number;
   to: number;
-  fromLoad: number;
+  /** Null when the giver is away: their load isn't weighed against anyone's. */
+  fromLoad: number | null;
   toLoad: number;
 }
 
@@ -303,35 +393,57 @@ function unevenness(
 }
 
 /**
- * The best handover from the busiest overloaded person (for their capacity) who has one, to the
- * least busy person who can take it, or null if nobody is overloaded or no issue that `fits`
- * evens a pair out.
+ * Work held by someone away, else the best handover from the busiest overloaded person (for their
+ * capacity) who has one, to the least busy person who can take it. Null if nobody away holds
+ * urgent work and nobody is overloaded, or no issue that `fits` evens a pair out.
  */
 function bestMove<I extends MatrixIssue>(
-  { loads, teamAverage, movable }: Round<I>,
-  capacities: number[],
+  { loads, teamAverage, movable, capacities, away }: Round<I>,
   overdue: boolean[],
   takes: boolean[],
   size: (issue: MatrixIssue) => number,
   fits: (issue: Placed<I>, giver: number, taker: number) => boolean,
   thresholds: WeatherThresholds,
 ): Move<I> | null {
-  if (teamAverage === null) return null;
   const measured = loads.flatMap((load, i) => {
-    if (load === null) return [];
+    if (load === null || away[i]) return [];
     const capacity = capacities[i] ?? FULL_TIME;
     return [{ i, load, capacity, perFullTime: load / capacity }];
   });
-  // Busiest first and least busy first; ties go to whoever comes first.
+  // Least busy first; ties go to whoever comes first.
+  const takers = measured
+    .filter(({ i }) => !overdue[i] && takes[i])
+    .sort((a, b) => a.perFullTime - b.perFullTime);
+
+  // Whatever someone away holds, most pressing first.
+  for (const [from, held] of movable.entries()) {
+    if (!away[from]) continue;
+    const pressing = [...held].sort(
+      (a, b) => byPriority(a.priority, b.priority) || byDueDate(a.dueDate, b.dueDate),
+    );
+    for (const issue of pressing) {
+      const taker = takers.find(({ i }) => fits(issue, from, i));
+      if (taker) {
+        return {
+          issue,
+          size: size(issue),
+          from,
+          to: taker.i,
+          fromLoad: null,
+          toLoad: taker.load,
+        };
+      }
+    }
+  }
+
+  if (teamAverage === null) return null;
+  // Busiest first; ties go to whoever comes first.
   const givers = [...measured]
     .sort((a, b) => b.perFullTime - a.perFullTime)
     .filter(({ load, capacity }) => {
       const kind = weatherFor(load, shareOf(teamAverage, capacity), false, thresholds);
       return kind === "rain" || kind === "storm";
     });
-  const takers = measured
-    .filter(({ i }) => !overdue[i] && takes[i])
-    .sort((a, b) => a.perFullTime - b.perFullTime);
 
   for (const giver of givers) {
     for (const taker of takers) {
@@ -359,6 +471,14 @@ function bestMove<I extends MatrixIssue>(
     }
   }
   return null;
+}
+
+/** Soonest due first, undated last. */
+function byDueDate(a: CalendarDate | null, b: CalendarDate | null): number {
+  if (a === b) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return a < b ? -1 : 1;
 }
 
 function copy<I>(matrix: Matrix<I>): Matrix<I> {

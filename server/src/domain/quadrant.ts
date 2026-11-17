@@ -172,7 +172,7 @@ function plural(n: number, unit: string): string {
 const MS_PER_DAY = 86_400_000;
 
 /** Whole calendar days from `from` to `to`; negative when `to` is earlier. */
-function daysBetween(from: CalendarDate, to: CalendarDate): number {
+export function daysBetween(from: CalendarDate, to: CalendarDate): number {
   return (parseDate(to) - parseDate(from)) / MS_PER_DAY;
 }
 

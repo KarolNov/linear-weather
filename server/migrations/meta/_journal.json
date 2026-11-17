@@ -29,6 +29,13 @@
       "when": 1794660216350,
       "tag": "0003_member_capacity",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794923802909,
+      "tag": "0004_time_off",
+      "breakpoints": true
     }
   ]
 }

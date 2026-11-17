@@ -129,8 +129,9 @@ export function RebalancePanel({
             Rebalancing {teamName}
           </h2>
           <p {...stylex.props(styles.muted)}>
-            The busiest person hands the least busy one issue at a time, until nobody is under rain
-            or in a storm. Overdue work stays where it is, and nobody running late takes more.
+            Anyone away hands on their urgent work first. Then the busiest person hands the least
+            busy one issue at a time, until nobody is under rain or in a storm. Otherwise overdue
+            work stays where it is, and nobody running late or away takes more.
           </p>
         </div>
         {runningLate.length > 0 && (

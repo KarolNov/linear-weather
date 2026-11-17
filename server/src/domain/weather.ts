@@ -1,11 +1,12 @@
 // The weather now: each person's urgent load (Do + Delegate) against their fair share of the
 // team's, and how evenly the team's urgent load is spread. Pure, like the rules engine it builds on.
 
-import { describeCapacity, FULL_TIME } from "./capacity";
+import { FULL_TIME } from "./capacity";
 import { counts, type Matrix, type MatrixIssue, points } from "./matrix";
 import type { CalendarDate } from "./quadrant";
+import { type Away, describeAway, describeStaffing } from "./time-off";
 
-export const WEATHER_KINDS = ["sunny", "cloudy", "rain", "storm", "fog"] as const;
+export const WEATHER_KINDS = ["sunny", "cloudy", "rain", "storm", "fog", "away"] as const;
 
 export type WeatherKind = (typeof WEATHER_KINDS)[number];
 
@@ -138,11 +139,18 @@ export interface TeamWeather {
   team: Weather;
 }
 
-/** Someone whose weather is asked for, and how much of a full-time week they work (1 if left out). */
+/**
+ * Someone whose weather is asked for, how much of a full-time week they work over the period (1 if
+ * left out), and whether they're away all of it.
+ */
 export interface Staffed<I extends MatrixIssue = MatrixIssue> {
   name: string;
   matrix: Matrix<I>;
   capacity?: number;
+  /** Away all of the period: no share of its load, and any urgent work they hold is stuck. */
+  away?: Away;
+  /** Working days off in the period, already taken off `capacity`, for the reason to say so. */
+  daysOff?: number;
 }
 
 /**
@@ -152,8 +160,10 @@ export interface Staffed<I extends MatrixIssue = MatrixIssue> {
  * spare capacity. It depends only on totals, so handing work from one person to another
  * doesn't move it.
  *
+ * Someone away all of the period is left out of it: their weather is away, whatever they hold.
+ *
  * The team is as stormy or rainy as its worst person, since one overload is a reason to
- * rebalance. Otherwise it's sunny when everyone is around the average (evenly spread), and
+ * rebalance, and stormy when someone away still holds urgent work, since nobody is doing it. Otherwise it's sunny when everyone is around the average (evenly spread), and
  * cloudy when some have room while others carry the load.
  */
 export function teamWeather(
@@ -164,16 +174,23 @@ export function teamWeather(
 ): TeamWeather {
   const loads = people.map(({ matrix }) => urgentLoad(matrix, metric, today));
   const capacities = people.map(({ capacity }) => capacity ?? FULL_TIME);
+  // Nobody away is part of the fair share.
   const teamAverage = fairShare(
-    loads.map(({ load }) => load),
+    loads.map(({ load }, i) => (people[i]?.away ? null : load)),
     capacities,
   );
 
-  const weathers = loads.map((load, i) =>
-    weatherOf(load, teamAverage, capacities[i] ?? FULL_TIME, metric, thresholds),
-  );
+  const weathers = loads.map((load, i) => {
+    const { away, daysOff } = people[i] as Staffed;
+    return away
+      ? awayWeather(load, away, teamAverage, metric)
+      : weatherOf(load, teamAverage, capacities[i] ?? FULL_TIME, daysOff ?? 0, metric, thresholds);
+  });
 
-  return { people: weathers, team: spread(people, weathers, capacities, metric, teamAverage) };
+  return {
+    people: weathers,
+    team: spread(people, loads, weathers, capacities, metric, teamAverage),
+  };
 }
 
 /**
@@ -200,6 +217,7 @@ function weatherOf(
   measured: Load,
   teamAverage: number | null,
   capacity: number,
+  daysOff: number,
   metric: LoadMetric,
   thresholds: WeatherThresholds,
 ): Weather {
@@ -210,12 +228,32 @@ function weatherOf(
     load,
     teamAverage,
     overdue,
-    reason: describeLoad(measured, teamAverage, capacity, metric),
+    reason: describeLoad(measured, teamAverage, capacity, daysOff, metric),
+  };
+}
+
+/** Someone away all of the period, e.g. "Away until Nov 20, holding 3 urgent issues". */
+function awayWeather(
+  { load, urgent, overdue }: Load,
+  away: Away,
+  teamAverage: number | null,
+  metric: LoadMetric,
+): Weather {
+  const late = overdue === 0 ? "" : ` (${overdue} overdue)`;
+  const holding = urgent === 0 ? "" : `, holding ${plural(urgent, "urgent issue")}${late}`;
+  return {
+    kind: "away",
+    metric,
+    load,
+    teamAverage,
+    overdue,
+    reason: `${describeAway(away)}${holding}`,
   };
 }
 
 function spread(
-  people: readonly { name: string }[],
+  people: readonly Staffed[],
+  loads: readonly Load[],
   weathers: Weather[],
   capacities: readonly number[],
   metric: LoadMetric,
@@ -225,7 +263,7 @@ function spread(
   let busiest: number | null = null;
   let most = Number.NEGATIVE_INFINITY;
   for (const [i, { load }] of weathers.entries()) {
-    if (load === null) continue;
+    if (load === null || people[i]?.away) continue;
     const perFullTime = load / (capacities[i] ?? FULL_TIME);
     if (perFullTime > most) [busiest, most] = [load, perFullTime];
   }
@@ -234,6 +272,19 @@ function spread(
   const names = (kind: WeatherKind) =>
     people.filter((_, i) => weathers[i]?.kind === kind).map(({ name }) => name);
 
+  // Urgent work held by someone away is work nobody is doing.
+  const stuck = people.flatMap(({ name, away }, i) => {
+    const urgent = loads[i]?.urgent ?? 0;
+    return away && urgent > 0 ? [`${name} is away with ${plural(urgent, "urgent issue")}`] : [];
+  });
+  const stormy = names("storm");
+  if (stuck.length > 0) {
+    const others =
+      stormy.length === 0
+        ? ""
+        : `; ${list(stormy)} ${stormy.length === 1 ? "is" : "are"} in a storm`;
+    return { ...base, kind: "storm", reason: `${stuck.join("; ")}${others}` };
+  }
   for (const kind of ["storm", "rain"] as const) {
     const who = names(kind);
     if (who.length > 0) {
@@ -245,10 +296,15 @@ function spread(
     return { ...base, kind: "sunny", reason: "Nothing urgent on anyone's plate" };
   }
   if (teamAverage === null) {
+    const here = people.filter(({ away }) => !away);
     const reason =
-      busiest === null
-        ? "Nobody's urgent load can be measured"
-        : "Only one person's urgent load can be measured";
+      people.length > 0 && here.length === 0
+        ? "Everyone is away"
+        : here.length === 1 && people.length > 1
+          ? `Everyone but ${here[0]?.name} is away`
+          : busiest === null
+            ? "Nobody's urgent load can be measured"
+            : "Only one person's urgent load can be measured";
     return { ...base, kind: "fog", reason };
   }
   const roomy = names("sunny");
@@ -265,6 +321,7 @@ function describeLoad(
   { load, urgent, overdue: late, unknown }: Load,
   teamAverage: number | null,
   capacity: number,
+  daysOff: number,
   metric: LoadMetric,
 ): string {
   const overdue = late === 0 ? "" : `${plural(late, "issue")} overdue`;
@@ -282,7 +339,7 @@ function describeLoad(
       : load === 0
         ? `${plural(urgent, "urgent issue")}, estimated at 0 points`
         : plural(load, "urgent point");
-  const partTime = capacity === FULL_TIME ? "" : ` at ${describeCapacity(capacity)}`;
+  const partTime = describeStaffing(capacity, daysOff);
   const share = shareOf(teamAverage, capacity);
   const vsShare =
     load === 0

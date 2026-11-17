@@ -11,7 +11,7 @@ import {
   teamBoard,
   type Viewer,
 } from "./board";
-import { weatherIcon } from "./weather";
+import { skyFor } from "./weather";
 
 export interface Bindings {
   /** Service binding to the server Worker (see wrangler.jsonc). */
@@ -57,9 +57,7 @@ export const app = new Hono<{ Bindings: Bindings }>()
     // Escape "<" so the JSON can't close the <script> tag early.
     const propsJson = JSON.stringify(props).replaceAll("<", "\\u003c");
     const teamWeather = props.board?.team?.weather;
-    const sky = props.viewer
-      ? boardSky(teamWeather ? weatherIcon[teamWeather.kind] : "partly")
-      : sunset;
+    const sky = props.viewer ? boardSky(teamWeather ? skyFor(teamWeather.kind) : "partly") : sunset;
 
     return c.html(html`<!doctype html>
       <html lang="en">

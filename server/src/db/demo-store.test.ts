@@ -1,8 +1,15 @@
 import { generateCookie } from "hono/cookie";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_RULES, MAX_URGENCY_WINDOW_DAYS } from "../domain/quadrant";
+import { addDays, DEFAULT_RULES, MAX_URGENCY_WINDOW_DAYS } from "../domain/quadrant";
+import { MAX_TIME_OFF, type TimeOff } from "../domain/time-off";
 import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssues } from "../linear/demo";
-import { DEMO_COOKIE, DEMO_COOKIE_MAX_AGE, decodeDemo, MAX_COOKIE_LENGTH } from "./demo-cookie";
+import {
+  DEMO_COOKIE,
+  DEMO_COOKIE_MAX_AGE,
+  DEMO_MAX_TIME_OFF_DAYS,
+  decodeDemo,
+  MAX_COOKIE_LENGTH,
+} from "./demo-cookie";
 import { DemoStore } from "./demo-store";
 
 const strict = {
@@ -82,6 +89,26 @@ describe("DemoStore", () => {
     expect(after.changed).toBe(false);
   });
 
+  it("keeps time off, once for the same days, and forgets what's over as it reads it", async () => {
+    const before = DemoStore.fromCookie(undefined);
+    const add = async (startsOn: string, endsOn: string) =>
+      (await before.addTimeOff("demo-user-tony", startsOn, endsOn, "2026-10-18")) as TimeOff;
+    const thanksgiving = await add("2026-11-26", "2026-11-27");
+    const earlier = await add("2026-10-19", "2026-10-23");
+    expect(await add("2026-11-26", "2026-11-27")).toEqual(thanksgiving);
+    expect(before.cookie()).toBe("1~~~~~tony.20261019.4!tony.20261126.1");
+
+    const after = DemoStore.fromCookie(before.cookie(), "2026-10-24");
+    expect(await after.timeOff(["demo-user-tony", "demo-user-steve"])).toEqual(
+      new Map([["demo-user-tony", [thanksgiving]]]),
+    );
+    expect(await after.removeTimeOff("demo-user-tony", earlier.id)).toBe(false);
+    expect(after.changed).toBe(false);
+    expect(await after.removeTimeOff("demo-user-tony", thanksgiving.id)).toBe(true);
+    expect(after.changed).toBe(true);
+    expect(after.cookie()).toBe("1~~");
+  });
+
   it("has changed after handing back an issue its cookie had handed over", () => {
     const store = DemoStore.fromCookie("1~~~avg-10.wanda");
     store.setAssignee("demo-issue-avg-10", null);
@@ -126,6 +153,12 @@ describe("DemoStore", () => {
         ? DEMO_TEAM.members
         : DEMO_OPS_TEAM.members) {
         await store.setCapacity(userId, 0.33);
+        // As much time off as anyone can have, each covering as many days as the demo keeps.
+        for (let i = 0; i < MAX_TIME_OFF; i++) {
+          const startsOn = `2026-${String(i + 1).padStart(2, "0")}-01`;
+          const endsOn = addDays(startsOn, DEMO_MAX_TIME_OFF_DAYS - 1);
+          expect(await store.addTimeOff(userId, startsOn, endsOn, "2026-01-01")).not.toBeNull();
+        }
       }
     }
     const cookie = generateCookie(DEMO_COOKIE, store.cookie(), {
@@ -177,6 +210,38 @@ describe("decodeDemo", () => {
     );
   });
 
+  it("drops time off in the cookie that isn't a demo user's, or real days", () => {
+    const away = [
+      "tony.20261019.4",
+      "nobody.20261019.4",
+      "steve.20260230.1",
+      "thor.2026111.1",
+      "clint.20261019.400",
+      "wanda.20261019.x",
+      "bruce.20261019",
+    ];
+    expect(decodeDemo(`1~~~~~${away.join("!")}`).timeOff).toEqual(
+      new Map([
+        [
+          "demo-user-tony",
+          [{ id: "demo-time-off-tony-20261019-4", startsOn: "2026-10-19", endsOn: "2026-10-23" }],
+        ],
+      ]),
+    );
+  });
+
+  it("keeps time off in the cookie no longer than the demo allows, however long it says", () => {
+    const away = ["tony.20261019.30", "steve.20261019.31", "thor.20261019.99999999999999"];
+    expect(decodeDemo(`1~~~~~${away.join("!")}`).timeOff).toEqual(
+      new Map([
+        [
+          "demo-user-tony",
+          [{ id: "demo-time-off-tony-20261019-30", startsOn: "2026-10-19", endsOn: "2026-11-18" }],
+        ],
+      ]),
+    );
+  });
+
   it.each([
     ["empty", ""],
     ["from another version", "2~avengers.2.7.0~avg-1.3"],
@@ -188,6 +253,7 @@ describe("decodeDemo", () => {
       overrides: new Map(),
       assignees: new Map(),
       capacities: new Map(),
+      timeOff: new Map(),
     });
   });
 });

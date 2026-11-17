@@ -70,6 +70,34 @@ describe("forecast", () => {
     });
   });
 
+  it("lowers a week's capacity by the days off, and is away a week off entirely", () => {
+    // Urgent from Nov 5, in the third week. Ana is off Nov 2–6 and, after the weekend, Nov 9–10.
+    const due = () => issue("2026-11-18");
+    const timeOff = [
+      { id: "t1", startsOn: "2026-11-02", endsOn: "2026-11-06" },
+      { id: "t2", startsOn: "2026-11-09", endsOn: "2026-11-10" },
+    ];
+    const { people, team } = forecast(
+      [{ ...person("Ana", [due(), due(), due()]), timeOff }, person("Ben", [due(), due(), due()])],
+      "issues",
+      TODAY,
+      4,
+    );
+    expect(people[0]?.[2]?.weather).toMatchObject({
+      kind: "away",
+      reason: "Away until Nov 10, holding 3 urgent issues",
+    });
+    expect(team[2]?.weather).toMatchObject({
+      kind: "storm",
+      reason: "Ana is away with 3 urgent issues",
+    });
+    // Week 4: 6 over 1.6 people, so Ana's share is 2.25.
+    expect(people[0]?.[3]?.weather).toMatchObject({
+      kind: "rain",
+      reason: "3 urgent issues at 60% time (2 days off), 1.33× their share",
+    });
+  });
+
   it("counts work as done after its due date, but keeps overdue work, and its storm", () => {
     const { people } = forecast(
       [

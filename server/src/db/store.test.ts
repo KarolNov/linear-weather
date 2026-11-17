@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_RULES } from "../domain/quadrant";
+import { MAX_TIME_OFF, type TimeOff } from "../domain/time-off";
 import { Store } from "./store";
 
 const store = () => new Store(env.DB);
@@ -83,6 +84,49 @@ describe("Store", () => {
       new Map([["user-ben", 0.6]]),
     );
     expect(await store().capacities([])).toEqual(new Map());
+  });
+
+  it("keeps each person's time off, soonest first, and removes only their own", async () => {
+    const add = async (userId: string, startsOn: string, endsOn: string) =>
+      (await store().addTimeOff(userId, startsOn, endsOn, "2026-11-01")) as TimeOff;
+    const later = await add("user-ana", "2026-12-21", "2026-12-31");
+    const sooner = await add("user-ana", "2026-11-16", "2026-11-20");
+    const bens = await add("user-ben", "2026-11-16", "2026-11-16");
+    expect(await store().timeOff(["user-ana", "user-ben", "user-cy"])).toEqual(
+      new Map([
+        ["user-ana", [sooner, later]],
+        ["user-ben", [bens]],
+      ]),
+    );
+    expect(await store().removeTimeOff("user-ana", bens.id)).toBe(false);
+    expect(await store().removeTimeOff("user-ana", sooner.id)).toBe(true);
+    expect(await store().timeOff(["user-ana"])).toEqual(new Map([["user-ana", [later]]]));
+    expect(await store().timeOff([])).toEqual(new Map());
+  });
+
+  it("refuses time off past the most anyone can have coming up, and forgets what's over", async () => {
+    const past = await store().addTimeOff("user-ana", "2026-10-01", "2026-10-02", "2026-10-01");
+    for (let i = 0; i < MAX_TIME_OFF; i++) {
+      const day = `2026-11-${10 + i}`;
+      expect(await store().addTimeOff("user-ana", day, day, "2026-11-01")).not.toBeNull();
+    }
+    expect(await store().addTimeOff("user-ana", "2026-12-01", "2026-12-01", "2026-11-01")).toBe(
+      null,
+    );
+    const kept = (await store().timeOff(["user-ana"])).get("user-ana") ?? [];
+    expect(kept).toHaveLength(MAX_TIME_OFF);
+    expect(kept).not.toContainEqual(past);
+  });
+
+  it.each([
+    ["2026-11-20", "2026-11-16"],
+    ["2026-11-16", "next week"],
+  ])("refuses time off from %s to %s", async (startsOn, endsOn) => {
+    await expect(
+      store().addTimeOff("user-ana", startsOn, endsOn, "2026-11-01"),
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringContaining("CHECK constraint failed") },
+    });
   });
 
   it.each([0, -0.5, 1.5])("refuses a capacity of %d", async (factor) => {

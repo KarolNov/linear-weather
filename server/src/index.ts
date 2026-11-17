@@ -40,13 +40,14 @@ export const app = new Hono<{ Bindings: Env }>()
     }
     // Resolved on first use, so queries that don't touch Linear skip the session lookup.
     let workspace: Promise<Workspace | null> | undefined;
+    const today = new Date().toISOString().slice(0, 10);
     // The demo never touches D1: each visitor's changes live in their own cookie.
-    const demo = isDemo(c) ? DemoStore.fromCookie(getCookie(c, DEMO_COOKIE)) : null;
+    const demo = isDemo(c) ? DemoStore.fromCookie(getCookie(c, DEMO_COOKIE), today) : null;
     const response = await yoga.fetch(c.req.raw, {
       workspace: () =>
         (workspace ??= linearSource(c, demo).then((linear) => linear && new Workspace(linear))),
       placements: new Placements(demo ?? new Store(c.env.DB)),
-      today: new Date().toISOString().slice(0, 10),
+      today,
     });
     if (!demo?.changed) return response;
     const headers = new Headers(response.headers);

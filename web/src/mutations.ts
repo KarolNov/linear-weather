@@ -1,8 +1,9 @@
 // Changing the board from the browser: a team's rules, where one issue sits, who has it, or how much
-// someone works. Every mutation
+// someone works and when they're away. Every mutation
 // asks for the team's board back, so the page redraws from the answer with nothing derived here.
 
 import {
+  type CalendarDate,
   listOf,
   type Quadrant,
   type Rules,
@@ -63,6 +64,24 @@ export const SET_CAPACITY_MUTATION = `mutation SetCapacity($teamId: ID!, $userId
 
 ${TEAM_BOARD_FRAGMENTS}`;
 
+export const ADD_TIME_OFF_MUTATION = `mutation AddTimeOff($teamId: ID!, $userId: ID!, $startsOn: Date!, $endsOn: Date!) {
+  addTimeOff(teamId: $teamId, userId: $userId, startsOn: $startsOn, endsOn: $endsOn) {
+    ${RESULT_FIELDS}
+    ... on TimeOffSuccess { team { ...TeamBoard } }
+  }
+}
+
+${TEAM_BOARD_FRAGMENTS}`;
+
+export const REMOVE_TIME_OFF_MUTATION = `mutation RemoveTimeOff($teamId: ID!, $userId: ID!, $timeOffId: ID!) {
+  removeTimeOff(teamId: $teamId, userId: $userId, timeOffId: $timeOffId) {
+    ${RESULT_FIELDS}
+    ... on TimeOffSuccess { team { ...TeamBoard } }
+  }
+}
+
+${TEAM_BOARD_FRAGMENTS}`;
+
 /** A team's board as it stands, to plan again from after a move failed. */
 export const TEAM_QUERY = `query Team($teamId: ID!) {
   team(id: $teamId) { ...TeamBoard }
@@ -100,6 +119,15 @@ export interface BoardClient {
   reassign(issueId: string, userId: string): Promise<MutationResult>;
   /** How much of a full-time week someone works, on every team; answers with this team's board. */
   setCapacity(teamId: string, userId: string, factor: number): Promise<MutationResult>;
+  /** Marks someone away, days included, on every team; answers with this team's board. */
+  addTimeOff(
+    teamId: string,
+    userId: string,
+    startsOn: CalendarDate,
+    endsOn: CalendarDate,
+  ): Promise<MutationResult>;
+  /** Takes back a stretch of someone's time off; answers with this team's board. */
+  removeTimeOff(teamId: string, userId: string, timeOffId: string): Promise<MutationResult>;
   /**
    * The team's board as it stands, else the newest one an answer carried; null when there's
    * neither.
@@ -191,6 +219,16 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
     }
   }
 
+  /**
+   * A change to someone, which counts on every team they're on, so other teams' boards kept here
+   * are out of date once it's made.
+   */
+  async function everywhere(teamId: string, sent: Promise<MutationResult>) {
+    const result = await sent;
+    if (result.ok) for (const id of [...latest.keys()]) if (id !== teamId) latest.delete(id);
+    return result;
+  }
+
   return {
     updateRules: (teamId, rules) => queued(UPDATE_RULES_MUTATION, { teamId, input: rules }),
     placeIssue: (issueId, quadrant) =>
@@ -198,12 +236,12 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
         ? queued(OVERRIDE_MUTATION, { issueId, quadrant: quadrant.toUpperCase() })
         : queued(CLEAR_OVERRIDE_MUTATION, { issueId }),
     reassign: (issueId, userId) => queued(REASSIGN_MUTATION, { issueId, userId }),
-    setCapacity: async (teamId, userId, factor) => {
-      const result = await queued(SET_CAPACITY_MUTATION, { teamId, userId, factor });
-      // Capacity counts on every team, so other teams' boards kept here are out of date.
-      if (result.ok) for (const id of [...latest.keys()]) if (id !== teamId) latest.delete(id);
-      return result;
-    },
+    setCapacity: (teamId, userId, factor) =>
+      everywhere(teamId, queued(SET_CAPACITY_MUTATION, { teamId, userId, factor })),
+    addTimeOff: (teamId, userId, startsOn, endsOn) =>
+      everywhere(teamId, queued(ADD_TIME_OFF_MUTATION, { teamId, userId, startsOn, endsOn })),
+    removeTimeOff: (teamId, userId, timeOffId) =>
+      everywhere(teamId, queued(REMOVE_TIME_OFF_MUTATION, { teamId, userId, timeOffId })),
     // After the moves sent before it, so it reads what they left. Failing that, the newest board
     // an answer carried, which is no older than anything shown.
     readTeam: (teamId) => inTurn(async () => (await read(teamId)) ?? latest.get(teamId) ?? null),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildMatrix, type MatrixIssue, type Overrides } from "./matrix";
 import { DEFAULT_RULES } from "./quadrant";
-import { rebalance, type Suggestion } from "./rebalance";
+import { rebalance, rebalanceAhead, type Suggestion } from "./rebalance";
 
 // Weeks run Oct 18–24, Oct 25–31, Nov 1–7, Nov 8–14. Under the default rules an issue turns
 // urgent 13 days before it's due.
@@ -347,5 +347,83 @@ describe("rebalance forecast", () => {
       person("Cy", [issue("2026-11-18")]),
     ];
     expect(rebalance(team, "forecast", "issues", TODAY)).toEqual([]);
+  });
+});
+
+describe("rebalance with time off", () => {
+  const offToday = [{ id: "t1", startsOn: "2026-10-16", endsOn: "2026-10-20" }];
+  // Nov 2–6: all of the third week's working days.
+  const offWeek3 = [{ id: "t2", startsOn: "2026-11-02", endsOn: "2026-11-06" }];
+
+  it("first moves everything urgent someone away holds, overdue too, most pressing first", () => {
+    const overdue = issue("2026-10-15", 1);
+    const high = issue(SOON, 2);
+    const suggestions = rebalance(
+      [
+        { ...person("Ana", [high, overdue]), timeOff: offToday },
+        person("Ben", [issue(SOON)]),
+        person("Cy", []),
+      ],
+      "now",
+      "issues",
+      TODAY,
+    );
+    // Cy takes the overdue issue, so is running late and takes no more.
+    expect(moves(suggestions)).toEqual([
+      [overdue.id, "Ana", "Cy", null],
+      [high.id, "Ana", "Ben", null],
+    ]);
+    expect(suggestions[0]).toMatchObject({
+      fromWeather: "away",
+      toWeather: "storm",
+      reason: "Ana is away until Oct 20; Cy goes from 0.0× to 1.0× the team average",
+    });
+  });
+
+  it("moves work before it turns urgent in a week its holder is away", () => {
+    const team = [
+      { ...person("Ana", [issue("2026-11-18"), issue("2026-11-18")]), timeOff: offWeek3 },
+      person("Ben", []),
+      person("Cy", []),
+    ];
+    const suggestions = rebalance(team, "forecast", "issues", TODAY);
+    expect(moves(suggestions).map(([, ...move]) => move)).toEqual([
+      ["Ana", "Ben", 3],
+      ["Ana", "Cy", 3],
+    ]);
+    expect(suggestions[0]?.reason).toBe(
+      "Ana is away until Nov 6; Ben goes to 2.0× the team average",
+    );
+  });
+
+  it("gives nobody work they'd hold, still urgent, through a week they're away", () => {
+    const held = issue(null);
+    const team = [
+      {
+        ...person("Ana", [held], new Map([[held.id, "do"]])),
+        timeOff: offWeek3,
+      },
+      // Away the first week, while Ana's issue is already urgent.
+      {
+        ...person("Ben", []),
+        timeOff: [{ id: "t3", startsOn: "2026-10-19", endsOn: "2026-10-23" }],
+      },
+      person("Cy", []),
+    ];
+    expect(moves(rebalanceAhead(team, "issues", TODAY))).toEqual([[held.id, "Ana", "Cy", 3]]);
+  });
+
+  it("gives nobody work for a week they're away", () => {
+    const team = [
+      person(
+        "Ana",
+        times(4, () => issue("2026-11-18")),
+      ),
+      { ...person("Ben", []), timeOff: offWeek3 },
+      person("Cy", [issue("2026-11-18")]),
+    ];
+    expect(moves(rebalance(team, "forecast", "issues", TODAY)).map(([, ...move]) => move)).toEqual([
+      ["Ana", "Cy", 3],
+    ]);
   });
 });

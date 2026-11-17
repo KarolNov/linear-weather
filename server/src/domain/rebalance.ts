@@ -138,6 +138,7 @@ export function rebalanceNow<I extends MatrixIssue, P extends { name: string }>(
           teamAverage: weather.team.teamAverage,
           capacities: staffing.map(({ capacity }) => capacity),
           away: staffing.map(({ away }) => away ?? null),
+          urgent: state.map(({ matrix }) => new Set([...matrix.do, ...matrix.delegate])),
           movable: state.map(
             ({ matrix }, i) =>
               new Set(
@@ -203,6 +204,7 @@ export function rebalanceAhead<I extends MatrixIssue, P extends { name: string }
         teamAverage: weather.team.teamAverage,
         capacities: projected.map(({ capacity }) => capacity ?? FULL_TIME),
         away: projected.map(({ away }) => away ?? null),
+        urgent: projected.map(({ matrix }) => new Set([...matrix.do, ...matrix.delegate])),
         // Urgent by the week's end, but not today; anything urgent, from someone away.
         movable: projected.map(
           ({ matrix, away }) =>
@@ -262,9 +264,10 @@ function balancer<I extends MatrixIssue, P extends { name: string }>(
         const s = size(issue);
         const fromAway = round.away[giver] != null;
         let change = 0;
-        for (const { loads, movable, capacities, away } of all) {
+        for (const { loads, movable, capacities, away, urgent } of all) {
+          // Never to someone away while it's urgent, even in a round it can't be moved in.
+          if (away[taker] && urgent[giver]?.has(issue)) return false;
           if (!movable[giver]?.has(issue)) continue;
-          if (away[taker]) return false;
           if (fromAway || away[giver]) continue;
           const [g, t] = [loads[giver], loads[taker]];
           if (g == null || t == null) continue;
@@ -305,8 +308,8 @@ function balancer<I extends MatrixIssue, P extends { name: string }>(
     const [cg, ct] = [capacities[move.from] ?? FULL_TIME, capacities[move.to] ?? FULL_TIME];
     const ratio = (load: number, share: number) => times(ratioOf(load, share));
     const toAfter = move.toLoad + move.size;
-    const gone = away[move.from];
-    if (gone || move.fromLoad === null) {
+    if (move.fromLoad === null) {
+      const gone = away[move.from];
       // Their work joins the fair share as the taker takes it on.
       const after = fairShare(
         loads.map((load, i) =>
@@ -325,7 +328,7 @@ function balancer<I extends MatrixIssue, P extends { name: string }>(
       return {
         fromWeather: "away",
         toWeather: weatherFor(toAfter, share, takerLate, thresholds),
-        reason: `${giverName} is away until ${shortDate((gone as Away).until)}; ${taker}`,
+        reason: `${giverName} is ${gone ? `away until ${shortDate(gone.until)}` : "away"}; ${taker}`,
       };
     }
     // Both were measured before and after, and the fair share depends only on totals, so it
@@ -357,6 +360,8 @@ interface Round<I> {
   capacities: number[];
   /** Who is away all of it. */
   away: (Away | null)[];
+  /** What each person holds that's urgent then. */
+  urgent: Set<Placed<I>>[];
   /** What each person could hand over. */
   movable: Set<Placed<I>>[];
 }
@@ -366,7 +371,7 @@ interface Move<I> {
   size: number;
   from: number;
   to: number;
-  /** Null when the giver is away and their load can't be measured. */
+  /** Null when the giver is away: their load isn't weighed against anyone's. */
   fromLoad: number | null;
   toLoad: number;
 }
@@ -424,7 +429,7 @@ function bestMove<I extends MatrixIssue>(
           size: size(issue),
           from,
           to: taker.i,
-          fromLoad: loads[from] ?? null,
+          fromLoad: null,
           toLoad: taker.load,
         };
       }

@@ -15,12 +15,14 @@ import {
   type Quadrant,
   type QuadrantRules,
 } from "../domain/quadrant";
-import { soonestFirst, type TimeOff } from "../domain/time-off";
+import { MAX_TIME_OFF, soonestFirst, type TimeOff, upcoming } from "../domain/time-off";
 import type { DemoAssignments } from "../linear/demo";
 import type { PlacementStore } from "../placements";
-import { decodeDemo, demoTimeOffId, encodeDemo } from "./demo-cookie";
+import { DEMO_MAX_TIME_OFF_DAYS, decodeDemo, demoTimeOffId, encodeDemo } from "./demo-cookie";
 
 export class DemoStore implements PlacementStore, DemoAssignments {
+  readonly maxTimeOffDays = DEMO_MAX_TIME_OFF_DAYS;
+
   /** Whether anything changed since the cookie was read, so the response should set it. */
   changed = false;
 
@@ -93,10 +95,16 @@ export class DemoStore implements PlacementStore, DemoAssignments {
   }
 
   /** Time off covering the same days twice is kept once. */
-  async addTimeOff(userId: string, startsOn: CalendarDate, endsOn: CalendarDate): Promise<TimeOff> {
+  async addTimeOff(
+    userId: string,
+    startsOn: CalendarDate,
+    endsOn: CalendarDate,
+    today: CalendarDate,
+  ): Promise<TimeOff | null> {
     const added = { id: demoTimeOffId(userId, startsOn, endsOn), startsOn, endsOn };
     const theirs = this.savedTimeOff.get(userId) ?? [];
     if (!theirs.some(({ id }) => id === added.id)) {
+      if (upcoming(theirs, today).length >= MAX_TIME_OFF) return null;
       this.savedTimeOff.set(userId, soonestFirst([...theirs, added]));
       this.changed = true;
     }

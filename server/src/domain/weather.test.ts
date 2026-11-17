@@ -386,6 +386,18 @@ describe("teamWeather", () => {
       expect(team).toMatchObject({ kind: "sunny", reason: "Urgent load is spread evenly" });
     });
 
+    it("says so when only one person isn't away", () => {
+      const { team } = teamWeather(
+        [
+          { name: "Ana", matrix: matrixOf(later), away },
+          { name: "Ben", matrix: matrixOf(doIssue()) },
+        ],
+        "issues",
+        TODAY,
+      );
+      expect(team).toMatchObject({ kind: "fog", reason: "Everyone but Ben is away" });
+    });
+
     it("says so when everyone is away", () => {
       const { team } = teamWeather(
         [

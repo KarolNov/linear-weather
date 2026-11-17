@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildMatrix, type MatrixIssue, type Overrides } from "./matrix";
 import { DEFAULT_RULES } from "./quadrant";
-import { rebalance, type Suggestion } from "./rebalance";
+import { rebalance, rebalanceAhead, type Suggestion } from "./rebalance";
 
 // Weeks run Oct 18–24, Oct 25–31, Nov 1–7, Nov 8–14. Under the default rules an issue turns
 // urgent 13 days before it's due.
@@ -394,6 +394,23 @@ describe("rebalance with time off", () => {
     expect(suggestions[0]?.reason).toBe(
       "Ana is away until Nov 6; Ben goes to 2.0× the team average",
     );
+  });
+
+  it("gives nobody work they'd hold, still urgent, through a week they're away", () => {
+    const held = issue(null);
+    const team = [
+      {
+        ...person("Ana", [held], new Map([[held.id, "do"]])),
+        timeOff: offWeek3,
+      },
+      // Away the first week, while Ana's issue is already urgent.
+      {
+        ...person("Ben", []),
+        timeOff: [{ id: "t3", startsOn: "2026-10-19", endsOn: "2026-10-23" }],
+      },
+      person("Cy", []),
+    ];
+    expect(moves(rebalanceAhead(team, "issues", TODAY))).toEqual([[held.id, "Ana", "Cy", 3]]);
   });
 
   it("gives nobody work for a week they're away", () => {

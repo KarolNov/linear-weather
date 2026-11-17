@@ -296,12 +296,15 @@ function spread(
     return { ...base, kind: "sunny", reason: "Nothing urgent on anyone's plate" };
   }
   if (teamAverage === null) {
+    const here = people.filter(({ away }) => !away);
     const reason =
-      people.length > 0 && people.every(({ away }) => away)
+      people.length > 0 && here.length === 0
         ? "Everyone is away"
-        : busiest === null
-          ? "Nobody's urgent load can be measured"
-          : "Only one person's urgent load can be measured";
+        : here.length === 1 && people.length > 1
+          ? `Everyone but ${here[0]?.name} is away`
+          : busiest === null
+            ? "Nobody's urgent load can be measured"
+            : "Only one person's urgent load can be measured";
     return { ...base, kind: "fog", reason };
   }
   const roomy = names("sunny");

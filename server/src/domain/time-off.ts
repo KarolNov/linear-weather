@@ -2,7 +2,7 @@
 // has no share of its urgent load; someone away part of a forecast week has less of one.
 
 import { describeCapacity, FULL_TIME } from "./capacity";
-import { addDays, type CalendarDate } from "./quadrant";
+import { addDays, type CalendarDate, daysBetween } from "./quadrant";
 
 /** One stretch of time off, first and last day included. */
 export interface TimeOff {
@@ -27,6 +27,9 @@ export interface Staffing {
   daysOff?: number;
 }
 
+/** The least capacity anyone has: a hundredth of full time, as parseCapacity rounds it. */
+const MIN_CAPACITY = 0.01;
+
 /** Working days in a week: a forecast week is any 7 days, so always holds 5. */
 export const WORK_WEEK = 5;
 
@@ -38,32 +41,32 @@ export const MAX_TIME_OFF = 8;
 
 /**
  * Time off from a client: real dates, ending no earlier than it starts and no earlier than
- * today, and at most MAX_TIME_OFF_DAYS long.
+ * today, and at most `maxDays` long (MAX_TIME_OFF_DAYS unless the store keeps less).
  */
 export function parseTimeOff(
   startsOn: CalendarDate,
   endsOn: CalendarDate,
   today: CalendarDate,
+  maxDays = MAX_TIME_OFF_DAYS,
 ): { startsOn: CalendarDate; endsOn: CalendarDate } | { problem: string } {
-  const problem = rangeProblem(startsOn, endsOn);
+  const problem = rangeProblem(startsOn, endsOn, maxDays);
   if (problem) return { problem };
   if (endsOn < today) return { problem: "That time off is already over." };
   return { startsOn, endsOn };
 }
 
 /** What's wrong with a stretch of time off, whenever it is, or null if nothing. */
-export function rangeProblem(startsOn: string, endsOn: string): string | null {
+export function rangeProblem(
+  startsOn: string,
+  endsOn: string,
+  maxDays = MAX_TIME_OFF_DAYS,
+): string | null {
   if (!isDate(startsOn) || !isDate(endsOn)) return "Time off needs real dates, as YYYY-MM-DD.";
   if (endsOn < startsOn) return "Time off can't end before it starts.";
-  if (daysBetween(startsOn, endsOn) >= MAX_TIME_OFF_DAYS) {
-    return `One stretch of time off covers at most ${MAX_TIME_OFF_DAYS} days.`;
+  if (daysBetween(startsOn, endsOn) >= maxDays) {
+    return `One stretch of time off covers at most ${maxDays} days.`;
   }
   return null;
-}
-
-/** Whole days from one date to a later one: 0 for the same day. */
-export function daysBetween(from: CalendarDate, to: CalendarDate): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
 /** Time off not over by `today`, soonest first. */
@@ -80,10 +83,18 @@ export function soonestFirst(timeOff: readonly TimeOff[]): TimeOff[] {
 
 /**
  * The last day of the time off `on` falls in, or null if they aren't off that day. Stretches that
- * meet or overlap, or only have a weekend between them, count as one.
+ * meet or overlap, or only have a weekend between them, count as one, so a weekend between two
+ * of them is time off too.
  */
 export function awayUntil(timeOff: readonly TimeOff[], on: CalendarDate): CalendarDate | null {
-  if (!isOff(timeOff, on)) return null;
+  if (!isOff(timeOff, on)) {
+    if (!isWeekend(on)) return null;
+    // Away over the weekend if the time off they're on by the last working day runs past it.
+    let workday = addDays(on, -1);
+    while (isWeekend(workday)) workday = addDays(workday, -1);
+    const until = isOff(timeOff, workday) ? awayUntil(timeOff, workday) : null;
+    return until !== null && until > on ? until : null;
+  }
   let last = on;
   // A stretch is at most a year, and one may follow another; stop well past any real leave.
   for (let day = addDays(on, 1), i = 0; i < 4 * MAX_TIME_OFF_DAYS; day = addDays(day, 1), i++) {
@@ -125,7 +136,9 @@ export function staffingFor(
     return { capacity, away: { until } };
   }
   const present = (workdays.length - off.length) / WORK_WEEK;
-  return { capacity: Math.round(capacity * present * 100) / 100, daysOff: off.length };
+  // To the hundredth, like any capacity, but never 0: they're there some of the week.
+  const reduced = Math.max(MIN_CAPACITY, Math.round(capacity * present * 100) / 100);
+  return { capacity: reduced, daysOff: off.length };
 }
 
 /** E.g. "Away until Nov 20". */

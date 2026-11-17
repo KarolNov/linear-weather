@@ -110,3 +110,35 @@ describe("describing", () => {
     expect(describeStaffing(0.8, 1)).toBe(" at 80% time (1 day off)");
   });
 });
+
+describe("time off fixes", () => {
+  it("holds a store to a shorter longest stretch", () => {
+    expect(parseTimeOff("2026-10-19", "2026-11-18", TODAY, 31)).toEqual({
+      startsOn: "2026-10-19",
+      endsOn: "2026-11-18",
+    });
+    expect(parseTimeOff("2026-10-19", "2026-11-19", TODAY, 31)).toEqual({
+      problem: "One stretch of time off covers at most 31 days.",
+    });
+  });
+
+  it("counts a weekend between two stretches as time off, but not one after the last", () => {
+    const first = off("2026-10-12", "2026-10-16");
+    // Saturday Oct 17.
+    expect(staffingOn(1, [first, off("2026-10-19", "2026-10-23")], "2026-10-17")).toEqual({
+      capacity: 1,
+      away: { until: "2026-10-23" },
+    });
+    expect(staffingOn(1, [first], "2026-10-17")).toEqual({ capacity: 1 });
+    expect(staffingOn(1, [off("2026-10-19", "2026-10-23")], "2026-10-17")).toEqual({
+      capacity: 1,
+    });
+  });
+
+  it("never brings a capacity to 0 for a week with a day present", () => {
+    expect(staffingFor(0.02, [off("2026-10-19", "2026-10-22")], TODAY, "2026-10-24")).toEqual({
+      capacity: 0.01,
+      daysOff: 4,
+    });
+  });
+});

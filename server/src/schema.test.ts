@@ -78,7 +78,8 @@ function writesTo(store: Store): Omit<PlacementStore, "rules" | "overrides"> {
     capacities: (userIds) => store.capacities(userIds),
     setCapacity: (userId, factor) => store.setCapacity(userId, factor),
     timeOff: (userIds) => store.timeOff(userIds),
-    addTimeOff: (userId, startsOn, endsOn) => store.addTimeOff(userId, startsOn, endsOn),
+    addTimeOff: (userId, startsOn, endsOn, today) =>
+      store.addTimeOff(userId, startsOn, endsOn, today),
     removeTimeOff: (userId, id) => store.removeTimeOff(userId, id),
   };
 }
@@ -826,8 +827,8 @@ describe("time off", () => {
 
   it("lists only time off not over yet, the same on every team", async () => {
     const store = new Store(env.DB);
-    await store.addTimeOff(natasha, "2026-10-01", "2026-10-02");
-    await store.addTimeOff(natasha, "2026-12-21", "2026-12-31");
+    await store.addTimeOff(natasha, "2026-10-01", "2026-10-02", "2026-10-01");
+    await store.addTimeOff(natasha, "2026-12-21", "2026-12-31", "2026-10-01");
     const { team } = await data<{
       team: { people: { name: string; timeOff: { startsOn: string }[] }[] };
     }>("query ($id: ID) { team(id: $id) { people { name timeOff { startsOn } } } }", {
@@ -841,7 +842,7 @@ describe("time off", () => {
   it("refuses more stretches coming up than the board holds", async () => {
     const store = new Store(env.DB);
     for (let i = 0; i < MAX_TIME_OFF; i++) {
-      await store.addTimeOff(natasha, `2026-11-${10 + i}`, `2026-11-${10 + i}`);
+      await store.addTimeOff(natasha, `2026-11-${10 + i}`, `2026-11-${10 + i}`, "2026-10-18");
     }
     const { addTimeOff: result } = await data<{ addTimeOff: Success }>(addTimeOff, {
       teamId: DEMO_TEAM.id,

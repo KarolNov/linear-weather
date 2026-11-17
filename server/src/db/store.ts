@@ -1,6 +1,6 @@
 // Team rules, hand-placed issues, people's capacity and time off, kept in D1. Linear knows nothing of them.
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { type DrizzleD1Database, drizzle } from "drizzle-orm/d1";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import { FULL_TIME } from "../domain/capacity";
@@ -11,7 +11,7 @@ import {
   type Quadrant,
   type QuadrantRules,
 } from "../domain/quadrant";
-import type { TimeOff } from "../domain/time-off";
+import { MAX_TIME_OFF, type TimeOff } from "../domain/time-off";
 import { memberCapacity, quadrantOverride, quadrantRules, timeOff } from "./tables";
 
 export class Store {
@@ -106,10 +106,28 @@ export class Store {
     return byUser;
   }
 
-  async addTimeOff(userId: string, startsOn: CalendarDate, endsOn: CalendarDate): Promise<TimeOff> {
+  /**
+   * Adds time off unless they have MAX_TIME_OFF stretches not over by `today` already (then
+   * null), checked in the same statement so two adds at once can't both slip under it. Their
+   * time off that's over goes first: nothing reads it.
+   */
+  async addTimeOff(
+    userId: string,
+    startsOn: CalendarDate,
+    endsOn: CalendarDate,
+    today: CalendarDate,
+  ): Promise<TimeOff | null> {
+    await this.db.delete(timeOff).where(and(eq(timeOff.userId, userId), lt(timeOff.endsOn, today)));
     const stretch = { id: crypto.randomUUID(), startsOn, endsOn };
-    await this.db.insert(timeOff).values({ userId, ...stretch });
-    return stretch;
+    const added = await this.db.all<{ id: string }>(sql`
+      INSERT INTO ${timeOff} (id, user_id, starts_on, ends_on)
+      SELECT ${stretch.id}, ${userId}, ${startsOn}, ${endsOn}
+      WHERE (
+        SELECT count(*) FROM ${timeOff}
+        WHERE ${timeOff.userId} = ${userId} AND ${timeOff.endsOn} >= ${today}
+      ) < ${MAX_TIME_OFF}
+      RETURNING id`);
+    return added.length > 0 ? stretch : null;
   }
 
   /** Whether the time off was theirs, and is gone now. */

@@ -12,7 +12,7 @@ import {
   type Quadrant,
   type QuadrantRules,
 } from "./domain/quadrant";
-import type { TimeOff } from "./domain/time-off";
+import { MAX_TIME_OFF_DAYS, type TimeOff } from "./domain/time-off";
 
 /** The part of the Store placing issues reads. */
 export interface PlacementSource {
@@ -22,6 +22,8 @@ export interface PlacementSource {
   capacities(userIds: readonly string[]): Promise<ReadonlyMap<string, number>>;
   /** Whichever of these people have time off, theirs by user id. */
   timeOff(userIds: readonly string[]): Promise<ReadonlyMap<string, readonly TimeOff[]>>;
+  /** The longest stretch of time off it keeps, in days, when shorter than MAX_TIME_OFF_DAYS. */
+  readonly maxTimeOffDays?: number;
 }
 
 /** The Store as placing issues reads and changes it. */
@@ -31,7 +33,13 @@ export interface PlacementStore extends PlacementSource {
   clearOverride(issueId: string): Promise<void>;
   /** How much of a full-time week someone works; FULL_TIME forgets it. */
   setCapacity(userId: string, factor: number): Promise<void>;
-  addTimeOff(userId: string, startsOn: CalendarDate, endsOn: CalendarDate): Promise<TimeOff>;
+  /** Null when they have MAX_TIME_OFF stretches not over by `today` already. */
+  addTimeOff(
+    userId: string,
+    startsOn: CalendarDate,
+    endsOn: CalendarDate,
+    today: CalendarDate,
+  ): Promise<TimeOff | null>;
   /** Whether the time off was theirs, and is gone now. */
   removeTimeOff(userId: string, id: string): Promise<boolean>;
 }
@@ -89,8 +97,19 @@ export class Placements {
     return this.timeOffLoader.load(userId);
   }
 
-  async addTimeOff(userId: string, startsOn: CalendarDate, endsOn: CalendarDate): Promise<TimeOff> {
-    const added = await this.source.addTimeOff(userId, startsOn, endsOn);
+  /** The longest stretch of time off the store keeps, in days. */
+  get maxTimeOffDays(): number {
+    return this.source.maxTimeOffDays ?? MAX_TIME_OFF_DAYS;
+  }
+
+  /** Null when they have MAX_TIME_OFF stretches coming up already. */
+  async addTimeOff(
+    userId: string,
+    startsOn: CalendarDate,
+    endsOn: CalendarDate,
+    today: CalendarDate,
+  ): Promise<TimeOff | null> {
+    const added = await this.source.addTimeOff(userId, startsOn, endsOn, today);
     this.timeOffLoader.clear(userId);
     return added;
   }

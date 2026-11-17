@@ -23,19 +23,14 @@ import {
   addDays,
   type CalendarDate,
   DEFAULT_RULES,
+  daysBetween,
   NO_DUE_DATE,
   parseRules,
   QUADRANTS,
   type Quadrant,
   type QuadrantRules,
 } from "../domain/quadrant";
-import {
-  daysBetween,
-  MAX_TIME_OFF,
-  rangeProblem,
-  type TimeOff,
-  upcoming,
-} from "../domain/time-off";
+import { MAX_TIME_OFF, rangeProblem, type TimeOff, upcoming } from "../domain/time-off";
 import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssue } from "../linear/demo";
 
 /**
@@ -54,6 +49,12 @@ export interface DemoSaved {
 }
 
 export const DEMO_COOKIE = "lw_demo";
+
+/**
+ * The longest stretch of time off the demo keeps: a month, not the year a real workspace allows,
+ * so the cookie stays short and a day count read back from it stays small.
+ */
+export const DEMO_MAX_TIME_OFF_DAYS = 31;
 
 /** A year, or until the visitor clears the site's data. */
 export const DEMO_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
@@ -180,11 +181,12 @@ export function decodeDemo(
     const userId = USER_PREFIX + user;
     const startsOn = expand(first ?? "");
     const length = wholeNumber(days ?? "");
-    if (!USER_IDS.has(userId) || startsOn === null || !Number.isInteger(length)) continue;
+    // No longer than the demo lets anyone add, which also keeps the last day a real date.
+    if (!USER_IDS.has(userId) || startsOn === null || !(length < DEMO_MAX_TIME_OFF_DAYS)) continue;
     // A real day first, so working out the last one can't throw.
     if (rangeProblem(startsOn, startsOn)) continue;
     const endsOn = addDays(startsOn, length);
-    if (rangeProblem(startsOn, endsOn) || endsOn < today) continue;
+    if (rangeProblem(startsOn, endsOn, DEMO_MAX_TIME_OFF_DAYS) || endsOn < today) continue;
     const theirs = saved.timeOff.get(userId) ?? [];
     // No more than the board lets anyone add.
     if (theirs.length >= MAX_TIME_OFF) continue;

@@ -970,7 +970,7 @@ const SetCapacitySuccessRef = builder
   });
 
 const InvalidTimeOffRef = builder.objectRef<InvalidTimeOff>("InvalidTimeOff").implement({
-  description: `Time off that isn't real dates in order, is over already, covers more than a year, or would give someone more than ${MAX_TIME_OFF} stretches coming up. Nothing was saved.`,
+  description: `Time off that isn't real dates in order, is over already, covers more than a year (a month in the demo), or would give someone more than ${MAX_TIME_OFF} stretches coming up. Nothing was saved.`,
   interfaces: [ErrorRef],
   fields: () => ({}),
 });
@@ -1194,19 +1194,23 @@ async function addTimeOff(
   startsOn: CalendarDate,
   endsOn: CalendarDate,
 ): Promise<TimeOffSuccess | InvalidTimeOff | TeamNotFound | UserNotFound> {
-  const parsed = parseTimeOff(startsOn, endsOn, context.today);
+  const parsed = parseTimeOff(startsOn, endsOn, context.today, context.placements.maxTimeOffDays);
   if ("problem" in parsed) return { __typename: "InvalidTimeOff", message: parsed.problem };
   const found = await personOnTeam(workspace, teamId, userId);
   if ("__typename" in found) return found;
   const { team, person } = found;
-  const coming = upcoming(await context.placements.timeOff(person.id), context.today);
-  if (coming.length >= MAX_TIME_OFF) {
+  const added = await context.placements.addTimeOff(
+    person.id,
+    parsed.startsOn,
+    parsed.endsOn,
+    context.today,
+  );
+  if (!added) {
     return {
       __typename: "InvalidTimeOff",
       message: `${person.name} has ${MAX_TIME_OFF} stretches of time off coming up already; remove one first.`,
     };
   }
-  await context.placements.addTimeOff(person.id, parsed.startsOn, parsed.endsOn);
   forgetWork(context);
   return { __typename: "TimeOffSuccess", user: { ...person, teamId: team.id }, team };
 }

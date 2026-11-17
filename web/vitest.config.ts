@@ -9,5 +9,10 @@ const { configureServer: _, ...stylexCompiler } = stylex.vite();
 
 export default defineProject({
   plugins: [stylexCompiler, preact()],
-  test: { name: "web", environment: "node" },
+  // *.browser.test.tsx run in Chromium instead, under vitest.browser.config.ts.
+  test: {
+    name: "web",
+    environment: "node",
+    exclude: ["**/node_modules/**", "**/*.browser.test.tsx"],
+  },
 });

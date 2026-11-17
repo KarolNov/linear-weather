@@ -1,12 +1,18 @@
-// Team rules, hand-placed issues and people's capacity, kept in D1. Linear knows nothing of them.
+// Team rules, hand-placed issues, people's capacity and time off, kept in D1. Linear knows nothing of them.
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { type DrizzleD1Database, drizzle } from "drizzle-orm/d1";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import { FULL_TIME } from "../domain/capacity";
 import type { Overrides } from "../domain/matrix";
-import { DEFAULT_RULES, type Quadrant, type QuadrantRules } from "../domain/quadrant";
-import { memberCapacity, quadrantOverride, quadrantRules } from "./tables";
+import {
+  type CalendarDate,
+  DEFAULT_RULES,
+  type Quadrant,
+  type QuadrantRules,
+} from "../domain/quadrant";
+import type { TimeOff } from "../domain/time-off";
+import { memberCapacity, quadrantOverride, quadrantRules, timeOff } from "./tables";
 
 export class Store {
   private readonly db: DrizzleD1Database;
@@ -83,6 +89,36 @@ export class Store {
       .insert(memberCapacity)
       .values({ userId, ...row })
       .onConflictDoUpdate({ target: memberCapacity.userId, set: row });
+  }
+
+  /** Each of these people's time off, past and future, by user id; nobody's without any. */
+  async timeOff(userIds: readonly string[]): Promise<Map<string, TimeOff[]>> {
+    if (userIds.length === 0) return new Map();
+    const rows = await this.db
+      .select()
+      .from(timeOff)
+      .where(inIds(timeOff.userId, userIds))
+      .orderBy(timeOff.startsOn, timeOff.endsOn, timeOff.id);
+    const byUser = new Map<string, TimeOff[]>();
+    for (const { userId, ...stretch } of rows) {
+      byUser.set(userId, [...(byUser.get(userId) ?? []), stretch]);
+    }
+    return byUser;
+  }
+
+  async addTimeOff(userId: string, startsOn: CalendarDate, endsOn: CalendarDate): Promise<TimeOff> {
+    const stretch = { id: crypto.randomUUID(), startsOn, endsOn };
+    await this.db.insert(timeOff).values({ userId, ...stretch });
+    return stretch;
+  }
+
+  /** Whether the time off was theirs, and is gone now. */
+  async removeTimeOff(userId: string, id: string): Promise<boolean> {
+    const gone = await this.db
+      .delete(timeOff)
+      .where(and(eq(timeOff.id, id), eq(timeOff.userId, userId)))
+      .returning({ id: timeOff.id });
+    return gone.length > 0;
   }
 }
 

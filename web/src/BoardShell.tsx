@@ -6,10 +6,10 @@ import {
   Badge,
   Button,
   Card,
+  type Glyph,
   Logo,
   Sky,
   VisuallyHidden,
-  type Weather,
   WeatherIcon,
   weatherLabels,
 } from "ui";
@@ -18,7 +18,9 @@ import {
   type Board,
   type BoardError,
   type BoardIssue,
+  type CalendarDate,
   describeCapacity,
+  describeTimeOff,
   type Person,
   type PersonMatrix as PersonMatrixData,
   QUADRANTS,
@@ -28,6 +30,7 @@ import {
   type Suggestion,
   type TeamBoardData,
   type Weather as TeamWeather,
+  type TimeOff,
   teamBoard,
   total,
   type Viewer,
@@ -39,7 +42,7 @@ import { quadrantFill, quadrantInfo } from "./quadrants";
 import { RebalancePanel } from "./RebalancePanel";
 import { RulesPanel } from "./RulesPanel";
 import { TeamPicker } from "./TeamPicker";
-import { weatherIcon } from "./weather";
+import { skyFor, weatherIcon } from "./weather";
 
 export interface BoardShellProps {
   viewer: Viewer;
@@ -56,7 +59,7 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
   // team's board, so it's replaced rather than patched. Kept here because the sky follows it.
   const [shown, setShown] = useState(() => board && { team: board.team, people: board.people });
   return (
-    <Sky time="dawn" weather={shown?.team ? weatherIcon[shown.team.weather.kind] : undefined}>
+    <Sky time="dawn" weather={shown?.team ? skyFor(shown.team.weather.kind) : undefined}>
       <header {...stylex.props(styles.header)}>
         <div {...stylex.props(styles.brand)}>
           <Logo compactOnPhones />
@@ -266,6 +269,36 @@ function TeamBoard({
       setStatus(`${person.name} works ${describeCapacity(factor).toLowerCase()} now.`);
     }
   };
+  /** Marks someone away; their weather, the forecast and the rebalance follow. */
+  const addTimeOff = async (person: Person, startsOn: CalendarDate, endsOn: CalendarDate) => {
+    if (!team) return false;
+    markPending([person.id], true);
+    setFailure(null);
+    const result = await client.addTimeOff(team.id, person.id, startsOn, endsOn);
+    markPending([person.id], false);
+    if (!result.ok) {
+      setFailure(`Couldn't add ${person.name}'s time off. ${result.message}`);
+      return false;
+    }
+    if (showAnswer(result.team)) {
+      setStatus(`${person.name} is away ${describeTimeOff({ startsOn, endsOn })}.`);
+    }
+    return true;
+  };
+  const removeTimeOff = async (person: Person, timeOff: TimeOff) => {
+    if (!team) return;
+    markPending([person.id], true);
+    setFailure(null);
+    const result = await client.removeTimeOff(team.id, person.id, timeOff.id);
+    markPending([person.id], false);
+    if (!result.ok) {
+      setFailure(`Couldn't take back ${person.name}'s time off. ${result.message}`);
+      return;
+    }
+    if (showAnswer(result.team)) {
+      setStatus(`${person.name} isn't away ${describeTimeOff(timeOff)} any more.`);
+    }
+  };
   const saveRules = async (rules: Rules) => {
     if (!team) throw new Error("no team to save rules for");
     setFailure(null);
@@ -388,6 +421,12 @@ function TeamBoard({
             onCapacityChange={(factor) =>
               person.assignee && changeCapacity(person.assignee, factor)
             }
+            onAddTimeOff={async (startsOn, endsOn) =>
+              person.assignee ? addTimeOff(person.assignee, startsOn, endsOn) : false
+            }
+            onRemoveTimeOff={(timeOff) =>
+              person.assignee && removeTimeOff(person.assignee, timeOff)
+            }
             pending={pending}
             xstyle={[
               entrance.board,
@@ -451,12 +490,13 @@ const PERSON_STEP_MS = 50;
 const MAX_STAGGERED = 8;
 const LEGEND_DELAY_MS = PERSON_DELAY_MS + (MAX_STAGGERED + 1) * PERSON_STEP_MS;
 
-const weatherLegend: [Weather, string][] = [
+const weatherLegend: [Glyph, string][] = [
   ["sun", "lighter urgent load than the team average"],
   ["partly", "about average"],
   ["rain", "busier than most"],
   ["storm", "overloaded or overdue, time to rebalance"],
   ["fog", "can't tell yet: undated or unestimated work"],
+  ["away", "on time off: out of the average, and their urgent work needs a taker"],
 ];
 
 const styles = stylex.create({

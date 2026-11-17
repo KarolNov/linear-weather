@@ -1,10 +1,12 @@
 // Our own data, kept in D1 (Cloudflare's SQLite): how each team sorts issues, the issues a PM
-// placed by hand, and how much each person works. Linear stays the source of truth for everything else.
+// placed by hand, how much each person works, and their time off. Linear stays the source of truth
+// for everything else.
 // After changing a table, run `pnpm --filter server db:generate` and commit the migration.
 
 import { type SQL, sql } from "drizzle-orm";
 import {
   check,
+  index,
   integer,
   real,
   type SQLiteColumn,
@@ -78,6 +80,31 @@ export const memberCapacity = sqliteTable(
   },
   (t) => [check("factor_in_range", sql`${t.factor} > 0 AND ${t.factor} <= 1`)],
 );
+
+/** A stretch of time someone is away, first and last day included. Keyed by Linear's user id, so
+ * it's the same on every team they're on. */
+export const timeOff = sqliteTable(
+  "time_off",
+  {
+    id: text("id").primaryKey(),
+    /** Linear's user id. */
+    userId: text("user_id").notNull(),
+    /** YYYY-MM-DD, as a calendar date with no zone. */
+    startsOn: text("starts_on").notNull(),
+    endsOn: text("ends_on").notNull(),
+  },
+  (t) => [
+    index("time_off_user_id").on(t.userId),
+    check("starts_on_is_a_date", isDate(t.startsOn)),
+    check("ends_on_is_a_date", isDate(t.endsOn)),
+    check("ends_after_it_starts", sql`${t.startsOn} <= ${t.endsOn}`),
+  ],
+);
+
+/** The shape of a YYYY-MM-DD date. Whether it's a real day is checked before it gets here. */
+function isDate(column: SQLiteColumn): SQL {
+  return sql`${column} GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]'`;
+}
 
 /** SQLite's INTEGER columns still keep 1.5 as a REAL, which GraphQL's Int can't send. */
 function isInteger(column: SQLiteColumn): SQL {

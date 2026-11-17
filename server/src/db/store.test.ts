@@ -85,6 +85,31 @@ describe("Store", () => {
     expect(await store().capacities([])).toEqual(new Map());
   });
 
+  it("keeps each person's time off, soonest first, and removes only their own", async () => {
+    const later = await store().addTimeOff("user-ana", "2026-12-21", "2026-12-31");
+    const sooner = await store().addTimeOff("user-ana", "2026-11-16", "2026-11-20");
+    const bens = await store().addTimeOff("user-ben", "2026-11-16", "2026-11-16");
+    expect(await store().timeOff(["user-ana", "user-ben", "user-cy"])).toEqual(
+      new Map([
+        ["user-ana", [sooner, later]],
+        ["user-ben", [bens]],
+      ]),
+    );
+    expect(await store().removeTimeOff("user-ana", bens.id)).toBe(false);
+    expect(await store().removeTimeOff("user-ana", sooner.id)).toBe(true);
+    expect(await store().timeOff(["user-ana"])).toEqual(new Map([["user-ana", [later]]]));
+    expect(await store().timeOff([])).toEqual(new Map());
+  });
+
+  it.each([
+    ["2026-11-20", "2026-11-16"],
+    ["2026-11-16", "next week"],
+  ])("refuses time off from %s to %s", async (startsOn, endsOn) => {
+    await expect(store().addTimeOff("user-ana", startsOn, endsOn)).rejects.toMatchObject({
+      cause: { message: expect.stringContaining("CHECK constraint failed") },
+    });
+  });
+
   it.each([0, -0.5, 1.5])("refuses a capacity of %d", async (factor) => {
     await expect(store().setCapacity("user-ana", factor)).rejects.toMatchObject({
       cause: { message: expect.stringContaining("CHECK constraint failed") },

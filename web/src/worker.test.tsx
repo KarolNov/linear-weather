@@ -122,6 +122,7 @@ const defaultTeam: BoardData["team"] = {
     {
       ...tony,
       capacity: 1,
+      timeOff: [],
       matrix: tonysMatrix,
       weather: { kind: "STORM" as const, reason: "4 urgent points", overdue: 0 },
       forecast: [
@@ -236,6 +237,43 @@ describe("web worker", () => {
     expect(page).toContain(">Half time</option>");
   });
 
+  it("shows who's away, with their time off to take back or add to", async () => {
+    const reason = "Away until Oct 23, holding 1 urgent issue";
+    const away = {
+      ...defaultTeam,
+      weather: { kind: "STORM" as const, reason: "Tony Stark is away with 1 urgent issue" },
+      people: [
+        {
+          ...tony,
+          capacity: 1,
+          timeOff: [
+            { id: "t-1", startsOn: "2026-10-16", endsOn: "2026-10-23" },
+            { id: "t-2", startsOn: "2026-11-26", endsOn: "2026-11-26" },
+          ],
+          matrix: tonysMatrix,
+          weather: { kind: "AWAY" as const, reason, overdue: 0 },
+          forecast: [],
+        },
+      ],
+    } satisfies BoardData["team"];
+    const { bindings } = serverReturning(fury, () =>
+      Response.json({ data: boardData(fury, away) }),
+    );
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain(`aria-label="Away: ${reason}"`);
+    expect(page).toContain(`aria-label="Tony Stark's time off"`);
+    expect(page).toContain("Away Oct 16 – Oct 23");
+    expect(page).toContain("Away Nov 26");
+    expect(page).toContain("Take back Tony Stark's time off, Nov 26");
+    expect(page).toContain(">Add time off</button>");
+  });
+
+  it("offers to add time off for someone with none", async () => {
+    const { bindings } = serverReturning(fury);
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain(">Add time off for Tony Stark</button>");
+  });
+
   it("shows the team's weather and why, and lets it set the sky and the browser's chrome", async () => {
     const { bindings } = serverReturning(fury);
     const page = await (await app.request("/", {}, bindings)).text();
@@ -267,6 +305,7 @@ describe("web worker", () => {
         {
           ...tony,
           capacity: 1,
+          timeOff: [],
           matrix: {
             ...emptyMatrix,
             counts: { ...emptyMatrix.counts, do: 1 },
@@ -390,6 +429,7 @@ describe("web worker", () => {
       {
         assignee: tony,
         capacity: 1,
+        timeOff: [],
         matrix: tonysMatrix,
         weather: { kind: "STORM", reason: "2 issues overdue", overdue: 2 },
         forecast: [],
@@ -397,13 +437,26 @@ describe("web worker", () => {
       {
         assignee: wanda,
         capacity: 1,
+        timeOff: [],
         matrix: emptyMatrix,
         weather: { kind: "SUNNY", reason: "Nothing overdue", overdue: 0 },
         forecast: [],
       },
-      { assignee: null, capacity: null, matrix: tonysMatrix, weather: null, forecast: null },
+      {
+        assignee: null,
+        capacity: null,
+        timeOff: null,
+        matrix: tonysMatrix,
+        weather: null,
+        forecast: null,
+      },
     ];
     expect(runningLate(people)).toEqual([{ person: tony, overdue: 2 }]);
+    // Someone away hands on their overdue work too.
+    const away = people.map((p) =>
+      p.weather ? { ...p, weather: { ...p.weather, kind: "AWAY" as const } } : p,
+    );
+    expect(runningLate(away)).toEqual([]);
   });
 
   it("warns that moves can't clear a storm overdue work causes", () => {
@@ -484,6 +537,7 @@ describe("web worker", () => {
         {
           ...tony,
           capacity: 1,
+          timeOff: [],
           matrix: emptyMatrix,
           weather: { kind: "SUNNY" as const, reason: "Nothing urgent", overdue: 0 },
           forecast: [],

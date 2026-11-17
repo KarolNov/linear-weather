@@ -1,18 +1,23 @@
 import * as stylex from "@stylexjs/stylex";
 import { colors } from "./tokens.stylex";
 
+/** A sky's weather: what a whole board can be under. */
 export type Weather = "sun" | "partly" | "rain" | "storm" | "fog";
 
-export const weatherLabels: Record<Weather, string> = {
+/** Every glyph: the sky's weathers, and the moon for someone away, which no sky shows. */
+export type Glyph = Weather | "away";
+
+export const weatherLabels: Record<Glyph, string> = {
   sun: "Sunny",
   partly: "Partly cloudy",
   rain: "Rain",
   storm: "Storm",
   fog: "Fog",
+  away: "Away",
 };
 
 export interface WeatherIconProps {
-  weather: Weather;
+  weather: Glyph;
   size?: number;
   /** Read out instead of the default label; pass "" when the icon is decorative. */
   label?: string;
@@ -68,6 +73,12 @@ export function WeatherIcon({
           <path d="M14 21h28" {...stylex.props(styles.wisp, styles.wisp2)} />
           <path d="M6 28h30" {...stylex.props(styles.wisp, styles.wisp3)} />
           <path d="M14 35h22" {...stylex.props(styles.wisp, styles.wisp4)} />
+        </g>
+      )}
+      {weather === "away" && (
+        <g {...stylex.props(styles.drift)}>
+          <path d="M28 8a16 16 0 1 0 12 27A13 13 0 0 1 28 8z" {...stylex.props(styles.moon)} />
+          <path d="M35 11h5l-5 6h5" {...stylex.props(styles.snooze)} />
         </g>
       )}
     </svg>
@@ -164,6 +175,14 @@ const styles = stylex.create({
   rain: { stroke: colors.rain, strokeWidth: 3, strokeLinecap: "round", fill: "none" },
   bolt: { fill: colors.sun, stroke: colors.accentStrong, strokeWidth: 1, strokeLinejoin: "round" },
   fog: { stroke: colors.fog, strokeWidth: 3.5, strokeLinecap: "round", fill: "none" },
+  moon: { fill: colors.fog, stroke: "rgba(29, 26, 51, 0.12)", strokeWidth: 1 },
+  snooze: {
+    stroke: colors.fog,
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    fill: "none",
+  },
 
   spin: {
     animationName: spin,

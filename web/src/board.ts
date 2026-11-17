@@ -45,10 +45,18 @@ export interface BoardIssue {
 }
 
 /**
- * How heavy someone's urgent load is now, against the team's average. For a team, how evenly
- * it's spread: as bad as its worst person, cloudy when some have room while others carry it.
+ * How heavy someone's urgent load is now, against the team's average, or AWAY when they're off.
+ * For a team, how evenly it's spread: as bad as its worst person, a storm when someone away holds
+ * urgent work, cloudy when some have room while others carry it. Never AWAY.
  */
-export type WeatherKind = "SUNNY" | "CLOUDY" | "RAIN" | "STORM" | "FOG";
+export type WeatherKind = "SUNNY" | "CLOUDY" | "RAIN" | "STORM" | "FOG" | "AWAY";
+
+/** A stretch of days someone is away, first and last day included. */
+export interface TimeOff {
+  id: string;
+  startsOn: CalendarDate;
+  endsOn: CalendarDate;
+}
 
 export interface Weather {
   kind: WeatherKind;
@@ -121,6 +129,9 @@ export interface BacklogRot {
 /** The longest urgency window the server accepts (`MAX_URGENCY_WINDOW_DAYS`). */
 export const MAX_URGENCY_WINDOW_DAYS = 365;
 
+/** The most stretches of time off coming up the server keeps for one person (`MAX_TIME_OFF`). */
+export const MAX_TIME_OFF = 8;
+
 export interface PersonMatrix {
   /** Null for the team's unassigned issues. */
   assignee: Person | null;
@@ -129,6 +140,8 @@ export interface PersonMatrix {
    * load with the team average times this. Null for the unassigned issues.
    */
   capacity: number | null;
+  /** Time off not over yet, soonest first. Null for the unassigned issues. */
+  timeOff: TimeOff[] | null;
   matrix: Matrix;
   /** Null for the unassigned issues: nobody's load. */
   weather: PersonWeather | null;
@@ -177,6 +190,7 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
     name
     avatarUrl
     capacity
+    timeOff { id startsOn endsOn }
     weather { kind reason overdue }
     forecast { startsOn endsOn weather { kind reason } summary turningUrgent { identifier } }
     matrix { ${MATRIX_FIELDS} }
@@ -224,6 +238,7 @@ export type TeamBoardData = Team &
     backlogRot: BacklogRot;
     people: (Person & {
       capacity: number;
+      timeOff: TimeOff[];
       matrix: Matrix;
       weather: PersonWeather;
       forecast: ForecastWeek[];
@@ -246,9 +261,10 @@ export function teamBoard({
   ...team
 }: TeamBoardData): Pick<Board, "team" | "people"> {
   const matrices: PersonMatrix[] = people.map(
-    ({ matrix, weather, forecast, capacity, ...assignee }) => ({
+    ({ matrix, weather, forecast, capacity, timeOff, ...assignee }) => ({
       assignee,
       capacity,
+      timeOff,
       matrix,
       weather,
       forecast,
@@ -258,6 +274,7 @@ export function teamBoard({
     matrices.push({
       assignee: null,
       capacity: null,
+      timeOff: null,
       matrix: unassigned,
       weather: null,
       forecast: null,
@@ -275,11 +292,12 @@ export interface RunningLate {
 
 /**
  * Who has overdue urgent (Do or Delegate) issues, by their weather. Overdue work always means a
- * storm, and rebalancing never moves it, so these storms outlast any moves.
+ * storm, and rebalancing doesn't move it, so these storms outlast any moves. Someone away is left
+ * out: rebalancing hands on everything urgent they hold, overdue or not.
  */
 export function runningLate(people: PersonMatrix[]): RunningLate[] {
   return people.flatMap(({ assignee, weather }) =>
-    assignee && weather && weather.overdue > 0
+    assignee && weather && weather.kind !== "AWAY" && weather.overdue > 0
       ? [{ person: assignee, overdue: weather.overdue }]
       : [],
   );
@@ -338,6 +356,16 @@ export function describeDue(dueDate: CalendarDate, today: CalendarDate) {
  */
 export function describeWeek(endsOn: CalendarDate): string {
   return `By ${describeDay(endsOn)}`;
+}
+
+/** Time off as the board names it, e.g. "Nov 16 – Nov 20", or "Nov 16" for one day. */
+export function describeTimeOff({
+  startsOn,
+  endsOn,
+}: Pick<TimeOff, "startsOn" | "endsOn">): string {
+  return startsOn === endsOn
+    ? describeDay(startsOn)
+    : `${describeDay(startsOn)} – ${describeDay(endsOn)}`;
 }
 
 /** A date as the board shows it in passing, e.g. "Oct 24". UTC, like `describeDue`. */

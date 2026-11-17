@@ -22,6 +22,7 @@ import {
   type RuleProblem,
 } from "./domain/quadrant";
 import { type Horizon, rebalanceAhead, rebalanceNow, type Suggestion } from "./domain/rebalance";
+import { MAX_TIME_OFF, parseTimeOff, staffingOn, type TimeOff, upcoming } from "./domain/time-off";
 import {
   DEFAULT_THRESHOLDS,
   type LoadMetric,
@@ -98,19 +99,27 @@ function teamMatrix(
   });
 }
 
-/** Each of a team's people with their matrix and capacity. */
+/** Each of a team's people with their matrix, capacity and time off. */
 async function peopleMatrices(
   context: GraphQLContext,
   teamId: string,
-): Promise<{ person: Assignee; matrix: Matrix<TeamIssue>; capacity: number }[]> {
+): Promise<
+  {
+    person: Assignee;
+    matrix: Matrix<TeamIssue>;
+    capacity: number;
+    timeOff: readonly TimeOff[];
+  }[]
+> {
   const { people } = await (await signedIn(context)).teamWork(teamId);
   return Promise.all(
     people.map(async (person) => {
-      const [matrix, capacity] = await Promise.all([
+      const [matrix, capacity, timeOff] = await Promise.all([
         teamMatrix(context, teamId, person.id),
         context.placements.capacity(person.id),
+        context.placements.timeOff(person.id),
       ]);
-      return { person, matrix, capacity };
+      return { person, matrix, capacity, timeOff };
     }),
   );
 }
@@ -136,7 +145,11 @@ async function teamWeatherOf(
   return once(context, `weather:${teamId}:${metric}`, async () => {
     const people = await peopleMatrices(context, teamId);
     const weather = teamWeather(
-      people.map(({ person, matrix, capacity }) => ({ name: person.name, matrix, capacity })),
+      people.map(({ person, matrix, capacity, timeOff }) => ({
+        name: person.name,
+        matrix,
+        ...staffingOn(capacity, timeOff, context.today),
+      })),
       metric,
       context.today,
     );
@@ -163,7 +176,12 @@ async function teamForecastOf(
   return once(context, `forecast:${teamId}:${metric ?? "auto"}:${weeks}`, async () => {
     const people = await peopleMatrices(context, teamId);
     const projected = forecast(
-      people.map(({ person, matrix, capacity }) => ({ name: person.name, matrix, capacity })),
+      people.map(({ person, matrix, capacity, timeOff }) => ({
+        name: person.name,
+        matrix,
+        capacity,
+        timeOff,
+      })),
       metric ?? null,
       context.today,
       weeks,
@@ -187,11 +205,12 @@ function rebalanceNowOf(context: GraphQLContext, teamId: string, metric: LoadMet
     // Work goes only to members: someone holding the team's issues from elsewhere may have left.
     const { memberIds } = await (await signedIn(context)).teamWork(teamId);
     return rebalanceNow(
-      people.map(({ person, matrix, capacity }) => ({
+      people.map(({ person, matrix, capacity, timeOff }) => ({
         ...person,
         teamId,
         matrix,
         capacity,
+        timeOff,
         takesWork: memberIds.has(person.id),
       })),
       metric,
@@ -300,7 +319,12 @@ const WeatherKindEnum = builder.enumType("WeatherKind", {
     FOG: {
       value: "fog",
       description:
-        "Can't tell: nothing urgent but some work has no due date; counting points with some urgent issue unestimated; or nobody else on the team to compare with.",
+        "Can't tell: nothing urgent but some work has no due date; counting points with some urgent issue unestimated; or nobody else on the team to compare with. For a team, also when everyone is away.",
+    },
+    AWAY: {
+      value: "away",
+      description:
+        "A person away all of the period (today, or a forecast week), whatever they hold: left out of the team's fair share. Any urgent work they still hold makes the team's weather a storm. Never a team's weather.",
     },
   } as const,
 });
@@ -334,11 +358,11 @@ const WeatherRef = builder.objectRef<Weather>("Weather").implement({
     }),
     overdue: t.exposeInt("overdue", {
       description:
-        "Urgent (Do or Delegate) issues past their due date, which mean a storm whatever the load; for a team, everyone's.",
+        "Urgent (Do or Delegate) issues past their due date, which mean a storm whatever the load (unless they're away); for a team, everyone's.",
     }),
     reason: t.exposeString("reason", {
       description:
-        'Why, e.g. "13 urgent points, 3.07× the team average; 2 issues overdue" or "6 urgent issues at half time, 1.6× their share".',
+        'Why, e.g. "13 urgent points, 3.07× the team average; 2 issues overdue", "6 urgent issues at half time, 1.6× their share" or "Away until Nov 20, holding 3 urgent issues".',
     }),
   }),
 });
@@ -442,6 +466,15 @@ const QuadrantPointsRef = builder.objectRef<Record<Quadrant, number>>("QuadrantP
   }),
 });
 
+const TimeOffRef = builder.objectRef<TimeOff>("TimeOff").implement({
+  description: "A stretch of days someone is away, first and last day included.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    startsOn: t.expose("startsOn", { type: "Date" }),
+    endsOn: t.expose("endsOn", { type: "Date" }),
+  }),
+});
+
 const UserRef = builder.objectRef<UserModel>("User");
 const TeamRef = builder.objectRef<Team>("Team");
 
@@ -507,7 +540,8 @@ ForecastWeekRef.implement({
     endsOn: t.expose("endsOn", { type: "Date" }),
     weather: t.expose("weather", {
       type: WeatherRef,
-      description: "Against that week's projected team average.",
+      description:
+        "Against that week's projected team average. Time off lowers a person's capacity by the working days they miss (capacity × days present / 5); off all five, they're AWAY.",
     }),
     turningUrgent: t.expose("turningUrgent", {
       type: [IssueRef],
@@ -567,6 +601,12 @@ UserRef.implement({
       description:
         "How much of a full-time week they work, more than 0 up to 1: 0.5 is half time. The same on every team. Weather compares their urgent load with the team average times this.",
       resolve: (user, _args, context) => context.placements.capacity(user.id),
+    }),
+    timeOff: t.field({
+      type: [TimeOffRef],
+      description: `Time off not over yet, soonest first: at most ${MAX_TIME_OFF}. The same on every team. Away all of today, their weather is AWAY; the forecast counts the working days they miss each week.`,
+      resolve: async (user, _args, context) =>
+        upcoming(await context.placements.timeOff(user.id), context.today),
     }),
     organization: t.field({
       type: OrganizationRef,
@@ -723,7 +763,7 @@ TeamRef.implement({
     rebalanceSuggestions: t.field({
       type: [SuggestionRef],
       description:
-        "Moves that bring everyone's urgent load within the weather's thresholds, in the order to make them. Greedy: the busiest person hands the least busy whichever issue leaves them closest, until nobody is under rain or in a storm by load. Overdue work stays put, nobody running late takes more, and only members of the team take work.",
+        "Moves that bring everyone's urgent load within the weather's thresholds, in the order to make them. Urgent work held by someone away goes first, overdue or not. Then, greedy: the busiest person hands the least busy whichever issue leaves them closest, until nobody is under rain or in a storm by load. Otherwise overdue work stays put, nobody running late or away takes more, and only members of the team take work.",
       args: {
         horizon: t.arg({ type: HorizonEnum, required: true }),
         weeks: t.arg.int({
@@ -822,6 +862,20 @@ interface SetCapacitySuccess {
   user: UserModel;
   team: Team;
 }
+interface InvalidTimeOff {
+  __typename: "InvalidTimeOff";
+  message: string;
+}
+interface TimeOffNotFound {
+  __typename: "TimeOffNotFound";
+  message: string;
+  timeOffId: string;
+}
+interface TimeOffSuccess {
+  __typename: "TimeOffSuccess";
+  user: UserModel;
+  team: Team;
+}
 interface InvalidRules {
   __typename: "InvalidRules";
   message: string;
@@ -850,7 +904,9 @@ type Failure =
   | IssueNotFound
   | UserNotFound
   | InvalidRules
-  | InvalidCapacity;
+  | InvalidCapacity
+  | InvalidTimeOff
+  | TimeOffNotFound;
 
 const ErrorRef = builder.interfaceRef<Failure>("Error").implement({
   description: "A mutation that didn't happen, and why, for showing the user.",
@@ -913,6 +969,27 @@ const SetCapacitySuccessRef = builder
     }),
   });
 
+const InvalidTimeOffRef = builder.objectRef<InvalidTimeOff>("InvalidTimeOff").implement({
+  description: `Time off that isn't real dates in order, is over already, covers more than a year, or would give someone more than ${MAX_TIME_OFF} stretches coming up. Nothing was saved.`,
+  interfaces: [ErrorRef],
+  fields: () => ({}),
+});
+
+const TimeOffNotFoundRef = builder.objectRef<TimeOffNotFound>("TimeOffNotFound").implement({
+  description: "No time off with this id for this person, perhaps removed already.",
+  interfaces: [ErrorRef],
+  fields: (t) => ({ timeOffId: t.exposeID("timeOffId") }),
+});
+
+const TimeOffSuccessRef = builder.objectRef<TimeOffSuccess>("TimeOffSuccess").implement({
+  description:
+    "Their time off is as asked. Everything weighed by it, like each weather, forecast and rebalance, follows: ask for it here.",
+  fields: (t) => ({
+    user: t.expose("user", { type: UserRef }),
+    team: t.expose("team", { type: TeamRef, description: "The team asked about, for its board." }),
+  }),
+});
+
 const RuleProblemRef = builder.objectRef<RuleProblem>("RuleProblem").implement({
   description: "One thing wrong with proposed rules.",
   fields: (t) => ({
@@ -967,6 +1044,19 @@ const SetCapacityResultRef = builder.unionType("SetCapacityResult", {
   types: [
     SetCapacitySuccessRef,
     InvalidCapacityRef,
+    TeamNotFoundRef,
+    UserNotFoundRef,
+    UnauthorizedRef,
+    LinearRateLimitedRef,
+  ],
+  resolveType: (result) => result.__typename,
+});
+
+const TimeOffResultRef = builder.unionType("TimeOffResult", {
+  types: [
+    TimeOffSuccessRef,
+    InvalidTimeOffRef,
+    TimeOffNotFoundRef,
     TeamNotFoundRef,
     UserNotFoundRef,
     UnauthorizedRef,
@@ -1058,6 +1148,23 @@ async function setCapacity(
 ): Promise<SetCapacitySuccess | InvalidCapacity | TeamNotFound | UserNotFound> {
   const parsed = parseCapacity(factor);
   if ("problem" in parsed) return { __typename: "InvalidCapacity", message: parsed.problem };
+  const found = await personOnTeam(workspace, teamId, userId);
+  if ("__typename" in found) return found;
+  const { team, person } = found;
+  await context.placements.setCapacity(person.id, parsed.factor);
+  forgetWork(context);
+  return { __typename: "SetCapacitySuccess", user: { ...person, teamId: team.id }, team };
+}
+
+/**
+ * Someone the viewer sees on a team: a member, or holding its issues. Only them, so nobody
+ * changes anything for people in workspaces they aren't in.
+ */
+async function personOnTeam(
+  workspace: Workspace,
+  teamId: string,
+  userId: string,
+): Promise<{ team: Team; person: Assignee } | TeamNotFound | UserNotFound> {
   const team = (await workspace.teams()).find(({ id }) => id === teamId);
   if (!team) {
     return {
@@ -1066,8 +1173,6 @@ async function setCapacity(
       teamId,
     };
   }
-  // Only someone the viewer sees on the team, so nobody sets capacities for workspaces they
-  // aren't in.
   const { people } = await workspace.teamWork(team.id);
   const person = people.find(({ id }) => id === userId);
   if (!person) {
@@ -1077,9 +1182,55 @@ async function setCapacity(
       userId,
     };
   }
-  await context.placements.setCapacity(person.id, parsed.factor);
+  return { team, person };
+}
+
+/** Adds a stretch of time off for someone on a team. */
+async function addTimeOff(
+  context: GraphQLContext,
+  workspace: Workspace,
+  teamId: string,
+  userId: string,
+  startsOn: CalendarDate,
+  endsOn: CalendarDate,
+): Promise<TimeOffSuccess | InvalidTimeOff | TeamNotFound | UserNotFound> {
+  const parsed = parseTimeOff(startsOn, endsOn, context.today);
+  if ("problem" in parsed) return { __typename: "InvalidTimeOff", message: parsed.problem };
+  const found = await personOnTeam(workspace, teamId, userId);
+  if ("__typename" in found) return found;
+  const { team, person } = found;
+  const coming = upcoming(await context.placements.timeOff(person.id), context.today);
+  if (coming.length >= MAX_TIME_OFF) {
+    return {
+      __typename: "InvalidTimeOff",
+      message: `${person.name} has ${MAX_TIME_OFF} stretches of time off coming up already; remove one first.`,
+    };
+  }
+  await context.placements.addTimeOff(person.id, parsed.startsOn, parsed.endsOn);
   forgetWork(context);
-  return { __typename: "SetCapacitySuccess", user: { ...person, teamId: team.id }, team };
+  return { __typename: "TimeOffSuccess", user: { ...person, teamId: team.id }, team };
+}
+
+/** Removes a stretch of someone's time off. */
+async function removeTimeOff(
+  context: GraphQLContext,
+  workspace: Workspace,
+  teamId: string,
+  userId: string,
+  timeOffId: string,
+): Promise<TimeOffSuccess | TimeOffNotFound | TeamNotFound | UserNotFound> {
+  const found = await personOnTeam(workspace, teamId, userId);
+  if ("__typename" in found) return found;
+  const { team, person } = found;
+  if (!(await context.placements.removeTimeOff(person.id, timeOffId))) {
+    return {
+      __typename: "TimeOffNotFound",
+      message: `${person.name} has no such time off; it may be gone already.`,
+      timeOffId,
+    };
+  }
+  forgetWork(context);
+  return { __typename: "TimeOffSuccess", user: { ...person, teamId: team.id }, team };
 }
 
 /** Hands an issue to someone else in Linear. */
@@ -1187,6 +1338,44 @@ builder.mutationType({
       resolve: (_root, { teamId, userId, factor }, context) =>
         attempt(context, (workspace) =>
           setCapacity(context, workspace, String(teamId), String(userId), factor),
+        ),
+    }),
+    addTimeOff: t.field({
+      type: TimeOffResultRef,
+      description:
+        "Marks someone away from one day to another, both included, on every team. While they're away all of a day or forecast week, their weather is AWAY and their share of the urgent load goes to the others.",
+      args: {
+        teamId: t.arg.id({
+          required: true,
+          description: "A team they're on or hold issues in, whose board to answer with.",
+        }),
+        userId: t.arg.id({ required: true }),
+        startsOn: t.arg({ type: "Date", required: true, description: "Their first day away." }),
+        endsOn: t.arg({
+          type: "Date",
+          required: true,
+          description: "Their last day away: no earlier than startsOn, and not over already.",
+        }),
+      },
+      resolve: (_root, { teamId, userId, startsOn, endsOn }, context) =>
+        attempt(context, (workspace) =>
+          addTimeOff(context, workspace, String(teamId), String(userId), startsOn, endsOn),
+        ),
+    }),
+    removeTimeOff: t.field({
+      type: TimeOffResultRef,
+      description: "Takes back a stretch of someone's time off.",
+      args: {
+        teamId: t.arg.id({
+          required: true,
+          description: "A team they're on or hold issues in, whose board to answer with.",
+        }),
+        userId: t.arg.id({ required: true }),
+        timeOffId: t.arg.id({ required: true }),
+      },
+      resolve: (_root, { teamId, userId, timeOffId }, context) =>
+        attempt(context, (workspace) =>
+          removeTimeOff(context, workspace, String(teamId), String(userId), String(timeOffId)),
         ),
     }),
     reassignIssue: t.field({

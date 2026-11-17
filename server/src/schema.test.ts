@@ -6,18 +6,22 @@ import {
   BOARD_QUERY,
   QUADRANTS,
   type TeamBoardData,
+  MAX_TIME_OFF as WEB_MAX_TIME_OFF,
   MAX_URGENCY_WINDOW_DAYS as WEB_MAX_URGENCY_WINDOW_DAYS,
 } from "../../web/src/board";
 import {
+  ADD_TIME_OFF_MUTATION,
   CLEAR_OVERRIDE_MUTATION,
   OVERRIDE_MUTATION,
   REASSIGN_MUTATION,
+  REMOVE_TIME_OFF_MUTATION,
   SET_CAPACITY_MUTATION,
   TEAM_QUERY,
   UPDATE_RULES_MUTATION,
 } from "../../web/src/mutations";
 import { Store } from "./db/store";
 import { DEFAULT_RULES, MAX_URGENCY_WINDOW_DAYS } from "./domain/quadrant";
+import { MAX_TIME_OFF } from "./domain/time-off";
 import {
   LinearAuthError,
   LinearForbiddenError,
@@ -73,6 +77,9 @@ function writesTo(store: Store): Omit<PlacementStore, "rules" | "overrides"> {
     clearOverride: (issueId) => store.clearOverride(issueId),
     capacities: (userIds) => store.capacities(userIds),
     setCapacity: (userId, factor) => store.setCapacity(userId, factor),
+    timeOff: (userIds) => store.timeOff(userIds),
+    addTimeOff: (userId, startsOn, endsOn) => store.addTimeOff(userId, startsOn, endsOn),
+    removeTimeOff: (userId, id) => store.removeTimeOff(userId, id),
   };
 }
 
@@ -741,6 +748,135 @@ describe("mutations", () => {
   });
 });
 
+describe("time off", () => {
+  const addTimeOff = `mutation ($teamId: ID!, $userId: ID!, $startsOn: Date!, $endsOn: Date!) {
+    addTimeOff(teamId: $teamId, userId: $userId, startsOn: $startsOn, endsOn: $endsOn) {
+      __typename
+      ... on Error { message }
+      ... on TimeOffSuccess {
+        user { name timeOff { id startsOn endsOn } }
+        team { weather { kind reason } people { name weather { kind reason } } }
+      }
+    }
+  }`;
+  const removeTimeOff = `mutation ($teamId: ID!, $userId: ID!, $timeOffId: ID!) {
+    removeTimeOff(teamId: $teamId, userId: $userId, timeOffId: $timeOffId) {
+      __typename
+      ... on Error { message }
+      ... on TimeOffSuccess { user { timeOff { id } } team { weather { kind } } }
+    }
+  }`;
+  type Success = {
+    __typename: string;
+    message?: string;
+    user?: { name: string; timeOff: { id: string; startsOn: string; endsOn: string }[] };
+    team?: {
+      weather: { kind: string; reason: string };
+      people: { name: string; weather: { kind: string; reason: string } }[];
+    };
+  };
+  const natasha = "demo-user-natasha";
+
+  it("marks someone away today, leaving their urgent work to storm the team", async () => {
+    // Oct 18 is a Sunday; she's back after the week.
+    const { addTimeOff: added } = await data<{ addTimeOff: Success }>(addTimeOff, {
+      teamId: DEMO_TEAM.id,
+      userId: natasha,
+      startsOn: "2026-10-16",
+      endsOn: "2026-10-23",
+    });
+    expect(added.__typename).toBe("TimeOffSuccess");
+    expect(added.user?.timeOff).toEqual([
+      { id: expect.any(String), startsOn: "2026-10-16", endsOn: "2026-10-23" },
+    ]);
+    expect(added.team?.people.find((p) => p.name === "Natasha Romanoff")?.weather).toEqual({
+      kind: "AWAY",
+      reason: "Away until Oct 23, holding 4 urgent issues (1 overdue)",
+    });
+    expect(added.team?.weather.kind).toBe("STORM");
+    expect(added.team?.weather.reason).toContain("Natasha Romanoff is away with 4 urgent issues");
+
+    // Her work goes first.
+    const { team } = await data<{
+      team: { rebalanceSuggestions: { from: { name: string }; reason: string }[] };
+    }>(`{ team { rebalanceSuggestions(horizon: NOW) { from { name } reason } } }`);
+    const first = team.rebalanceSuggestions.slice(0, 4);
+    expect(first.map(({ from }) => from.name)).toEqual(Array(4).fill("Natasha Romanoff"));
+    expect(first[0]?.reason).toMatch(/^Natasha Romanoff is away until Oct 23; /);
+
+    // Taken back.
+    const id = added.user?.timeOff[0]?.id;
+    const { removeTimeOff: removed } = await data<{ removeTimeOff: Success }>(removeTimeOff, {
+      teamId: DEMO_TEAM.id,
+      userId: natasha,
+      timeOffId: id,
+    });
+    expect(removed.__typename).toBe("TimeOffSuccess");
+    expect(removed.user?.timeOff).toEqual([]);
+    const again = await data<{ removeTimeOff: Success }>(removeTimeOff, {
+      teamId: DEMO_TEAM.id,
+      userId: natasha,
+      timeOffId: id,
+    });
+    expect(again.removeTimeOff).toEqual({
+      __typename: "TimeOffNotFound",
+      message: "Natasha Romanoff has no such time off; it may be gone already.",
+    });
+  });
+
+  it("lists only time off not over yet, the same on every team", async () => {
+    const store = new Store(env.DB);
+    await store.addTimeOff(natasha, "2026-10-01", "2026-10-02");
+    await store.addTimeOff(natasha, "2026-12-21", "2026-12-31");
+    const { team } = await data<{
+      team: { people: { name: string; timeOff: { startsOn: string }[] }[] };
+    }>("query ($id: ID) { team(id: $id) { people { name timeOff { startsOn } } } }", {
+      id: DEMO_OPS_TEAM.id,
+    });
+    expect(team.people.find((p) => p.name === "Natasha Romanoff")?.timeOff).toEqual([
+      { startsOn: "2026-12-21" },
+    ]);
+  });
+
+  it("refuses more stretches coming up than the board holds", async () => {
+    const store = new Store(env.DB);
+    for (let i = 0; i < MAX_TIME_OFF; i++) {
+      await store.addTimeOff(natasha, `2026-11-${10 + i}`, `2026-11-${10 + i}`);
+    }
+    const { addTimeOff: result } = await data<{ addTimeOff: Success }>(addTimeOff, {
+      teamId: DEMO_TEAM.id,
+      userId: natasha,
+      startsOn: "2026-12-01",
+      endsOn: "2026-12-01",
+    });
+    expect(result).toEqual({
+      __typename: "InvalidTimeOff",
+      message: `Natasha Romanoff has ${MAX_TIME_OFF} stretches of time off coming up already; remove one first.`,
+    });
+  });
+
+  it.each([
+    [{ endsOn: "2026-10-01" }, "InvalidTimeOff", "Time off can't end before it starts."],
+    [
+      { startsOn: "2026-10-01", endsOn: "2026-10-17" },
+      "InvalidTimeOff",
+      "That time off is already over.",
+    ],
+    [{ userId: "demo-user-maria" }, "UserNotFound", "There's nobody with that id on Avengers."],
+    [{ teamId: "team-nobody" }, "TeamNotFound", "There's no such team, or you can't see it."],
+  ])("refuses %o", async (bad, typename, message) => {
+    const { addTimeOff: result } = await data<{ addTimeOff: Success }>(addTimeOff, {
+      teamId: DEMO_TEAM.id,
+      userId: natasha,
+      startsOn: "2026-10-19",
+      endsOn: "2026-10-23",
+      ...bad,
+    });
+    expect(result).toEqual({ __typename: typename, message });
+    expect(await new Store(env.DB).timeOff([natasha])).toEqual(new Map());
+  });
+});
+
 describe("capacity", () => {
   const setCapacity = `mutation ($teamId: ID!, $userId: ID!, $factor: Float!) {
     setCapacity(teamId: $teamId, userId: $userId, factor: $factor) {
@@ -1138,6 +1274,7 @@ describe("the web app's board query", () => {
   });
   it("limits the urgency window as the server does", () => {
     expect(WEB_MAX_URGENCY_WINDOW_DAYS).toBe(MAX_URGENCY_WINDOW_DAYS);
+    expect(WEB_MAX_TIME_OFF).toBe(MAX_TIME_OFF);
   });
 
   type Answer = Record<string, { __typename: string; team?: TeamBoardData }>;
@@ -1208,6 +1345,30 @@ describe("the web app's board query", () => {
     const tony = setCapacity?.team?.people.find((p) => p.name === "Tony Stark");
     expect(tony?.capacity).toBe(0.5);
     expect(tony?.weather.reason).toContain("at half time");
+  });
+
+  it("adds and takes back time off, answering with the team's board weighed by it", async () => {
+    const { addTimeOff } = await data<Answer>(ADD_TIME_OFF_MUTATION, {
+      teamId: DEMO_TEAM.id,
+      userId: "demo-user-tony",
+      startsOn: "2026-10-18",
+      endsOn: "2026-10-23",
+    });
+    expect(addTimeOff?.__typename).toBe("TimeOffSuccess");
+    const tony = addTimeOff?.team?.people.find((p) => p.name === "Tony Stark");
+    expect(tony?.weather.kind).toBe("AWAY");
+    const [timeOff] = tony?.timeOff ?? [];
+    expect(timeOff).toMatchObject({ startsOn: "2026-10-18", endsOn: "2026-10-23" });
+
+    const { removeTimeOff } = await data<Answer>(REMOVE_TIME_OFF_MUTATION, {
+      teamId: DEMO_TEAM.id,
+      userId: "demo-user-tony",
+      timeOffId: timeOff?.id,
+    });
+    expect(removeTimeOff?.__typename).toBe("TimeOffSuccess");
+    const back = removeTimeOff?.team?.people.find((p) => p.name === "Tony Stark");
+    expect(back?.timeOff).toEqual([]);
+    expect(back?.weather.kind).not.toBe("AWAY");
   });
 
   it("reads a team's board again, as it stands", async () => {

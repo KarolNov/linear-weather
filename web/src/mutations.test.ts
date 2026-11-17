@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Suggestion } from "./board";
 import {
+  ADD_TIME_OFF_MUTATION,
   applyMoves,
   boardClient,
   describeMoves,
   REASSIGN_MUTATION,
+  REMOVE_TIME_OFF_MUTATION,
   SET_CAPACITY_MUTATION,
 } from "./mutations";
 
@@ -132,6 +134,46 @@ describe("board client", () => {
     expect(sent(fetch.mock.calls[0])).toEqual({
       query: SET_CAPACITY_MUTATION,
       variables: { teamId: "t-avg", userId: "u-tony", factor: 0.5 },
+    });
+  });
+
+  it("adds and takes back someone's time off, answering with the team's board", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json({ data: { addTimeOff: { __typename: "TimeOffSuccess", team } } }),
+    );
+    const client = boardClient(false, fetch);
+    expect(await client.addTimeOff("t-avg", "u-tony", "2026-11-16", "2026-11-20")).toEqual({
+      ok: true,
+      team,
+    });
+    expect(sent(fetch.mock.calls[0])).toEqual({
+      query: ADD_TIME_OFF_MUTATION,
+      variables: {
+        teamId: "t-avg",
+        userId: "u-tony",
+        startsOn: "2026-11-16",
+        endsOn: "2026-11-20",
+      },
+    });
+
+    fetch.mockImplementation(async () =>
+      Response.json({
+        data: {
+          removeTimeOff: {
+            __typename: "TimeOffNotFound",
+            message: "Tony Stark has no such time off; it may be gone already.",
+          },
+        },
+      }),
+    );
+    expect(await client.removeTimeOff("t-avg", "u-tony", "t-1")).toEqual({
+      ok: false,
+      message: "Tony Stark has no such time off; it may be gone already.",
+      problems: [],
+    });
+    expect(sent(fetch.mock.calls[1])).toEqual({
+      query: REMOVE_TIME_OFF_MUTATION,
+      variables: { teamId: "t-avg", userId: "u-tony", timeOffId: "t-1" },
     });
   });
 

@@ -331,4 +331,88 @@ describe("teamWeather", () => {
       expect(team).toMatchObject({ kind: "storm", load: 3, reason: "Ana is in a storm" });
     });
   });
+
+  describe("with time off", () => {
+    const away = { until: "2026-10-20" };
+
+    it("leaves anyone away out of the fair share, and storms while they hold urgent work", () => {
+      const { people, team } = teamWeather(
+        [
+          { name: "Ana", matrix: matrixOf(doIssue(), doIssue(), overdueDelegate), away },
+          { name: "Ben", matrix: matrixOf(doIssue(), doIssue()) },
+          { name: "Cy", matrix: matrixOf(doIssue(), doIssue()) },
+        ],
+        "issues",
+        TODAY,
+      );
+      expect(people.map((p) => [p.kind, p.teamAverage])).toEqual([
+        ["away", 2],
+        ["cloudy", 2],
+        ["cloudy", 2],
+      ]);
+      expect(people[0]?.reason).toBe("Away until Oct 20, holding 3 urgent issues (1 overdue)");
+      expect(team).toMatchObject({
+        kind: "storm",
+        load: 2,
+        overdue: 1,
+        reason: "Ana is away with 3 urgent issues",
+      });
+    });
+
+    it("names anyone in a storm too", () => {
+      const { team } = teamWeather(
+        [
+          { name: "Ana", matrix: matrixOf(doIssue()), away },
+          { name: "Ben", matrix: matrixOf(overdueDo) },
+          { name: "Cy", matrix: matrixOf(doIssue()) },
+        ],
+        "issues",
+        TODAY,
+      );
+      expect(team.reason).toBe("Ana is away with 1 urgent issue; Ben is in a storm");
+    });
+
+    it("is calm about someone away with nothing urgent", () => {
+      const { people, team } = teamWeather(
+        [
+          { name: "Ana", matrix: matrixOf(later), away },
+          { name: "Ben", matrix: matrixOf(doIssue()) },
+          { name: "Cy", matrix: matrixOf(doIssue()) },
+        ],
+        "issues",
+        TODAY,
+      );
+      expect(people[0]).toMatchObject({ kind: "away", reason: "Away until Oct 20" });
+      expect(team).toMatchObject({ kind: "sunny", reason: "Urgent load is spread evenly" });
+    });
+
+    it("says so when everyone is away", () => {
+      const { team } = teamWeather(
+        [
+          { name: "Ana", matrix: matrixOf(later), away },
+          { name: "Ben", matrix: matrixOf(), away },
+        ],
+        "issues",
+        TODAY,
+      );
+      expect(team).toMatchObject({ kind: "fog", reason: "Everyone is away" });
+    });
+
+    it("names the days off behind a lower capacity", () => {
+      const { people } = teamWeather(
+        [
+          {
+            name: "Ana",
+            matrix: matrixOf(doIssue(), doIssue(), doIssue()),
+            capacity: 0.6,
+            daysOff: 2,
+          },
+          { name: "Ben", matrix: matrixOf(doIssue(), doIssue()) },
+        ],
+        "issues",
+        TODAY,
+      );
+      expect(people[0]?.reason).toBe("3 urgent issues at 60% time (2 days off), 1.6× their share");
+    });
+  });
 });

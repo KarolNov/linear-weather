@@ -1,12 +1,18 @@
-// How one GraphQL request places issues and weighs load: team rules, hand-placed issues and
-// people's capacity from the store. Resolvers for every team and person on a page ask in the same
+// How one GraphQL request places issues and weighs load: team rules, hand-placed issues, and
+// people's capacity and time off from the store. Resolvers for every team and person on a page ask in the same
 // tick, so DataLoader batches them into one query for each, like Workspace does for Linear. Writes go
 // through here too, so the rest of a mutation's response reads what it just wrote.
 
 import DataLoader from "dataloader";
 import { FULL_TIME } from "./domain/capacity";
 import type { Overrides } from "./domain/matrix";
-import { DEFAULT_RULES, type Quadrant, type QuadrantRules } from "./domain/quadrant";
+import {
+  type CalendarDate,
+  DEFAULT_RULES,
+  type Quadrant,
+  type QuadrantRules,
+} from "./domain/quadrant";
+import type { TimeOff } from "./domain/time-off";
 
 /** The part of the Store placing issues reads. */
 export interface PlacementSource {
@@ -14,6 +20,8 @@ export interface PlacementSource {
   overrides(issueIds: readonly string[]): Promise<Overrides>;
   /** The capacity of whichever of these people don't work full time. */
   capacities(userIds: readonly string[]): Promise<ReadonlyMap<string, number>>;
+  /** Whichever of these people have time off, theirs by user id. */
+  timeOff(userIds: readonly string[]): Promise<ReadonlyMap<string, readonly TimeOff[]>>;
 }
 
 /** The Store as placing issues reads and changes it. */
@@ -23,6 +31,9 @@ export interface PlacementStore extends PlacementSource {
   clearOverride(issueId: string): Promise<void>;
   /** How much of a full-time week someone works; FULL_TIME forgets it. */
   setCapacity(userId: string, factor: number): Promise<void>;
+  addTimeOff(userId: string, startsOn: CalendarDate, endsOn: CalendarDate): Promise<TimeOff>;
+  /** Whether the time off was theirs, and is gone now. */
+  removeTimeOff(userId: string, id: string): Promise<boolean>;
 }
 
 export class Placements {
@@ -37,6 +48,10 @@ export class Placements {
   private readonly capacityLoader = new DataLoader<string, number>(async (userIds) => {
     const capacities = await this.read(() => this.source.capacities(userIds), new Map());
     return userIds.map((id) => capacities.get(id) ?? FULL_TIME);
+  });
+  private readonly timeOffLoader = new DataLoader<string, readonly TimeOff[]>(async (userIds) => {
+    const timeOff = await this.read(() => this.source.timeOff(userIds), new Map());
+    return userIds.map((id) => timeOff.get(id) ?? []);
   });
 
   constructor(
@@ -69,6 +84,23 @@ export class Placements {
     this.capacityLoader.clear(userId).prime(userId, factor);
   }
 
+  /** Someone's time off, past and future. */
+  timeOff(userId: string): Promise<readonly TimeOff[]> {
+    return this.timeOffLoader.load(userId);
+  }
+
+  async addTimeOff(userId: string, startsOn: CalendarDate, endsOn: CalendarDate): Promise<TimeOff> {
+    const added = await this.source.addTimeOff(userId, startsOn, endsOn);
+    this.timeOffLoader.clear(userId);
+    return added;
+  }
+
+  async removeTimeOff(userId: string, id: string): Promise<boolean> {
+    const removed = await this.source.removeTimeOff(userId, id);
+    this.timeOffLoader.clear(userId);
+    return removed;
+  }
+
   async setRules(teamId: string, rules: QuadrantRules): Promise<void> {
     await this.source.setRules(teamId, rules);
     this.rulesLoader.clear(teamId).prime(teamId, rules);
@@ -83,7 +115,7 @@ export class Placements {
 
   /**
    * Linear still answers when our database doesn't, so the board falls back to the default rules,
-   * no hand placements and everyone full time rather than going blank.
+   * no hand placements and everyone full time and present rather than going blank.
    */
   private async read<T>(load: () => Promise<T>, fallback: T): Promise<T> {
     try {

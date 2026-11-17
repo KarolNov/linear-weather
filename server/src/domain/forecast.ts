@@ -3,6 +3,7 @@
 
 import { byPriority, isImportant, type Matrix, type MatrixIssue, type Placed } from "./matrix";
 import { addDays, type CalendarDate, type LinearPriority, type Quadrant } from "./quadrant";
+import { staffingFor, type TimeOff } from "./time-off";
 import {
   DEFAULT_THRESHOLDS,
   type LoadMetric,
@@ -39,6 +40,14 @@ export interface TeamForecast<I> {
   worst: ForecastWeek<I>;
 }
 
+/** Someone in the forecast: their capacity (1 if left out), and any time off. */
+export interface Member<I extends MatrixIssue = MatrixIssue> {
+  name: string;
+  matrix: Matrix<I>;
+  capacity?: number;
+  timeOff?: readonly TimeOff[];
+}
+
 /** Whether a forecast can look `weeks` weeks ahead: a whole number, 1 to MAX_FORECAST_WEEKS. */
 export function isForecastHorizon(weeks: number): boolean {
   return Number.isInteger(weeks) && weeks >= 1 && weeks <= MAX_FORECAST_WEEKS;
@@ -55,13 +64,14 @@ export function isForecastHorizon(weeks: number): boolean {
  *
  * Undated work never turns urgent, so someone holding it with nothing urgent projected is fog,
  * as it is now. Each week compares people with their fair share of that week's load, as the
- * weather now does.
+ * weather now does. Time off lowers a week's capacity by the working days missed
+ * (`capacity × days present / 5`), and someone off every working day of a week is away for it.
  *
  * Without a `metric`, load is counted in points only if every issue urgent in any projected
  * week is estimated, so work arriving later can't turn a week to fog for want of an estimate.
  */
 export function forecast<I extends MatrixIssue>(
-  people: readonly Staffed<I>[],
+  people: readonly Member<I>[],
   metric: LoadMetric | null,
   today: CalendarDate,
   weeks: number,
@@ -83,12 +93,14 @@ export function forecast<I extends MatrixIssue>(
     const startsOn = addDays(today, 7 * week);
     return { startsOn, endsOn: addDays(startsOn, 6) };
   });
-  const projections = spans.map(({ endsOn }) =>
-    people.map(({ name, matrix, capacity }) => ({
-      name,
-      capacity,
-      matrix: project(matrix, from, today, endsOn),
-    })),
+  const projections = spans.map(({ startsOn, endsOn }) =>
+    people.map(
+      ({ name, matrix, capacity, timeOff }): Staffed<I> => ({
+        name,
+        matrix: project(matrix, from, today, endsOn),
+        ...staffingFor(capacity, timeOff, startsOn, endsOn),
+      }),
+    ),
   );
   const counted =
     metric ?? loadMetricFor(projections.flatMap((projected) => projected.map((p) => p.matrix)));
@@ -202,7 +214,14 @@ function describeArrivals(issues: readonly MatrixIssue[]): string {
 }
 
 /** Worst first. Fog is an unknown, so it ranks below any measured overload. */
-const SEVERITY: Record<WeatherKind, number> = { storm: 4, rain: 3, fog: 2, cloudy: 1, sunny: 0 };
+const SEVERITY: Record<WeatherKind, number> = {
+  storm: 4,
+  rain: 3,
+  fog: 2,
+  away: 1,
+  cloudy: 1,
+  sunny: 0,
+};
 
 function worstWeek<I>(weeks: ForecastWeek<I>[]): ForecastWeek<I> {
   return weeks.reduce((worst, week) =>

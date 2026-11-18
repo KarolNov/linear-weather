@@ -9,12 +9,19 @@ export interface TimeOff {
   id: string;
   startsOn: CalendarDate;
   endsOn: CalendarDate;
+  /** Where it comes from, when not time off added on the board, e.g. "Linear status 🌴 On vacation". */
+  source?: string;
 }
 
 /** Why someone is away for a whole period, and until when. */
 export interface Away {
   /** Their last day away. */
   until: CalendarDate;
+  /**
+   * What says they're away, when something besides time off added on the board does, e.g.
+   * ["time off", "Linear status 🌴 On vacation"].
+   */
+  sources?: string[];
 }
 
 /** How much someone can carry over a period, their time off taken into account. */
@@ -115,7 +122,7 @@ export function staffingOn(
   on: CalendarDate,
 ): Staffing {
   const until = awayUntil(timeOff, on);
-  return until === null ? { capacity } : { capacity, away: { until } };
+  return until === null ? { capacity } : { capacity, away: awayFrom(timeOff, on, until) };
 }
 
 /**
@@ -132,8 +139,9 @@ export function staffingFor(
   const off = workdays.filter((day) => isOff(timeOff, day));
   if (off.length === 0) return { capacity };
   if (off.length === workdays.length) {
-    const until = awayUntil(timeOff, off[0] as CalendarDate) as CalendarDate;
-    return { capacity, away: { until } };
+    const first = off[0] as CalendarDate;
+    const until = awayUntil(timeOff, first) as CalendarDate;
+    return { capacity, away: awayFrom(timeOff, first, until) };
   }
   const present = (workdays.length - off.length) / WORK_WEEK;
   // To the hundredth, like any capacity, but never 0: they're there some of the week.
@@ -141,9 +149,23 @@ export function staffingFor(
   return { capacity: reduced, daysOff: off.length };
 }
 
-/** E.g. "Away until Nov 20". */
-export function describeAway({ until }: Away): string {
-  return `Away until ${shortDate(until)}`;
+/**
+ * Away from `from` to `until`, naming what says so when anything besides time off added on the
+ * board does.
+ */
+function awayFrom(timeOff: readonly TimeOff[], from: CalendarDate, until: CalendarDate): Away {
+  const covering = timeOff.filter(({ startsOn, endsOn }) => startsOn <= until && endsOn >= from);
+  if (covering.every(({ source }) => source === undefined)) return { until };
+  const sources = [...new Set(covering.map(({ source }) => source ?? "time off"))];
+  // Time off added on the board first, as the board lists it.
+  sources.sort((a, b) => Number(a !== "time off") - Number(b !== "time off"));
+  return { until, sources };
+}
+
+/** E.g. "Away until Nov 20", or "Away until Nov 20 (Linear status 🌴 On vacation)". */
+export function describeAway({ until, sources }: Away): string {
+  const why = sources?.length ? ` (${sources.join(" and ")})` : "";
+  return `Away until ${shortDate(until)}${why}`;
 }
 
 /** E.g. " at 60% time (2 days off)", or "" for full time. */

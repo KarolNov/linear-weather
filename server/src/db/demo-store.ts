@@ -123,8 +123,8 @@ export class DemoStore implements PlacementStore, DemoAssignments {
 
   async setRules(teamId: string, rules: QuadrantRules): Promise<void> {
     // Back to the defaults is nothing to keep.
-    const defaults = (Object.keys(DEFAULT_RULES) as (keyof QuadrantRules)[]).every(
-      (key) => rules[key] === DEFAULT_RULES[key],
+    const defaults = (Object.keys(DEFAULT_RULES) as (keyof QuadrantRules)[]).every((key) =>
+      key === "awayStatuses" ? rules[key].length === 0 : rules[key] === DEFAULT_RULES[key],
     );
     if (defaults) this.savedRules.delete(teamId);
     else this.savedRules.set(teamId, rules);

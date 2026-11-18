@@ -28,12 +28,15 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
   const [windowDays, setWindowDays] = useState(String(rules.urgencyWindowDays));
   const [noDueDate, setNoDueDate] = useState(rules.noDueDate);
   const [dropAlert, setDropAlert] = useState(String(rules.dropAlertPercent));
+  // One a line: a label could hold a comma.
+  const [awayStatuses, setAwayStatuses] = useState(rules.awayStatuses.join("\n"));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<{ message: string; problems: RuleProblem[] } | null>(null);
   const problem = (field: keyof Rules) => failure?.problems.find((p) => p.field === field);
   const windowProblem = problem("urgencyWindowDays");
   const importantProblem = problem("importantFrom");
   const dropAlertProblem = problem("dropAlertPercent");
+  const awayProblem = problem("awayStatuses");
 
   const submit = async (event: Event) => {
     event.preventDefault();
@@ -44,6 +47,8 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
       urgencyWindowDays: Number(windowDays),
       noDueDate,
       dropAlertPercent: Number(dropAlert),
+      // The server trims them and drops blank lines.
+      awayStatuses: awayStatuses.split("\n"),
     });
     setSaving(false);
     if (result.ok) onClose();
@@ -158,6 +163,30 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
               </span>
             )}
           </label>
+
+          <label {...stylex.props(styles.field)}>
+            <span {...stylex.props(styles.label)}>Away when their Linear status is</span>
+            <textarea
+              rows={3}
+              placeholder={"🌴\nvacation"}
+              value={awayStatuses}
+              onInput={(event) => setAwayStatuses(event.currentTarget.value)}
+              aria-invalid={awayProblem ? true : undefined}
+              aria-describedby={
+                awayProblem ? "rules-away-hint rules-away-problem" : "rules-away-hint"
+              }
+              {...stylex.props(styles.input, styles.textarea)}
+            />
+            <span id="rules-away-hint" {...stylex.props(styles.hint)}>
+              One a line: an emoji, or words in the label. Away until the status clears, or for this
+              week if it never does. Empty, nobody's status counts.
+            </span>
+            {awayProblem && (
+              <span id="rules-away-problem" {...stylex.props(styles.problem)}>
+                {awayProblem.message}
+              </span>
+            )}
+          </label>
         </div>
 
         {failure && failure.problems.length === 0 && (
@@ -218,6 +247,7 @@ const styles = stylex.create({
     outlineOffset: "1px",
   },
   number: { width: "6rem", fontVariantNumeric: "tabular-nums" },
+  textarea: { resize: "vertical", lineHeight: 1.4 },
   withUnit: { display: "flex", alignItems: "center", gap: space.xs },
   hint: { fontSize: "0.8125rem", color: colors.inkMuted },
   problem: { fontSize: "0.875rem", fontWeight: 600, color: colors.danger },

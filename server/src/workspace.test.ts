@@ -45,9 +45,33 @@ const members = (...teams: [id: string, people: (typeof ada)[]][]) => ({
   teams: { nodes: teams.map(([id, people]) => ({ id, members: { nodes: people } })) },
 });
 
-const ada = { id: "u-ada", name: "Ada", avatarUrl: null };
-const grace = { id: "u-grace", name: "Grace", avatarUrl: null };
-const linus = { id: "u-linus", name: "Linus", avatarUrl: null };
+const ada = {
+  id: "u-ada",
+  name: "Ada",
+  avatarUrl: null,
+  statusEmoji: null,
+  statusLabel: null,
+  statusUntilAt: null,
+  timezone: null,
+};
+const grace = {
+  id: "u-grace",
+  name: "Grace",
+  avatarUrl: null,
+  statusEmoji: null,
+  statusLabel: null,
+  statusUntilAt: null,
+  timezone: null,
+};
+const linus = {
+  id: "u-linus",
+  name: "Linus",
+  avatarUrl: null,
+  statusEmoji: null,
+  statusLabel: null,
+  statusUntilAt: null,
+  timezone: null,
+};
 
 function issue(n: number, fields: Partial<IssueCard>): IssueCard {
   return {

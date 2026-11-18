@@ -224,8 +224,20 @@ describe("parseRules", () => {
   it("accepts the defaults and the extremes", () => {
     for (const rules of [
       DEFAULT_RULES,
-      { importantFrom: 1, urgencyWindowDays: 1, noDueDate: "urgent", dropAlertPercent: 1 },
-      { importantFrom: 4, urgencyWindowDays: 365, noDueDate: "notUrgent", dropAlertPercent: 99 },
+      {
+        importantFrom: 1,
+        urgencyWindowDays: 1,
+        noDueDate: "urgent",
+        dropAlertPercent: 1,
+        awayStatuses: [],
+      },
+      {
+        importantFrom: 4,
+        urgencyWindowDays: 365,
+        noDueDate: "notUrgent",
+        dropAlertPercent: 99,
+        awayStatuses: ["🌴", "x".repeat(40), ..."abcdefgh"],
+      },
     ] satisfies QuadrantRules[]) {
       expect(parseRules(rules)).toEqual({ rules });
     }
@@ -244,6 +256,21 @@ describe("parseRules", () => {
 
   it.each([0, 100, 12.5, Number.NaN])("refuses a Drop alert of %s%%", (dropAlertPercent) => {
     expect(problemFields({ ...DEFAULT_RULES, dropAlertPercent })).toEqual(["dropAlertPercent"]);
+  });
+
+  it("tidies away statuses: trimmed, blanks dropped, each once whatever its case", () => {
+    expect(
+      parseRules({ ...DEFAULT_RULES, awayStatuses: [" Vacation ", "", "🌴", "vacation", "  "] })
+        .rules?.awayStatuses,
+    ).toEqual(["Vacation", "🌴"]);
+  });
+
+  it("refuses too many away statuses, or one too long", () => {
+    const many = Array.from({ length: 11 }, (_, i) => `status ${i}`);
+    expect(problemFields({ ...DEFAULT_RULES, awayStatuses: many })).toEqual(["awayStatuses"]);
+    expect(problemFields({ ...DEFAULT_RULES, awayStatuses: ["x".repeat(41)] })).toEqual([
+      "awayStatuses",
+    ]);
   });
 
   it("reports every problem at once", () => {

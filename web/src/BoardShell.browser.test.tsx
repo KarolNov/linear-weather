@@ -54,6 +54,7 @@ function avengersBoard(
       urgencyWindowDays: 14,
       noDueDate: "NOT_URGENT",
       dropAlertPercent: 40,
+      awayStatuses: [],
     },
     weather,
     backlogRot: { rotting: false, reason: "0 of 1 open issues (0%) are in Drop" },

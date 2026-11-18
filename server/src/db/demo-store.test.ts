@@ -17,6 +17,7 @@ const strict = {
   urgencyWindowDays: 7,
   noDueDate: "urgent",
   dropAlertPercent: DEFAULT_RULES.dropAlertPercent,
+  awayStatuses: [],
 } as const;
 const team = DEMO_TEAM.id;
 const [first, second] = ["demo-issue-avg-1", "demo-issue-avg-2"];
@@ -58,6 +59,30 @@ describe("DemoStore", () => {
     );
     expect(decodeDemo("1~avengers.2.7.0~").rules.get(team)).toEqual(strict);
   });
+
+  it("keeps a team's away statuses, whatever characters they hold", async () => {
+    const before = DemoStore.fromCookie(undefined);
+    const awayStatuses = ["🌴", "Out.of~office!"];
+    await before.setRules(DEMO_OPS_TEAM.id, { ...DEFAULT_RULES, awayStatuses });
+    expect(before.cookie()).toMatch(/^1~ops\.3\.14\.1~~~~~ops\.[A-Za-z0-9_-]+$/);
+    const after = DemoStore.fromCookie(before.cookie());
+    expect(await after.rules([DEMO_OPS_TEAM.id, team])).toEqual(
+      new Map([
+        [DEMO_OPS_TEAM.id, { ...DEFAULT_RULES, awayStatuses }],
+        [team, DEFAULT_RULES],
+      ]),
+    );
+    // Back to none is back to the defaults: nothing to keep.
+    await after.setRules(DEMO_OPS_TEAM.id, DEFAULT_RULES);
+    expect(after.cookie()).toBe("1~~");
+  });
+
+  it.each(["!!!", "bm90IGpzb24", "WzFd", "WyLwn4y0"])(
+    "ignores away statuses that don't decode to a list of strings: %s",
+    (encoded) => {
+      expect(decodeDemo(`1~~~~~~ops.${encoded}`).rules.size).toBe(0);
+    },
+  );
 
   it("keeps who the visitor handed issues to, and forgets those handed back", async () => {
     const before = DemoStore.fromCookie(undefined);

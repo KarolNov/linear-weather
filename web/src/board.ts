@@ -1,135 +1,88 @@
-// The board as our GraphQL server answers BOARD_QUERY (server/src/schema.ts).
+// The board as our GraphQL server answers BOARD_QUERY (board.graphql). Its types come from
+// generated.ts, which `pnpm --filter web codegen` writes from the server's schema.
 
-export type Quadrant = "do" | "schedule" | "delegate" | "drop";
+import {
+  BoardDocument,
+  type BoardIssueFragment,
+  type BoardQuery,
+  type MatrixFragment,
+  type Quadrant as QuadrantEnum,
+  type SuggestionFragment,
+  type TeamBoardFragment,
+  type WeatherKind,
+} from "./generated";
+
+/** A quadrant as the board names it: the server's Quadrant enum, lowercase. */
+export type Quadrant = Lowercase<QuadrantEnum>;
+
+/** Each quadrant as the server's Quadrant enum spells it, for a mutation's variables. */
+export const QUADRANT_ENUM: Record<Quadrant, QuadrantEnum> = {
+  do: "DO",
+  schedule: "SCHEDULE",
+  delegate: "DELEGATE",
+  drop: "DROP",
+};
 
 export const QUADRANTS: Quadrant[] = ["do", "schedule", "delegate", "drop"];
 
 /** A calendar date, `YYYY-MM-DD`. */
 export type CalendarDate = string;
 
-export interface Viewer {
-  name: string;
-  avatarUrl: string | null;
-  organization: { name: string };
-}
+/** Who is signed in. */
+export type Viewer = NonNullable<BoardQuery["viewer"]>;
 
-export interface Team {
-  id: string;
-  name: string;
-  key: string;
-}
+export type Team = NonNullable<BoardQuery["teams"]>[number];
 
-export interface Person {
-  id: string;
-  name: string;
-  avatarUrl: string | null;
-}
+/** A team as the TeamBoard fragment has it. */
+export type TeamBoardData = TeamBoardFragment;
 
-export interface BoardIssue {
-  id: string;
-  identifier: string;
-  title: string;
-  url: string;
-  dueDate: CalendarDate | null;
-  /** Linear's: 0 = No priority, 1 = Urgent, 2 = High, 3 = Medium, 4 = Low. */
-  priority: number;
-  estimate: number | null;
-  state: { name: string };
-  /** Placed by the team's rules, or by hand (and then it stays put whatever the rules say). */
-  quadrantSource: "RULE" | "OVERRIDE";
-  /**
-   * Why it's in its quadrant, e.g. "High priority, due in 3 days". Placed by hand, it says where
-   * the rules would put it.
-   */
-  placementReason: string;
-}
+type TeamPerson = TeamBoardData["people"][number];
+
+export type Person = Pick<TeamPerson, "id" | "name" | "avatarUrl">;
+
+/**
+ * An issue on the board. `priority` is Linear's: 0 = No priority, 1 = Urgent, 2 = High,
+ * 3 = Medium, 4 = Low. Placed by hand (`OVERRIDE`), it stays put whatever the rules say, and
+ * `placementReason` says where the rules would put it.
+ */
+export type BoardIssue = BoardIssueFragment;
 
 /**
  * How heavy someone's urgent load is now, against the team's average, or AWAY when they're off.
  * For a team, how evenly it's spread: as bad as its worst person, a storm when someone away holds
  * urgent work, cloudy when some have room while others carry it. Never AWAY.
  */
-export type WeatherKind = "SUNNY" | "CLOUDY" | "RAIN" | "STORM" | "FOG" | "AWAY";
+export type { WeatherKind };
 
 /** A stretch of days someone is away, first and last day included. */
-export interface TimeOff {
-  id: string;
-  startsOn: CalendarDate;
-  endsOn: CalendarDate;
-}
+export type TimeOff = TeamPerson["timeOff"][number];
 
-export interface Weather {
-  kind: WeatherKind;
-  /** Why, e.g. "13 urgent points, 3.1× the team average" or "Tony Stark is in a storm". */
-  reason: string;
-}
+/** A team's weather, or a forecast week's, with why. */
+export type Weather = TeamBoardData["weather"];
 
-/** A person's weather, with what keeps them in a storm whatever is handed over. */
-export interface PersonWeather extends Weather {
-  /** Their overdue urgent (Do or Delegate) issues, as the server counts them. */
-  overdue: number;
-}
+/**
+ * A person's weather, with their overdue urgent (Do or Delegate) issues, which keep them in a
+ * storm whatever is handed over.
+ */
+export type PersonWeather = NonNullable<TeamPerson["weather"]>;
 
-/** One week ahead: the weather expected by its end, and what turns urgent during it. */
-export interface ForecastWeek {
-  /** Today for the first week, then every 7 days. */
-  startsOn: CalendarDate;
-  /** The day its weather is for. */
-  endsOn: CalendarDate;
-  weather: Weather;
-  /** E.g. "3 High-priority issues become urgent". */
-  summary: string;
-  turningUrgent: { identifier: string }[];
-}
+/** One week ahead: the weather expected by its end (`endsOn`), and what turns urgent during it. */
+export type ForecastWeek = NonNullable<TeamPerson["forecast"]>[number];
 
 /** Hand one issue from one person to another, to even out urgent load. */
-export interface Suggestion {
-  issue: Pick<BoardIssue, "id" | "identifier" | "title" | "url"> & {
-    quadrant: "DO" | "SCHEDULE" | "DELEGATE" | "DROP";
-    /** When it turns urgent: today for work urgent now. */
-    becomesUrgentOn: CalendarDate | null;
-  };
-  from: Person;
-  to: Person;
-  /** For the forecast, the week (from 1) the move heads a storm off in. Null for now. */
-  week: number | null;
-  /** The taker's weather after the move, now or in that week. */
-  toWeather: WeatherKind;
-  /** E.g. "Ana goes from 2.1× to 1.4× the team average, Ben from 0.5× to 1.1×". */
-  reason: string;
-}
+export type Suggestion = SuggestionFragment;
 
 /** Moves for today's storms, and for the ones the forecast sees coming. */
-export interface Rebalance {
-  rebalanceNow: Suggestion[];
-  rebalanceForecast: Suggestion[];
-}
+export type Rebalance = Pick<TeamBoardData, "rebalanceNow" | "rebalanceForecast">;
 
 /** Issues by quadrant, each most pressing first. */
-export type Matrix = Record<Quadrant, BoardIssue[]> & { counts: Record<Quadrant, number> };
+export type Matrix = MatrixFragment;
 
 /** How a team sorts issues into quadrants. */
-export interface Rules {
-  /** Lowest Linear priority that still counts as important: 1 Urgent … 4 Low. */
-  importantFrom: number;
-  /** Urgent when due in fewer than this many days, or overdue. */
-  urgencyWindowDays: number;
-  noDueDate: "URGENT" | "NOT_URGENT";
-  /** Flag backlog rot when more than this percent of open issues are in Drop: 1 to 99. */
-  dropAlertPercent: number;
-  /**
-   * Linear statuses that mean someone is away: text in a status's label, or emojis one of which is
-   * its emoji, ignoring case. Empty unless the team opts in.
-   */
-  awayStatuses: string[];
-}
+export type Rules = TeamBoardData["rules"];
 
 /** Whether too much of the team's open work sits in Drop, against its alert. */
-export interface BacklogRot {
-  rotting: boolean;
-  /** E.g. "12 of 20 open issues (60%) are in Drop, over the team's 40% alert". */
-  reason: string;
-}
+export type BacklogRot = TeamBoardData["backlogRot"];
 
 /** The longest urgency window the server accepts (`MAX_URGENCY_WINDOW_DAYS`). */
 export const MAX_URGENCY_WINDOW_DAYS = 365;
@@ -161,103 +114,25 @@ export interface Board {
    * The team asked for, else the viewer's default, with its rules and weather. Null when there
    * are no teams.
    */
-  team: (Team & Rebalance & { rules: Rules; weather: Weather; backlogRot: BacklogRot }) | null;
+  team: Omit<TeamBoardData, "people" | "unassigned"> | null;
   /** The team's people, then its unassigned issues if it has any. */
   people: PersonMatrix[];
+}
+
+/** A GraphQL response's body. */
+export interface GraphQLResponse<T> {
+  data?: T | null;
+  errors?: { message: string; path?: (string | number)[]; extensions?: Record<string, unknown> }[];
 }
 
 /** Why the board couldn't load: Linear's rate limit (with when it resets), or anything else. */
 export type BoardError = { kind: "rate_limited"; resetAt: number | null } | { kind: "unavailable" };
 
-const MATRIX_FIELDS = `
-  counts { do schedule delegate drop }
-  do { ...BoardIssue }
-  schedule { ...BoardIssue }
-  delegate { ...BoardIssue }
-  drop { ...BoardIssue }
-`;
-
-/**
- * One team's part of the board. The page loads it, and every mutation asks for it back, so the
- * board can redraw from the answer.
- */
-export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
-  id
-  name
-  key
-  rules { importantFrom urgencyWindowDays noDueDate dropAlertPercent awayStatuses }
-  weather { kind reason }
-  backlogRot { rotting reason }
-  rebalanceNow: rebalanceSuggestions(horizon: NOW) { ...Suggestion }
-  rebalanceForecast: rebalanceSuggestions(horizon: FORECAST) { ...Suggestion }
-  people {
-    id
-    name
-    avatarUrl
-    capacity
-    timeOff { id startsOn endsOn }
-    weather { kind reason overdue }
-    forecast { startsOn endsOn weather { kind reason } summary turningUrgent { identifier } }
-    matrix { ${MATRIX_FIELDS} }
-  }
-  unassigned { ${MATRIX_FIELDS} }
-}
-
-fragment Suggestion on Suggestion {
-  issue { id identifier title url quadrant becomesUrgentOn }
-  from { id name avatarUrl }
-  to { id name avatarUrl }
-  week
-  toWeather
-  reason
-}
-
-fragment BoardIssue on Issue {
-  id
-  identifier
-  title
-  url
-  dueDate
-  priority
-  estimate
-  state { name }
-  quadrantSource
-  placementReason
-}`;
-
 /** Who is signed in and their board, in one request. `$teamId` falls back to their team. */
-export const BOARD_QUERY = `query Board($teamId: ID) {
-  today
-  viewer { name avatarUrl organization { name } }
-  teams { id name key }
-  team(id: $teamId) { ...TeamBoard }
-}
-
-${TEAM_BOARD_FRAGMENTS}`;
-
-/** A team as the TeamBoard fragment has it. */
-export type TeamBoardData = Team &
-  Rebalance & {
-    rules: Rules;
-    weather: Weather;
-    backlogRot: BacklogRot;
-    people: (Person & {
-      capacity: number;
-      timeOff: TimeOff[];
-      matrix: Matrix;
-      weather: PersonWeather;
-      forecast: ForecastWeek[];
-    })[];
-    unassigned: Matrix;
-  };
+export const BOARD_QUERY = BoardDocument;
 
 /** BOARD_QUERY's `data`. */
-export interface BoardData {
-  today: CalendarDate;
-  viewer: Viewer | null;
-  teams: Team[] | null;
-  team: TeamBoardData | null;
-}
+export type BoardData = BoardQuery;
 
 /** The board's team and people from the TeamBoard fragment. Unassigned issues come last, if any. */
 export function teamBoard({
@@ -265,15 +140,13 @@ export function teamBoard({
   unassigned,
   ...team
 }: TeamBoardData): Pick<Board, "team" | "people"> {
-  const matrices: PersonMatrix[] = people.map(
-    ({ matrix, weather, forecast, capacity, timeOff, ...assignee }) => ({
-      assignee,
-      capacity,
-      timeOff,
-      matrix,
-      weather,
-      forecast,
-    }),
+  // The server nulls a person's matrix, weather or forecast only alongside an error, which the
+  // board reports instead; someone without them has nothing to draw.
+  const matrices: PersonMatrix[] = people.flatMap(
+    ({ matrix, weather, forecast, capacity, timeOff, ...assignee }) =>
+      matrix && weather && forecast
+        ? [{ assignee, capacity, timeOff, matrix, weather, forecast }]
+        : [],
   );
   if (total(unassigned) > 0) {
     matrices.push({

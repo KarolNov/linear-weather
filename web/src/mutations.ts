@@ -4,94 +4,43 @@
 
 import {
   type CalendarDate,
+  type GraphQLResponse,
   listOf,
+  QUADRANT_ENUM,
   type Quadrant,
   type Rules,
   type Suggestion,
-  TEAM_BOARD_FRAGMENTS,
   type TeamBoardData,
 } from "./board";
+import {
+  AddTimeOffDocument,
+  ClearOverrideDocument,
+  OverrideQuadrantDocument,
+  type QuadrantRulesField,
+  ReassignIssueDocument,
+  RemoveTimeOffDocument,
+  SetCapacityDocument,
+  TeamDocument,
+  type TypedDocumentString,
+  UpdateRulesDocument,
+} from "./generated";
 
-// Each answers with the team's board, or the failure's message.
-const RESULT_FIELDS = `
-  __typename
-  ... on Error { message }
-`;
-
-export const UPDATE_RULES_MUTATION = `mutation UpdateRules($teamId: ID!, $input: QuadrantRulesInput!) {
-  updateQuadrantRules(teamId: $teamId, input: $input) {
-    ${RESULT_FIELDS}
-    ... on InvalidRules { problems { field message } }
-    ... on UpdateRulesSuccess { team { ...TeamBoard } }
-  }
-}
-
-${TEAM_BOARD_FRAGMENTS}`;
-
-export const OVERRIDE_MUTATION = `mutation OverrideQuadrant($issueId: ID!, $quadrant: Quadrant!) {
-  overrideQuadrant(issueId: $issueId, quadrant: $quadrant) {
-    ${RESULT_FIELDS}
-    ... on OverrideSuccess { team { ...TeamBoard } }
-  }
-}
-
-${TEAM_BOARD_FRAGMENTS}`;
-
-export const CLEAR_OVERRIDE_MUTATION = `mutation ClearOverride($issueId: ID!) {
-  clearOverride(issueId: $issueId) {
-    ${RESULT_FIELDS}
-    ... on OverrideSuccess { team { ...TeamBoard } }
-  }
-}
-
-${TEAM_BOARD_FRAGMENTS}`;
-
-export const REASSIGN_MUTATION = `mutation ReassignIssue($issueId: ID!, $userId: ID!) {
-  reassignIssue(issueId: $issueId, userId: $userId) {
-    ${RESULT_FIELDS}
-    ... on ReassignSuccess { team { ...TeamBoard } }
-  }
-}
-
-${TEAM_BOARD_FRAGMENTS}`;
-
-export const SET_CAPACITY_MUTATION = `mutation SetCapacity($teamId: ID!, $userId: ID!, $factor: Float!) {
-  setCapacity(teamId: $teamId, userId: $userId, factor: $factor) {
-    ${RESULT_FIELDS}
-    ... on SetCapacitySuccess { team { ...TeamBoard } }
-  }
-}
-
-${TEAM_BOARD_FRAGMENTS}`;
-
-export const ADD_TIME_OFF_MUTATION = `mutation AddTimeOff($teamId: ID!, $userId: ID!, $startsOn: Date!, $endsOn: Date!) {
-  addTimeOff(teamId: $teamId, userId: $userId, startsOn: $startsOn, endsOn: $endsOn) {
-    ${RESULT_FIELDS}
-    ... on TimeOffSuccess { team { ...TeamBoard } }
-  }
-}
-
-${TEAM_BOARD_FRAGMENTS}`;
-
-export const REMOVE_TIME_OFF_MUTATION = `mutation RemoveTimeOff($teamId: ID!, $userId: ID!, $timeOffId: ID!) {
-  removeTimeOff(teamId: $teamId, userId: $userId, timeOffId: $timeOffId) {
-    ${RESULT_FIELDS}
-    ... on TimeOffSuccess { team { ...TeamBoard } }
-  }
-}
-
-${TEAM_BOARD_FRAGMENTS}`;
+// The operations live in mutations.graphql; codegen types them against the server's schema.
+// Each mutation answers with the team's board, or the failure's message.
+export const UPDATE_RULES_MUTATION = UpdateRulesDocument;
+export const OVERRIDE_MUTATION = OverrideQuadrantDocument;
+export const CLEAR_OVERRIDE_MUTATION = ClearOverrideDocument;
+export const REASSIGN_MUTATION = ReassignIssueDocument;
+export const SET_CAPACITY_MUTATION = SetCapacityDocument;
+export const ADD_TIME_OFF_MUTATION = AddTimeOffDocument;
+export const REMOVE_TIME_OFF_MUTATION = RemoveTimeOffDocument;
 
 /** A team's board as it stands, to plan again from after a move failed. */
-export const TEAM_QUERY = `query Team($teamId: ID!) {
-  team(id: $teamId) { ...TeamBoard }
-}
-
-${TEAM_BOARD_FRAGMENTS}`;
+export const TEAM_QUERY = TeamDocument;
 
 /** Something wrong with proposed rules, on the field the form should mark. */
 export interface RuleProblem {
-  field: keyof Rules;
+  field: QuadrantRulesField;
   message: string;
 }
 
@@ -156,22 +105,25 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
   };
 
   /** Sends one operation and hands back the answer's body. Throws on an HTTP error. */
-  async function post<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  async function post<TResult, TVariables>(
+    query: TypedDocumentString<TResult, TVariables>,
+    variables: TVariables,
+  ): Promise<GraphQLResponse<TResult>> {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ query, variables }),
     });
     if (!res.ok) throw new Error(`server responded ${res.status}`);
-    return (await res.json()) as T;
+    return (await res.json()) as GraphQLResponse<TResult>;
   }
 
-  async function send(query: string, variables: Record<string, unknown>): Promise<MutationResult> {
+  async function send<TResult extends Record<string, MutationPayload>, TVariables>(
+    query: TypedDocumentString<TResult, TVariables>,
+    variables: TVariables,
+  ): Promise<MutationResult> {
     try {
-      const { data, errors = [] } = await post<{
-        data?: Record<string, MutationPayload> | null;
-        errors?: { message: string; path?: (string | number)[] }[];
-      }>(query, variables);
+      const { data, errors = [] } = await post(query, variables);
       const payload = data && Object.values(data)[0];
       // The change is made before the board is read back, so an error below the mutation's own
       // field means it was saved and only the board failed to load, e.g. Linear's rate limit.
@@ -196,7 +148,10 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
   }
 
   /** Runs `send` once everything sent before it has answered. */
-  function queued(query: string, variables: Record<string, unknown>) {
+  function queued<TResult extends Record<string, MutationPayload>, TVariables>(
+    query: TypedDocumentString<TResult, TVariables>,
+    variables: TVariables,
+  ) {
     return inTurn(() => send(query, variables));
   }
 
@@ -209,9 +164,7 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
 
   async function read(teamId: string): Promise<TeamBoardData | null> {
     try {
-      const { data } = await post<{ data?: { team: TeamBoardData | null } | null }>(TEAM_QUERY, {
-        teamId,
-      });
+      const { data } = await post(TEAM_QUERY, { teamId });
       return remember(data?.team);
     } catch (error) {
       console.error(`Couldn't read the board again: ${error}`);
@@ -233,7 +186,7 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
     updateRules: (teamId, rules) => queued(UPDATE_RULES_MUTATION, { teamId, input: rules }),
     placeIssue: (issueId, quadrant) =>
       quadrant
-        ? queued(OVERRIDE_MUTATION, { issueId, quadrant: quadrant.toUpperCase() })
+        ? queued(OVERRIDE_MUTATION, { issueId, quadrant: QUADRANT_ENUM[quadrant] })
         : queued(CLEAR_OVERRIDE_MUTATION, { issueId }),
     reassign: (issueId, userId) => queued(REASSIGN_MUTATION, { issueId, userId }),
     setCapacity: (teamId, userId, factor) =>

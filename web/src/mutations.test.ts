@@ -119,7 +119,7 @@ describe("board client", () => {
     );
     expect(await boardClient(false, fetch).reassign("i-1", "u-wanda")).toEqual({ ok: true, team });
     expect(sent(fetch.mock.calls[0])).toEqual({
-      query: REASSIGN_MUTATION,
+      query: REASSIGN_MUTATION.toString(),
       variables: { issueId: "i-1", userId: "u-wanda" },
     });
   });
@@ -133,7 +133,7 @@ describe("board client", () => {
       team,
     });
     expect(sent(fetch.mock.calls[0])).toEqual({
-      query: SET_CAPACITY_MUTATION,
+      query: SET_CAPACITY_MUTATION.toString(),
       variables: { teamId: "t-avg", userId: "u-tony", factor: 0.5 },
     });
   });
@@ -148,7 +148,7 @@ describe("board client", () => {
       team,
     });
     expect(sent(fetch.mock.calls[0])).toEqual({
-      query: ADD_TIME_OFF_MUTATION,
+      query: ADD_TIME_OFF_MUTATION.toString(),
       variables: {
         teamId: "t-avg",
         userId: "u-tony",
@@ -173,7 +173,7 @@ describe("board client", () => {
       problems: [],
     });
     expect(sent(fetch.mock.calls[1])).toEqual({
-      query: REMOVE_TIME_OFF_MUTATION,
+      query: REMOVE_TIME_OFF_MUTATION.toString(),
       variables: { teamId: "t-avg", userId: "u-tony", timeOffId: "t-1" },
     });
   });

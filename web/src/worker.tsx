@@ -8,6 +8,7 @@ import {
   type Board,
   type BoardData,
   type BoardError,
+  type GraphQLResponse,
   teamBoard,
   type Viewer,
 } from "./board";
@@ -82,11 +83,6 @@ const UNAVAILABLE = Symbol("unavailable");
 
 /** Who is signed in, and their board or why it couldn't load. */
 type BoardResponse = { viewer: Viewer } & ({ board: Board } | { boardError: BoardError });
-
-interface GraphQLResponse<T> {
-  data?: T | null;
-  errors?: { message: string; path?: (string | number)[]; extensions?: Record<string, unknown> }[];
-}
 
 /**
  * Who is signed in and their board for `teamId` (or their team), from our GraphQL server,

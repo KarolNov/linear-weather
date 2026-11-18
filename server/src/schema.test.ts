@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { graphql } from "graphql";
 import { describe, expect, it } from "vitest";
-// The web app keeps its queries by its components; checking them here catches schema drift.
+// The web app's operations, typed by codegen against schema.graphql; running them here checks
+// they also load what the board expects.
 import {
   BOARD_QUERY,
   QUADRANTS,
@@ -9,6 +10,7 @@ import {
   MAX_TIME_OFF as WEB_MAX_TIME_OFF,
   MAX_URGENCY_WINDOW_DAYS as WEB_MAX_URGENCY_WINDOW_DAYS,
 } from "../../web/src/board";
+import type { QuadrantRulesInput, TypedDocumentString } from "../../web/src/generated";
 import {
   ADD_TIME_OFF_MUTATION,
   CLEAR_OVERRIDE_MUTATION,
@@ -37,12 +39,17 @@ import { Workspace } from "./workspace";
 
 const today = "2026-10-18";
 
+/** An operation: a string, or one of web's generated documents, typed by what it answers. */
+type Operation<TResult = unknown, TVariables = never> =
+  | string
+  | TypedDocumentString<TResult, TVariables>;
+
 /**
  * Runs a query as someone signed in to the demo workspace (or signed out), with rules and
  * overrides from D1.
  */
 function run(
-  source: string,
+  operation: Operation,
   variables: Record<string, unknown> = {},
   {
     signedIn = true,
@@ -57,14 +64,19 @@ function run(
     placements: new Placements(store, log),
     today,
   };
-  return graphql({ schema, source, variableValues: variables, contextValue });
+  return graphql({ schema, source: operation.toString(), variableValues: variables, contextValue });
 }
 
-/** Runs a query that should succeed, and returns its data. */
-async function data<T>(source: string, variables?: Record<string, unknown>): Promise<T> {
-  const result = await run(source, variables);
+/** Runs a query that should succeed, and returns its data: a document's typed result. */
+async function data<TResult, TVariables>(
+  operation: TypedDocumentString<TResult, TVariables>,
+  variables?: TVariables,
+): Promise<TResult>;
+async function data<T>(operation: string, variables?: Record<string, unknown>): Promise<T>;
+async function data(operation: Operation, variables?: object): Promise<unknown> {
+  const result = await run(operation, variables as Record<string, unknown> | undefined);
   expect(result.errors).toBeUndefined();
-  return result.data as T;
+  return result.data;
 }
 
 type Counts = Record<"do" | "schedule" | "delegate" | "drop", number>;
@@ -658,9 +670,8 @@ describe("mutations", () => {
       { teamId: DEMO_TEAM.id, input: strict },
       { linear: limitedOnMembers },
     );
-    expect(result.data).toMatchObject({
-      updateQuadrantRules: { __typename: "UpdateRulesSuccess", team: { people: null } },
-    });
+    // Nothing on the way up is nullable, so the board is lost; the error's path says where.
+    expect(result.data).toBeNull();
     expect(result.errors?.map((e) => e.path)).toEqual([["updateQuadrantRules", "team", "people"]]);
     expect((await new Store(env.DB).rules([DEMO_TEAM.id])).get(DEMO_TEAM.id)).toMatchObject({
       importantFrom: 1,
@@ -681,7 +692,7 @@ describe("mutations", () => {
       { teamId: DEMO_TEAM.id, input: strict },
       { store: broken },
     );
-    expect(result.data).toEqual({ updateQuadrantRules: null });
+    expect(result.data).toBeNull();
     expect(result.errors?.map((e) => e.message)).toEqual(["D1_ERROR: database is locked"]);
   });
 
@@ -1195,7 +1206,7 @@ describe("reassigning", () => {
       { issueId: "demo-issue-avg-10", userId: "demo-user-phil" },
       { linear: watched },
     );
-    expect(result.data).toEqual({ reassignIssue: null });
+    expect(result.data).toBeNull();
     expect(result.errors?.map((e) => [e.message, e.extensions.code])).toEqual([
       ["There's nobody with that id on Avengers to hand AVG-10 to.", "BAD_USER_INPUT"],
     ]);
@@ -1352,7 +1363,7 @@ function failingWith(error: Error): LinearSource {
 
 describe("the web app's board query", () => {
   it("is valid against the schema and loads the demo board", async () => {
-    const board = await data<{ viewer: unknown; team: unknown }>(BOARD_QUERY, { teamId: null });
+    const board = await data(BOARD_QUERY, { teamId: null });
     expect(board.viewer).toMatchObject({ name: "Nick Fury" });
     expect(board.team).toMatchObject({ name: "Avengers" });
   });
@@ -1361,11 +1372,12 @@ describe("the web app's board query", () => {
     expect(WEB_MAX_TIME_OFF).toBe(MAX_TIME_OFF);
   });
 
+  /** A mutation's answer, whichever union member it is; codegen checks each fits. */
   type Answer = Record<string, { __typename: string; team?: TeamBoardData }>;
 
   /** Where an issue sits on a TeamBoard answer, and who put it there. */
   function placement(team: TeamBoardData | undefined, issueId: string) {
-    const matrices = team ? [...team.people.map((p) => p.matrix), team.unassigned] : [];
+    const matrices = team ? [...team.people.flatMap((p) => p.matrix ?? []), team.unassigned] : [];
     for (const matrix of matrices) {
       for (const quadrant of QUADRANTS) {
         const issue = matrix[quadrant].find((i) => i.id === issueId);
@@ -1376,14 +1388,14 @@ describe("the web app's board query", () => {
   }
 
   it("changes the rules and answers with the team's board", async () => {
-    const rules = {
+    const rules: QuadrantRulesInput = {
       importantFrom: 1,
       urgencyWindowDays: 7,
       noDueDate: "URGENT",
       dropAlertPercent: 25,
       awayStatuses: ["🌴"],
     };
-    const { updateQuadrantRules } = await data<Answer>(UPDATE_RULES_MUTATION, {
+    const { updateQuadrantRules }: Answer = await data(UPDATE_RULES_MUTATION, {
       teamId: DEMO_TEAM.id,
       input: rules,
     });
@@ -1393,7 +1405,7 @@ describe("the web app's board query", () => {
   });
 
   it("places an issue by hand and hands it back, answering with the team's board", async () => {
-    const { overrideQuadrant } = await data<Answer>(OVERRIDE_MUTATION, {
+    const { overrideQuadrant }: Answer = await data(OVERRIDE_MUTATION, {
       issueId: "demo-issue-avg-1",
       quadrant: "DROP",
     });
@@ -1402,7 +1414,7 @@ describe("the web app's board query", () => {
       quadrant: "drop",
       source: "OVERRIDE",
     });
-    const { clearOverride } = await data<Answer>(CLEAR_OVERRIDE_MUTATION, {
+    const { clearOverride }: Answer = await data(CLEAR_OVERRIDE_MUTATION, {
       issueId: "demo-issue-avg-1",
     });
     expect(clearOverride?.__typename).toBe("OverrideSuccess");
@@ -1410,18 +1422,18 @@ describe("the web app's board query", () => {
   });
 
   it("hands an issue to someone else, answering with the team's board planned again", async () => {
-    const { reassignIssue } = await data<Answer>(REASSIGN_MUTATION, {
+    const { reassignIssue }: Answer = await data(REASSIGN_MUTATION, {
       issueId: "demo-issue-avg-10",
       userId: "demo-user-wanda",
     });
     expect(reassignIssue?.__typename).toBe("ReassignSuccess");
     const wanda = reassignIssue?.team?.people.find((p) => p.name === "Wanda Maximoff");
-    expect(wanda?.matrix.do.map((issue) => issue.id)).toEqual(["demo-issue-avg-10"]);
+    expect(wanda?.matrix?.do.map((issue) => issue.id)).toEqual(["demo-issue-avg-10"]);
     expect(reassignIssue?.team?.rebalanceNow).toBeInstanceOf(Array);
   });
 
   it("sets someone's capacity, answering with the team's board weighed by it", async () => {
-    const { setCapacity } = await data<Answer>(SET_CAPACITY_MUTATION, {
+    const { setCapacity }: Answer = await data(SET_CAPACITY_MUTATION, {
       teamId: DEMO_TEAM.id,
       userId: "demo-user-tony",
       factor: 0.5,
@@ -1429,11 +1441,11 @@ describe("the web app's board query", () => {
     expect(setCapacity?.__typename).toBe("SetCapacitySuccess");
     const tony = setCapacity?.team?.people.find((p) => p.name === "Tony Stark");
     expect(tony?.capacity).toBe(0.5);
-    expect(tony?.weather.reason).toContain("at half time");
+    expect(tony?.weather?.reason).toContain("at half time");
   });
 
   it("adds and takes back time off, answering with the team's board weighed by it", async () => {
-    const { addTimeOff } = await data<Answer>(ADD_TIME_OFF_MUTATION, {
+    const { addTimeOff }: Answer = await data(ADD_TIME_OFF_MUTATION, {
       teamId: DEMO_TEAM.id,
       userId: "demo-user-tony",
       startsOn: "2026-10-18",
@@ -1441,31 +1453,34 @@ describe("the web app's board query", () => {
     });
     expect(addTimeOff?.__typename).toBe("TimeOffSuccess");
     const tony = addTimeOff?.team?.people.find((p) => p.name === "Tony Stark");
-    expect(tony?.weather.kind).toBe("AWAY");
+    expect(tony?.weather?.kind).toBe("AWAY");
     const [timeOff] = tony?.timeOff ?? [];
     expect(timeOff).toMatchObject({ startsOn: "2026-10-18", endsOn: "2026-10-23" });
 
-    const { removeTimeOff } = await data<Answer>(REMOVE_TIME_OFF_MUTATION, {
+    const { removeTimeOff }: Answer = await data(REMOVE_TIME_OFF_MUTATION, {
       teamId: DEMO_TEAM.id,
       userId: "demo-user-tony",
-      timeOffId: timeOff?.id,
+      timeOffId: timeOff?.id ?? "",
     });
     expect(removeTimeOff?.__typename).toBe("TimeOffSuccess");
     const back = removeTimeOff?.team?.people.find((p) => p.name === "Tony Stark");
     expect(back?.timeOff).toEqual([]);
-    expect(back?.weather.kind).not.toBe("AWAY");
+    expect(back?.weather?.kind).not.toBe("AWAY");
   });
 
   it("reads a team's board again, as it stands", async () => {
-    const { team } = await data<{ team: TeamBoardData }>(TEAM_QUERY, { teamId: DEMO_OPS_TEAM.id });
-    expect(team.name).toBe("S.H.I.E.L.D. Ops");
-    expect(team.people.length).toBeGreaterThan(0);
+    const { team } = await data(TEAM_QUERY, { teamId: DEMO_OPS_TEAM.id });
+    expect(team?.name).toBe("S.H.I.E.L.D. Ops");
+    expect(team?.people.length).toBeGreaterThan(0);
   });
 });
 
 describe("Linear requests per query", () => {
   /** The operations a query sends to Linear, by name. */
-  async function linearRequests(source: string, variables: Record<string, unknown> = {}) {
+  async function linearRequests<TVariables>(
+    operation: Operation<unknown, TVariables>,
+    variables?: TVariables,
+  ) {
     const demo = new DemoLinear({ today });
     const sent: string[] = [];
     const counting: LinearSource = {
@@ -1478,8 +1493,8 @@ describe("Linear requests per query", () => {
     const workspace = new Workspace(counting);
     const result = await graphql({
       schema,
-      source,
-      variableValues: variables,
+      source: operation.toString(),
+      variableValues: variables as Record<string, unknown> | undefined,
       contextValue: {
         workspace: async () => workspace,
         placements: new Placements(new Store(env.DB)),

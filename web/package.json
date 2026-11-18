@@ -8,7 +8,9 @@
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
     "cf-typegen": "wrangler types",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "codegen": "graphql-codegen",
+    "codegen:check": "graphql-codegen --check"
   },
   "dependencies": {
     "@stylexjs/stylex": "^0.19.1",
@@ -19,9 +21,14 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.64.0",
+    "@graphql-codegen/cli": "^7.4.6",
+    "@graphql-codegen/typed-document-node": "^7.2.0",
+    "@graphql-codegen/typescript-operations": "^6.1.10",
+    "@graphql-typed-document-node/core": "^3.2.0",
     "@preact/preset-vite": "^2.10.6",
     "@stylexjs/unplugin": "^0.19.1",
     "@vitest/browser-playwright": "^5.0.5",
+    "graphql": "^17.0.2",
     "playwright": "^1.65.1",
     "vite": "^8.3.4",
     "vitest": "^5.0.5",

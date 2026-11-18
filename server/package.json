@@ -8,8 +8,8 @@
     "preview": "sh scripts/preview.sh",
     "cf-typegen": "wrangler types",
     "typecheck": "tsc -p . && tsc -p test",
-    "codegen": "graphql-codegen",
-    "codegen:check": "graphql-codegen --check",
+    "codegen": "graphql-codegen && tsx scripts/print-schema.ts",
+    "codegen:check": "graphql-codegen --check && tsx scripts/print-schema.ts --check",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
@@ -29,6 +29,7 @@
     "@graphql-codegen/typescript-operations": "^6.1.10",
     "@graphql-typed-document-node/core": "^3.2.0",
     "drizzle-kit": "0.31.11",
+    "tsx": "^4.23.15",
     "vitest": "^5.0.5",
     "wrangler": "^4.151.1"
   }

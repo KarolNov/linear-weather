@@ -1,0 +1,143 @@
+# Who is signed in and their board, in one request. `$teamId` falls back to their team.
+query Board($teamId: ID) {
+  today
+  viewer {
+    name
+    avatarUrl
+    organization {
+      name
+    }
+  }
+  teams {
+    id
+    name
+    key
+  }
+  team(id: $teamId) {
+    ...TeamBoard
+  }
+}
+
+# One team's part of the board. The page loads it, and every mutation asks for it back, so the
+# board can redraw from the answer.
+fragment TeamBoard on Team {
+  id
+  name
+  key
+  rules {
+    importantFrom
+    urgencyWindowDays
+    noDueDate
+    dropAlertPercent
+  }
+  weather {
+    kind
+    reason
+  }
+  backlogRot {
+    rotting
+    reason
+  }
+  rebalanceNow: rebalanceSuggestions(horizon: NOW) {
+    ...Suggestion
+  }
+  rebalanceForecast: rebalanceSuggestions(horizon: FORECAST) {
+    ...Suggestion
+  }
+  people {
+    id
+    name
+    avatarUrl
+    capacity
+    timeOff {
+      id
+      startsOn
+      endsOn
+    }
+    weather {
+      kind
+      reason
+      overdue
+    }
+    forecast {
+      startsOn
+      endsOn
+      weather {
+        kind
+        reason
+      }
+      summary
+      turningUrgent {
+        identifier
+      }
+    }
+    matrix {
+      ...Matrix
+    }
+  }
+  unassigned {
+    ...Matrix
+  }
+}
+
+# Issues by quadrant, each most pressing first.
+fragment Matrix on Matrix {
+  counts {
+    do
+    schedule
+    delegate
+    drop
+  }
+  do {
+    ...BoardIssue
+  }
+  schedule {
+    ...BoardIssue
+  }
+  delegate {
+    ...BoardIssue
+  }
+  drop {
+    ...BoardIssue
+  }
+}
+
+# Hand one issue from one person to another, to even out urgent load.
+fragment Suggestion on Suggestion {
+  issue {
+    id
+    identifier
+    title
+    url
+    quadrant
+    becomesUrgentOn
+  }
+  from {
+    id
+    name
+    avatarUrl
+  }
+  to {
+    id
+    name
+    avatarUrl
+  }
+  week
+  toWeather
+  reason
+}
+
+fragment BoardIssue on Issue {
+  id
+  identifier
+  title
+  url
+  dueDate
+  priority
+  estimate
+  state {
+    name
+  }
+  quadrantSource
+  placementReason
+}

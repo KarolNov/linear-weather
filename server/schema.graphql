@@ -1,0 +1,625 @@
+# Generated from src/schema.ts by `pnpm --filter server codegen`. Do not edit.
+
+"""
+How much of a team's open work sits in Drop (neither important nor urgent), against the team's alert.
+"""
+type BacklogRot {
+  """The team's dropAlertPercent."""
+  alertPercent: Int!
+
+  """Open issues in Drop, assigned or not."""
+  drop: Int!
+
+  """
+  E.g. "12 of 20 open issues (60%) are in Drop, over the team's 40% alert".
+  """
+  reason: String!
+
+  """
+  More than alertPercent of the open issues are in Drop, as a whole percent.
+  """
+  rotting: Boolean!
+
+  """Drop's share of the open issues, 0 to 1. 0 when there are none."""
+  share: Float!
+
+  """All the team's open issues."""
+  total: Int!
+}
+
+"""
+A calendar date, `YYYY-MM-DD`, with no time or zone. Like Linear's TimelessDate.
+"""
+scalar Date
+
+"""A mutation that didn't happen, and why, for showing the user."""
+interface Error {
+  message: String!
+}
+
+"""
+One week ahead: the urgent load expected by its last day, assuming issues turn urgent when their due dates say, hand placements stay, and work is done by its due date (work already overdue stays).
+"""
+type ForecastWeek {
+  endsOn: Date!
+
+  """Today for the first week."""
+  startsOn: Date!
+
+  """What turns urgent, e.g. "3 High-priority issues become urgent"."""
+  summary: String!
+
+  """Issues that turn urgent during the week (not those urgent already)."""
+  turningUrgent: [Issue!]!
+
+  """
+  Against that week's projected team average. Time off lowers a person's capacity by the working days they miss (capacity × days present / 5); off all five, they're AWAY.
+  """
+  weather: Weather!
+}
+
+"""When a rebalance is for."""
+enum Horizon {
+  """
+  The weeks ahead: moves work before it turns urgent, so a storm never arrives.
+  """
+  FORECAST
+
+  """Today's urgent load: moves work that is urgent now."""
+  NOW
+}
+
+"""A capacity that isn't more than 0 and at most 1. Nothing was saved."""
+type InvalidCapacity implements Error {
+  message: String!
+}
+
+"""Rules the board couldn't sort by. Nothing was saved."""
+type InvalidRules implements Error {
+  message: String!
+  problems: [RuleProblem!]!
+}
+
+"""
+Time off that isn't real dates in order, is over already, covers more than a year (a month in the demo), or would give someone more than 8 stretches coming up. Nothing was saved.
+"""
+type InvalidTimeOff implements Error {
+  message: String!
+}
+
+"""An open Linear issue, placed in an Eisenhower quadrant."""
+type Issue {
+  assignee: User
+
+  """
+  The first day the rules call it urgent: today if it already is (including undated issues when the team counts those as urgent), null if it never will be (undated, and the team doesn't).
+  """
+  becomesUrgentOn: Date
+  dueDate: Date
+  estimate: Float
+  id: ID!
+
+  """E.g. ENG-123."""
+  identifier: String!
+
+  """Why it's in its quadrant, e.g. "High priority, due in 3 days"."""
+  placementReason: String!
+
+  """0 No priority, 1 Urgent, 2 High, 3 Medium, 4 Low."""
+  priority: Int!
+  quadrant: Quadrant!
+  quadrantSource: QuadrantSource!
+  state: WorkflowState!
+  title: String!
+
+  """The issue in Linear."""
+  url: String!
+}
+
+"""No issue with this id that the viewer can see."""
+type IssueNotFound implements Error {
+  issueId: ID!
+  message: String!
+}
+
+"""
+Linear's rate limit is spent for now, so nothing was checked or changed.
+"""
+type LinearRateLimited implements Error {
+  message: String!
+
+  """When Linear's budget is back in full (ISO 8601), if Linear said."""
+  resetAt: String
+}
+
+"""What urgent load is counted in."""
+enum LoadMetric {
+  """Issues, whatever their size."""
+  ISSUES
+
+  """
+  Estimate points. Anyone with an unestimated urgent issue can't be measured.
+  """
+  POINTS
+}
+
+"""Issues sorted into Eisenhower quadrants, each most pressing first."""
+type Matrix {
+  counts: QuadrantCounts!
+  delegate: [Issue!]!
+  do: [Issue!]!
+  drop: [Issue!]!
+  points: QuadrantPoints!
+  schedule: [Issue!]!
+}
+
+type Mutation {
+  """
+  Marks someone away from one day to another, both included, on every team. While they're away all of a day or forecast week, their weather is AWAY and their share of the urgent load goes to the others.
+  """
+  addTimeOff(
+    """Their last day away: no earlier than startsOn, and not over already."""
+    endsOn: Date!
+
+    """Their first day away."""
+    startsOn: Date!
+
+    """A team they're on or hold issues in, whose board to answer with."""
+    teamId: ID!
+    userId: ID!
+  ): TimeOffResult!
+
+  """
+  Hands an issue back to the rules. Fine on an issue never placed by hand.
+  """
+  clearOverride(issueId: ID!): OverrideResult!
+
+  """
+  Puts an issue in a quadrant by hand. It stays there whatever the rules say.
+  """
+  overrideQuadrant(issueId: ID!, quadrant: Quadrant!): OverrideResult!
+
+  """Hands an issue to someone else on its team, in Linear."""
+  reassignIssue(
+    issueId: ID!
+
+    """Who takes it."""
+    userId: ID!
+  ): ReassignResult!
+
+  """Takes back a stretch of someone's time off."""
+  removeTimeOff(
+    """A team they're on or hold issues in, whose board to answer with."""
+    teamId: ID!
+    timeOffId: ID!
+    userId: ID!
+  ): TimeOffResult!
+
+  """
+  Sets how much of a full-time week someone works, on every team: 0.5 for half time, 1 for full time. Kept to hundredths.
+  """
+  setCapacity(
+    """More than 0, up to 1."""
+    factor: Float!
+
+    """A team they're on or hold issues in, whose board to answer with."""
+    teamId: ID!
+    userId: ID!
+  ): SetCapacityResult!
+
+  """Replaces how a team sorts issues into quadrants."""
+  updateQuadrantRules(input: QuadrantRulesInput!, teamId: ID!): UpdateRulesResult!
+}
+
+"""Where issues without a due date land."""
+enum NoDueDate {
+  NOT_URGENT
+  URGENT
+}
+
+"""A Linear workspace."""
+type Organization {
+  name: String!
+  urlKey: String!
+}
+
+union OverrideResult = IssueNotFound | LinearRateLimited | OverrideSuccess | Unauthorized
+
+"""
+The issue is where it was asked to be: placed by hand, or back with the rules.
+"""
+type OverrideSuccess {
+  issue: Issue!
+
+  """The issue's team, for its matrices."""
+  team: Team!
+}
+
+"""An Eisenhower quadrant."""
+enum Quadrant {
+  """Urgent, less important."""
+  DELEGATE
+
+  """Important and urgent."""
+  DO
+
+  """Neither: question it."""
+  DROP
+
+  """Important, not urgent yet."""
+  SCHEDULE
+}
+
+"""How many issues are in each quadrant."""
+type QuadrantCounts {
+  delegate: Int!
+  do: Int!
+  drop: Int!
+  schedule: Int!
+}
+
+"""Estimate points in each quadrant. Unestimated issues add nothing."""
+type QuadrantPoints {
+  delegate: Float!
+  do: Float!
+  drop: Float!
+  schedule: Float!
+}
+
+"""How a team sorts issues into quadrants."""
+type QuadrantRules {
+  """
+  The team is flagged for backlog rot when more than this percent of its open issues are in Drop.
+  """
+  dropAlertPercent: Int!
+
+  """
+  Lowest Linear priority that still counts as important (1 Urgent … 4 Low). No priority never does.
+  """
+  importantFrom: Int!
+  noDueDate: NoDueDate!
+
+  """
+  An issue is urgent when it's due in fewer than this many days, or overdue.
+  """
+  urgencyWindowDays: Int!
+}
+
+"""A team's new rules, all of them: the ones left as they were included."""
+input QuadrantRulesInput {
+  """
+  Flag backlog rot when more than this percent of open issues are in Drop: 1 to 99. Left out, it stays as it was.
+  """
+  dropAlertPercent: Int
+
+  """
+  Lowest Linear priority that still counts as important: 1 Urgent … 4 Low.
+  """
+  importantFrom: Int!
+  noDueDate: NoDueDate!
+
+  """Urgent when due in fewer than this many days, or overdue: 1 to 365."""
+  urgencyWindowDays: Int!
+}
+
+"""What put an issue in its quadrant."""
+enum QuadrantSource {
+  """A PM, by hand."""
+  OVERRIDE
+
+  """The team's rules."""
+  RULE
+}
+
+type Query {
+  hello: String!
+
+  """
+  The team with this id. Without one, or when it isn't a team you can see, your default: the first team you're on, else the first by name. Null only when there are no teams.
+  """
+  team(id: ID): Team
+
+  """Every team the viewer can see, by name."""
+  teams: [Team!]
+
+  """The day issues are placed against (UTC)."""
+  today: Date!
+
+  """The signed-in Linear user, or null when signed out."""
+  viewer: User
+}
+
+union ReassignResult = IssueNotFound | LinearRateLimited | ReassignSuccess | Unauthorized
+
+"""
+The issue is someone else's in Linear now. Everything derived from who holds what, like each weather and forecast, follows: ask for it here.
+"""
+type ReassignSuccess {
+  issue: Issue!
+
+  """The issue's team, for its matrices."""
+  team: Team!
+}
+
+"""One thing wrong with proposed rules."""
+type RuleProblem {
+  """The QuadrantRulesInput field at fault."""
+  field: String!
+  message: String!
+}
+
+union SetCapacityResult = InvalidCapacity | LinearRateLimited | SetCapacitySuccess | TeamNotFound | Unauthorized | UserNotFound
+
+"""
+The capacity is saved. Everything weighed by it, like each weather, forecast and rebalance, follows: ask for it here.
+"""
+type SetCapacitySuccess {
+  """The team asked about, for its board."""
+  team: Team!
+  user: User!
+}
+
+"""Hand one issue from one person to another to even out urgent load."""
+type Suggestion {
+  """Who holds it now."""
+  from: User!
+
+  """The giver's weather after the move, now or in that week."""
+  fromWeather: WeatherKind!
+  issue: Issue!
+
+  """
+  How the move evens things out, e.g. "Ana goes from 2.1× to 1.4× the team average, Ben from 0.5× to 1.1×".
+  """
+  reason: String!
+
+  """Who should take it."""
+  to: User!
+
+  """The taker's weather after the move, now or in that week."""
+  toWeather: WeatherKind!
+
+  """For FORECAST, the week the move heads a storm off in (1 = this week)."""
+  week: Int
+}
+
+"""A Linear team."""
+type Team {
+  """
+  Whether too much of the team's open work, its people's and the unassigned, sits in Drop.
+  """
+  backlogRot: BacklogRot!
+
+  """
+  How evenly urgent load is expected to be spread in the weeks ahead, and the worst week.
+  """
+  forecast(
+    """
+    Defaults to POINTS if every issue urgent in any of the weeks is estimated, else ISSUES.
+    """
+    metric: LoadMetric
+
+    """1 to 12."""
+    weeks: Int! = 4
+  ): TeamForecast!
+  id: ID!
+
+  """The prefix of its issue identifiers, e.g. ENG."""
+  key: String!
+
+  """
+  What weather counts load in by default: points if every urgent issue its people hold is estimated, else issues.
+  """
+  loadMetric: LoadMetric!
+  name: String!
+
+  """
+  Members by name, then anyone else holding the team's open issues, e.g. after moving teams.
+  """
+  people: [User!]!
+
+  """
+  Moves that bring everyone's urgent load within the weather's thresholds, in the order to make them. Urgent work held by someone away goes first, overdue or not. Then, greedy: the busiest person hands the least busy whichever issue leaves them closest, until nobody is under rain or in a storm by load. Otherwise overdue work stays put, nobody running late or away takes more, and only members of the team take work.
+  """
+  rebalanceSuggestions(
+    horizon: Horizon!
+
+    """
+    Defaults to what the weather (NOW) or the forecast (FORECAST) counts in.
+    """
+    metric: LoadMetric
+
+    """For FORECAST: 1 to 12."""
+    weeks: Int! = 4
+  ): [Suggestion!]!
+  rules: QuadrantRules!
+
+  """The team's open issues nobody is assigned to."""
+  unassigned: Matrix!
+
+  """
+  How evenly urgent load is spread now: as stormy or rainy as the worst person; else sunny when everyone is around the average, cloudy when some have room while others carry it.
+  """
+  weather(
+    """Defaults to the team's loadMetric."""
+    metric: LoadMetric
+  ): Weather!
+}
+
+"""
+How evenly a team's urgent load is expected to be spread, week by week.
+"""
+type TeamForecast {
+  weeks: [ForecastWeek!]!
+
+  """
+  The most lopsided week (storm, then rain, then fog, then cloudy), the earliest of equals: the team's score over the horizon.
+  """
+  worst: ForecastWeek!
+}
+
+"""No team with this id that the viewer can see."""
+type TeamNotFound implements Error {
+  message: String!
+  teamId: ID!
+}
+
+"""A stretch of days someone is away, first and last day included."""
+type TimeOff {
+  endsOn: Date!
+  id: ID!
+  startsOn: Date!
+}
+
+"""No time off with this id for this person, perhaps removed already."""
+type TimeOffNotFound implements Error {
+  message: String!
+  timeOffId: ID!
+}
+
+union TimeOffResult = InvalidTimeOff | LinearRateLimited | TeamNotFound | TimeOffNotFound | TimeOffSuccess | Unauthorized | UserNotFound
+
+"""
+Their time off is as asked. Everything weighed by it, like each weather, forecast and rebalance, follows: ask for it here.
+"""
+type TimeOffSuccess {
+  """The team asked about, for its board."""
+  team: Team!
+  user: User!
+}
+
+"""Not signed in, or the Linear session was revoked."""
+type Unauthorized implements Error {
+  message: String!
+}
+
+union UpdateRulesResult = InvalidRules | LinearRateLimited | TeamNotFound | Unauthorized | UpdateRulesSuccess
+
+"""
+The rules are saved. Everything derived from them, like each matrix, follows: ask for it here.
+"""
+type UpdateRulesSuccess {
+  team: Team!
+}
+
+"""A Linear user."""
+type User {
+  avatarUrl: String
+
+  """
+  How much of a full-time week they work, more than 0 up to 1: 0.5 is half time. The same on every team. Weather compares their urgent load with the team average times this.
+  """
+  capacity: Float!
+
+  """
+  Their weather in a team for the weeks ahead, as dated issues turn urgent. The first week starts today.
+  """
+  forecast(
+    """
+    Defaults to POINTS if every issue urgent in any of the weeks is estimated, else ISSUES.
+    """
+    metric: LoadMetric
+
+    """Defaults to the team this user was reached through, e.g. Team.people."""
+    teamId: ID
+
+    """1 to 12."""
+    weeks: Int! = 4
+  ): [ForecastWeek!]!
+  id: ID!
+
+  """
+  Their open issues in a team, sorted into quadrants by the team's rules.
+  """
+  matrix(
+    """Defaults to the team this user was reached through, e.g. Team.people."""
+    teamId: ID
+  ): Matrix!
+  name: String!
+  organization: Organization!
+
+  """
+  Time off not over yet, soonest first: at most 8. The same on every team. Away all of today, their weather is AWAY; the forecast counts the working days they miss each week.
+  """
+  timeOff: [TimeOff!]!
+
+  """Their urgent load in a team now, against the team's average."""
+  weather(
+    """Defaults to the team's loadMetric."""
+    metric: LoadMetric
+
+    """Defaults to the team this user was reached through, e.g. Team.people."""
+    teamId: ID
+  ): Weather!
+}
+
+"""
+Nobody with this id on the team: not a member, and holding none of its issues.
+"""
+type UserNotFound implements Error {
+  message: String!
+  userId: ID!
+}
+
+"""
+The weather now: urgent (Do + Delegate) load against a fair share of the team's: the team average, scaled by capacity.
+"""
+type Weather {
+  kind: WeatherKind!
+
+  """
+  A person's urgent load; for a team, the load of whoever is busiest for their capacity, so compare it with teamAverage times their capacity, not teamAverage alone. Null when it can't be measured.
+  """
+  load: Float
+  metric: LoadMetric!
+
+  """
+  Urgent (Do or Delegate) issues past their due date, which mean a storm whatever the load (unless they're away); for a team, everyone's.
+  """
+  overdue: Int!
+
+  """
+  Why, e.g. "13 urgent points, 3.07× the team average; 2 issues overdue", "6 urgent issues at half time, 1.6× their share" or "Away until Nov 20, holding 3 urgent issues".
+  """
+  reason: String!
+
+  """
+  The team's urgent load per full-time person: the load of everyone who could be measured, over their capacities added up. With everyone full time, the mean. A person's fair share is this times their capacity. Null when fewer than two could be measured: nobody to compare with.
+  """
+  teamAverage: Float
+}
+
+"""
+How heavy urgent (Do + Delegate) load is, against a fair share of the team's: the team average, scaled by capacity.
+"""
+enum WeatherKind {
+  """
+  A person away all of the period (today, or a forecast week), whatever they hold: left out of the team's fair share. Any urgent work they still hold makes the team's weather a storm. Never a team's weather.
+  """
+  AWAY
+
+  """Around average."""
+  CLOUDY
+
+  """
+  Can't tell: nothing urgent but some work has no due date; counting points with some urgent issue unestimated; or nobody else on the team to compare with. For a team, also when everyone is away.
+  """
+  FOG
+
+  """Noticeably above average (over 1.25×)."""
+  RAIN
+
+  """Far above average (over 1.5×), or urgent issues overdue."""
+  STORM
+
+  """Nothing urgent, or under 0.75× the average: room for more."""
+  SUNNY
+}
+
+"""Where an issue is in its team's workflow."""
+type WorkflowState {
+  name: String!
+
+  """Linear's state type: triage, backlog, unstarted, started, …"""
+  type: String!
+}

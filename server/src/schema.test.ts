@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { graphql } from "graphql";
 import { describe, expect, it } from "vitest";
-// The web app keeps its queries by its components; checking them here catches schema drift.
+// The web app's operations, typed by codegen against schema.graphql; running them here checks
+// they also load what the board expects.
 import {
   BOARD_QUERY,
   QUADRANTS,
@@ -41,8 +42,11 @@ const today = "2026-10-18";
  * Runs a query as someone signed in to the demo workspace (or signed out), with rules and
  * overrides from D1.
  */
+/** An operation: a string, or one of web's generated documents. */
+type Operation = string | { toString(): string };
+
 function run(
-  source: string,
+  operation: Operation,
   variables: Record<string, unknown> = {},
   {
     signedIn = true,
@@ -57,12 +61,12 @@ function run(
     placements: new Placements(store, log),
     today,
   };
-  return graphql({ schema, source, variableValues: variables, contextValue });
+  return graphql({ schema, source: operation.toString(), variableValues: variables, contextValue });
 }
 
 /** Runs a query that should succeed, and returns its data. */
-async function data<T>(source: string, variables?: Record<string, unknown>): Promise<T> {
-  const result = await run(source, variables);
+async function data<T>(operation: Operation, variables?: Record<string, unknown>): Promise<T> {
+  const result = await run(operation, variables);
   expect(result.errors).toBeUndefined();
   return result.data as T;
 }
@@ -657,9 +661,8 @@ describe("mutations", () => {
       { teamId: DEMO_TEAM.id, input: strict },
       { linear: limitedOnMembers },
     );
-    expect(result.data).toMatchObject({
-      updateQuadrantRules: { __typename: "UpdateRulesSuccess", team: { people: null } },
-    });
+    // Nothing on the way up is nullable, so the board is lost; the error's path says where.
+    expect(result.data).toBeNull();
     expect(result.errors?.map((e) => e.path)).toEqual([["updateQuadrantRules", "team", "people"]]);
     expect((await new Store(env.DB).rules([DEMO_TEAM.id])).get(DEMO_TEAM.id)).toMatchObject({
       importantFrom: 1,
@@ -680,7 +683,7 @@ describe("mutations", () => {
       { teamId: DEMO_TEAM.id, input: strict },
       { store: broken },
     );
-    expect(result.data).toEqual({ updateQuadrantRules: null });
+    expect(result.data).toBeNull();
     expect(result.errors?.map((e) => e.message)).toEqual(["D1_ERROR: database is locked"]);
   });
 
@@ -1112,7 +1115,7 @@ describe("reassigning", () => {
       { issueId: "demo-issue-avg-10", userId: "demo-user-phil" },
       { linear: watched },
     );
-    expect(result.data).toEqual({ reassignIssue: null });
+    expect(result.data).toBeNull();
     expect(result.errors?.map((e) => [e.message, e.extensions.code])).toEqual([
       ["There's nobody with that id on Avengers to hand AVG-10 to.", "BAD_USER_INPUT"],
     ]);
@@ -1381,7 +1384,7 @@ describe("the web app's board query", () => {
 
 describe("Linear requests per query", () => {
   /** The operations a query sends to Linear, by name. */
-  async function linearRequests(source: string, variables: Record<string, unknown> = {}) {
+  async function linearRequests(operation: Operation, variables: Record<string, unknown> = {}) {
     const demo = new DemoLinear({ today });
     const sent: string[] = [];
     const counting: LinearSource = {
@@ -1394,7 +1397,7 @@ describe("Linear requests per query", () => {
     const workspace = new Workspace(counting);
     const result = await graphql({
       schema,
-      source,
+      source: operation.toString(),
       variableValues: variables,
       contextValue: {
         workspace: async () => workspace,

@@ -1,0 +1,112 @@
+# Each answers with the team's board, or the failure's message.
+
+mutation UpdateRules($teamId: ID!, $input: QuadrantRulesInput!) {
+  updateQuadrantRules(teamId: $teamId, input: $input) {
+    __typename
+    ... on Error {
+      message
+    }
+    ... on InvalidRules {
+      problems {
+        field
+        message
+      }
+    }
+    ... on UpdateRulesSuccess {
+      team {
+        ...TeamBoard
+      }
+    }
+  }
+}
+
+mutation OverrideQuadrant($issueId: ID!, $quadrant: Quadrant!) {
+  overrideQuadrant(issueId: $issueId, quadrant: $quadrant) {
+    __typename
+    ... on Error {
+      message
+    }
+    ... on OverrideSuccess {
+      team {
+        ...TeamBoard
+      }
+    }
+  }
+}
+
+mutation ClearOverride($issueId: ID!) {
+  clearOverride(issueId: $issueId) {
+    __typename
+    ... on Error {
+      message
+    }
+    ... on OverrideSuccess {
+      team {
+        ...TeamBoard
+      }
+    }
+  }
+}
+
+mutation ReassignIssue($issueId: ID!, $userId: ID!) {
+  reassignIssue(issueId: $issueId, userId: $userId) {
+    __typename
+    ... on Error {
+      message
+    }
+    ... on ReassignSuccess {
+      team {
+        ...TeamBoard
+      }
+    }
+  }
+}
+
+mutation SetCapacity($teamId: ID!, $userId: ID!, $factor: Float!) {
+  setCapacity(teamId: $teamId, userId: $userId, factor: $factor) {
+    __typename
+    ... on Error {
+      message
+    }
+    ... on SetCapacitySuccess {
+      team {
+        ...TeamBoard
+      }
+    }
+  }
+}
+
+mutation AddTimeOff($teamId: ID!, $userId: ID!, $startsOn: Date!, $endsOn: Date!) {
+  addTimeOff(teamId: $teamId, userId: $userId, startsOn: $startsOn, endsOn: $endsOn) {
+    __typename
+    ... on Error {
+      message
+    }
+    ... on TimeOffSuccess {
+      team {
+        ...TeamBoard
+      }
+    }
+  }
+}
+
+mutation RemoveTimeOff($teamId: ID!, $userId: ID!, $timeOffId: ID!) {
+  removeTimeOff(teamId: $teamId, userId: $userId, timeOffId: $timeOffId) {
+    __typename
+    ... on Error {
+      message
+    }
+    ... on TimeOffSuccess {
+      team {
+        ...TeamBoard
+      }
+    }
+  }
+}
+
+# A team's board as it stands, to plan again from after a move failed.
+query Team($teamId: ID!) {
+  team(id: $teamId) {
+    ...TeamBoard
+  }
+}

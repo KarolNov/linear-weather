@@ -47,10 +47,13 @@ export interface GraphQLContext {
   today: CalendarDate;
 }
 
+// Fields are non-null unless marked `nullable`; Pothos 4 defaults the other way. An error in a
+// non-null field nulls its parent instead, up to the nearest nullable field (`team`, `viewer`).
 const builder = new SchemaBuilder<{
   Context: GraphQLContext;
   Scalars: { Date: { Input: CalendarDate; Output: CalendarDate } };
-}>({});
+  DefaultFieldNullability: false;
+}>({ defaultFieldNullability: false });
 
 /** A user, plus the team they were reached through, which their matrix defaults to. */
 type UserModel = (Viewer | Assignee) & { teamId?: string };

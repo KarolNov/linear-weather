@@ -7,6 +7,7 @@ import DataLoader from "dataloader";
 import type { LinearPriority } from "./domain/quadrant";
 import { LinearInvalidInputError, type LinearSource } from "./linear/client";
 import {
+  type BlockingFragment,
   IssueByIdDocument,
   ReassignIssueDocument,
   type TeamSummaryFragment,
@@ -28,6 +29,9 @@ export type Viewer = ViewerQuery["viewer"];
 
 /** An open issue as the matrix reads it: Linear's priority is an Int, but only ever 0–4. */
 export type TeamIssue = IssueCard & { priority: LinearPriority };
+
+/** One issue with its team, and its relations to tell whether it blocks open work. */
+export type SingleIssue = TeamIssue & BlockingFragment & { id: string; team: Team };
 
 export interface TeamWork {
   /** Team members by name, then anyone else holding the team's issues, e.g. after moving teams. */
@@ -92,10 +96,10 @@ export class Workspace {
    * An issue the viewer can see, open or not, with its team; null when they can't, or when the
    * id isn't one Linear takes (a UUID, or an identifier like ENG-123).
    */
-  async issue(id: string): Promise<(TeamIssue & { team: Team }) | null> {
+  async issue(id: string): Promise<SingleIssue | null> {
     try {
       const { issues } = await this.linear.request(IssueByIdDocument, { id });
-      return (issues.nodes[0] as (TeamIssue & { team: Team }) | undefined) ?? null;
+      return (issues.nodes[0] as SingleIssue | undefined) ?? null;
     } catch (error) {
       if (error instanceof LinearInvalidInputError) return null;
       throw error;
@@ -106,7 +110,7 @@ export class Workspace {
    * Hands an issue to someone else in Linear, and forgets its team's work so the rest of the
    * request reads it from there. Null when Linear didn't make the change.
    */
-  async reassign(issueId: string, userId: string): Promise<(TeamIssue & { team: Team }) | null> {
+  async reassign(issueId: string, userId: string): Promise<SingleIssue | null> {
     const { issueUpdate } = await this.linear.request(ReassignIssueDocument, {
       id: issueId,
       assigneeId: userId,
@@ -114,7 +118,7 @@ export class Workspace {
     const issue = issueUpdate.success ? issueUpdate.issue : null;
     if (!issue) return null;
     this.work.delete(issue.team.id);
-    return issue as TeamIssue & { team: Team };
+    return issue as SingleIssue;
   }
 
   /**

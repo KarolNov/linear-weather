@@ -1,5 +1,6 @@
 import type { LinearSource } from "./client";
 import {
+  type BlockingFragment,
   type IssueCardFragment,
   OpenBlockersDocument,
   type OpenBlockersQuery,
@@ -59,7 +60,7 @@ export function fetchOpenBlockers(
  * Whether the issue blocks another that isn't completed or canceled yet. Only its first relations
  * are read, so when none of those is an open block but there are more, it says so in the log.
  */
-export function blocksOpenWork(issue: OpenBlocker): boolean {
+export function blocksOpenWork(issue: { id: string } & BlockingFragment): boolean {
   const { nodes, pageInfo } = issue.relations;
   const blocks = nodes.some(
     ({ type, relatedIssue }) => type === "blocks" && !DONE.has(relatedIssue.state.type),

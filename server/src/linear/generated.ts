@@ -19,7 +19,7 @@ export type IssueByIdQueryVariables = Exact<{
 }>;
 
 
-export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } }> } };
+export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }>, pageInfo: { hasNextPage: boolean } } }> } };
 
 export type ReassignIssueMutationVariables = Exact<{
   id: string;
@@ -27,7 +27,7 @@ export type ReassignIssueMutationVariables = Exact<{
 }>;
 
 
-export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } } | null } };
+export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }>, pageInfo: { hasNextPage: boolean } } } | null } };
 
 export type IssueCardFragment = { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } };
 
@@ -185,13 +185,29 @@ export const IssueByIdDocument = /*#__PURE__*/ new TypedDocumentString(`
   issues(first: 1, includeArchived: true, filter: { id: { eq: $id } }) {
     nodes {
       ...IssueCard
+      ...Blocking
       team {
         ...TeamSummary
       }
     }
   }
 }
-    fragment IssueCard on Issue {
+    fragment Blocking on Issue {
+  relations(first: 20) {
+    nodes {
+      type
+      relatedIssue {
+        state {
+          type
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+    }
+  }
+}
+fragment IssueCard on Issue {
   id
   identifier
   title
@@ -227,13 +243,29 @@ export const ReassignIssueDocument = /*#__PURE__*/ new TypedDocumentString(`
     success
     issue {
       ...IssueCard
+      ...Blocking
       team {
         ...TeamSummary
       }
     }
   }
 }
-    fragment IssueCard on Issue {
+    fragment Blocking on Issue {
+  relations(first: 20) {
+    nodes {
+      type
+      relatedIssue {
+        state {
+          type
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+    }
+  }
+}
+fragment IssueCard on Issue {
   id
   identifier
   title

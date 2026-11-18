@@ -7,13 +7,13 @@ Each developer's assigned issues are sorted into an **Eisenhower matrix** (Do / 
 ## The idea
 
 - **Quadrants from rules.** Default rules (configurable per team):
-  - *Important*: Linear priority Medium or higher
-  - *Urgent*: due within 14 days, or overdue
+  - _Important_: Linear priority Medium or higher
+  - _Urgent_: due within 14 days, or overdue
   - Issues with no due date count as not urgent
 
   A PM can still override any issue by hand.
 - **Backlog rot.** When more than 40% of a team's open issues (configurable per team) sit in Drop, the board's header flags it: a backlog filling with work nobody means to do.
-- **Weather (now).** Each person's current urgent load compared with their fair share: the team average, scaled by how much of a full-time week they work (their **capacity**, set on the board). ☀️ ⛅ 🌧️ ⛈️ Someone on **time off** (added on the board) is 🌙 away: out of the average, and any urgent work they still hold storms the team.
+- **Weather (now).** Each person's current urgent load compared with their fair share: the team average, scaled by how much of a full-time week they work (their **capacity**, set on the board). ☀️ ⛅ 🌧️ ⛈️ Someone on **time off** (added on the board, or a Linear status like 🌴 the team lists as an **away status**) is 🌙 away: out of the average, and any urgent work they still hold storms the team.
 - **Forecast (next weeks).** Due dates show when each issue will turn urgent, so the app can project load week by week: `☀️ ☀️ 🌧️ ⛈️`, with why ("3 High-priority issues become urgent"). Undated work shows up as 🌫️ fog.
 - **Rebalance.** The app suggests reassignments to fix today's storm or the one coming in week 3, and applies them in Linear with one click.
 
@@ -25,15 +25,15 @@ This is a learning project. It consumes Linear's GraphQL API and exposes its own
 
 Everything deploys to Cloudflare Workers.
 
-| | |
-|---|---|
-| Workspace | [pnpm](https://pnpm.io) workspaces: `server/`, `web/` and `ui/` (shared Preact components) |
-| Server | [Hono](https://hono.dev) Worker hosting [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server) with a code-first [Pothos](https://pothos-graphql.dev) schema |
-| Storage | [D1](https://developers.cloudflare.com/d1/) (Cloudflare's SQLite) for team rules, hand-placed issues, and people's capacity and time off, through [Drizzle ORM](https://orm.drizzle.team). Linear tokens live in KV |
-| Web | [Preact](https://preactjs.com) server-rendered by a Hono Worker, hydrated in the browser; built with [Vite](https://vite.dev) and the [Cloudflare Vite plugin](https://developers.cloudflare.com/workers/vite-plugin/) |
-| Styling | [StyleX](https://stylexjs.com), compiled at build time by `@stylexjs/unplugin`. Theme tokens (sky gradients, weather colours) live in `ui/src/tokens.stylex.ts` |
-| Tests | [Vitest](https://vitest.dev); server tests run inside workerd via [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/); the board's client behaviour (`*.browser.test.tsx`) runs in headless Chromium via [Vitest browser mode](https://vitest.dev/guide/browser/) |
-| Lint/format | [Biome](https://biomejs.dev) |
+|             |                                                                                                                                                                                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Workspace   | [pnpm](https://pnpm.io) workspaces: `server/`, `web/` and `ui/` (shared Preact components)                                                                                                                                                                                                                         |
+| Server      | [Hono](https://hono.dev) Worker hosting [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server) with a code-first [Pothos](https://pothos-graphql.dev) schema                                                                                                                                                    |
+| Storage     | [D1](https://developers.cloudflare.com/d1/) (Cloudflare's SQLite) for team rules, hand-placed issues, and people's capacity and time off, through [Drizzle ORM](https://orm.drizzle.team). Linear tokens live in KV                                                                                                |
+| Web         | [Preact](https://preactjs.com) server-rendered by a Hono Worker, hydrated in the browser; built with [Vite](https://vite.dev) and the [Cloudflare Vite plugin](https://developers.cloudflare.com/workers/vite-plugin/)                                                                                             |
+| Styling     | [StyleX](https://stylexjs.com), compiled at build time by `@stylexjs/unplugin`. Theme tokens (sky gradients, weather colours) live in `ui/src/tokens.stylex.ts`                                                                                                                                                    |
+| Tests       | [Vitest](https://vitest.dev); server tests run inside workerd via [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/); the board's client behaviour (`*.browser.test.tsx`) runs in headless Chromium via [Vitest browser mode](https://vitest.dev/guide/browser/) |
+| Lint/format | [Biome](https://biomejs.dev)                                                                                                                                                                                                                                                                                       |
 
 ## Development
 
@@ -68,7 +68,7 @@ Linear limits each user to 5,000 requests and 2,000,000 [complexity points](http
 
 - **Only the fields the matrix needs** (the `IssueCard` fragment). Each field costs 0.1 points and each nested object costs 1, multiplied by the page size.
 - **`nodes` instead of `edges { node cursor }`**, which saves an object per issue. `pageInfo.endCursor` is the only cursor needed.
-- **Pages of 250**, Linear's maximum. A full page should cost about 1,300 points, which leaves plenty of room under the cap and keeps the request count low.
+- **Pages of 250**, Linear's maximum. A full page should cost about 1,400 points, which leaves plenty of room under the cap and keeps the request count low.
 - **Filtering on the server**: only issues that aren't completed or canceled, in the teams asked for. One query covers several teams, and each issue carries its `team { id }` so they can be split up again.
 
 The client reads Linear's rate-limit headers after each request and remembers what each query cost. Linear's budget refills continuously, so before sending a query the client waits until the remaining budget covers one more request at that cost. When Linear still answers `RATELIMITED`, it retries up to 3 times, waiting at least 0.25s, 0.5s, then 1s. If the budget would take more than 5s to refill, or the retries run out, it gives up with the time the budget resets.
@@ -78,70 +78,155 @@ The client reads Linear's rate-limit headers after each request and remembers wh
 The server's own schema (`server/src/schema.ts`, code-first with Pothos) mirrors the slice of Linear's `Issue`, `User` and `Team` the board needs, and extends them with fields derived by the pure rules engine in `server/src/domain/`:
 
 ```graphql
-enum Quadrant { DO SCHEDULE DELEGATE DROP }
-enum QuadrantSource { RULE OVERRIDE }
+enum Quadrant {
+  DO
+  SCHEDULE
+  DELEGATE
+  DROP
+}
+enum QuadrantSource {
+  RULE
+  OVERRIDE
+}
 
-type Issue {          # id, identifier, title, url, dueDate, priority, estimate, state, assignee, plus:
+type Issue {
+  # id, identifier, title, url, dueDate, priority, estimate, state, assignee, plus:
   quadrant: Quadrant!
   quadrantSource: QuadrantSource!
-  placementReason: String!   # "High priority, due in 3 days"
-  becomesUrgentOn: Date      # today if already urgent, null if it never will be
+  placementReason: String! # "High priority, due in 3 days"
+  becomesUrgentOn: Date # today if already urgent, null if it never will be
 }
 
-type Matrix {         # each list most pressing first
-  do: [Issue!]!  schedule: [Issue!]!  delegate: [Issue!]!  drop: [Issue!]!
-  counts: QuadrantCounts!  points: QuadrantPoints!
+type Matrix {
+  # each list most pressing first
+  do: [Issue!]!
+  schedule: [Issue!]!
+  delegate: [Issue!]!
+  drop: [Issue!]!
+  counts: QuadrantCounts!
+  points: QuadrantPoints!
 }
 
-enum WeatherKind { SUNNY CLOUDY RAIN STORM FOG AWAY }   # AWAY: a person off all of the period, never a team
-enum LoadMetric { POINTS ISSUES }
-type Weather { kind: WeatherKind!  metric: LoadMetric!  load: Float  teamAverage: Float  overdue: Int!  reason: String! }
-type ForecastWeek {   # the urgent load expected by the week's last day
-  startsOn: Date!  endsOn: Date!  weather: Weather!
-  turningUrgent: [Issue!]!  summary: String!   # "3 High-priority issues become urgent"
+enum WeatherKind {
+  SUNNY
+  CLOUDY
+  RAIN
+  STORM
+  FOG
+  AWAY
+} # AWAY: a person off all of the period, never a team
+enum LoadMetric {
+  POINTS
+  ISSUES
 }
-type TeamForecast { weeks: [ForecastWeek!]!  worst: ForecastWeek! }
-enum Horizon { NOW FORECAST }
-type Suggestion {     # "Move AVG-11 (Delegate) from Tony → Wanda (☀️ now)"
-  issue: Issue!  from: User!  to: User!
-  week: Int           # FORECAST: the week it heads a storm off in
-  fromWeather: WeatherKind!  toWeather: WeatherKind!  reason: String!
+type Weather {
+  kind: WeatherKind!
+  metric: LoadMetric!
+  load: Float
+  teamAverage: Float
+  overdue: Int!
+  reason: String!
+}
+type ForecastWeek {
+  # the urgent load expected by the week's last day
+  startsOn: Date!
+  endsOn: Date!
+  weather: Weather!
+  turningUrgent: [Issue!]!
+  summary: String! # "3 High-priority issues become urgent"
+}
+type TeamForecast {
+  weeks: [ForecastWeek!]!
+  worst: ForecastWeek!
+}
+enum Horizon {
+  NOW
+  FORECAST
+}
+type Suggestion {
+  # "Move AVG-11 (Delegate) from Tony → Wanda (☀️ now)"
+  issue: Issue!
+  from: User!
+  to: User!
+  week: Int # FORECAST: the week it heads a storm off in
+  fromWeather: WeatherKind!
+  toWeather: WeatherKind!
+  reason: String!
 }
 
-type User {           # teamId defaults to the team it was reached through
-  capacity: Float!    # share of a full-time week, 0.5 = half time; the same on every team
-  timeOff: [TimeOff!]!   # not over yet, soonest first; the same on every team
+type User {
+  # teamId defaults to the team it was reached through
+  capacity: Float! # share of a full-time week, 0.5 = half time; the same on every team
+  timeOff: [TimeOff!]! # not over yet, soonest first; the same on every team
   matrix(teamId: ID): Matrix!
-  weather(teamId: ID, metric: LoadMetric): Weather!   # urgent load vs teamAverage × capacity
-  forecast(teamId: ID, weeks: Int! = 4, metric: LoadMetric): [ForecastWeek!]!   # 1 to 12 weeks
+  weather(teamId: ID, metric: LoadMetric): Weather! # urgent load vs teamAverage × capacity
+  forecast(teamId: ID, weeks: Int! = 4, metric: LoadMetric): [ForecastWeek!]! # 1 to 12 weeks
 }
-type TimeOff { id: ID!  startsOn: Date!  endsOn: Date! }   # both days included
-type BacklogRot { drop: Int!  total: Int!  share: Float!  alertPercent: Int!  rotting: Boolean!  reason: String! }
+type TimeOff {
+  id: ID!
+  startsOn: Date!
+  endsOn: Date!
+} # both days included
+type BacklogRot {
+  drop: Int!
+  total: Int!
+  share: Float!
+  alertPercent: Int!
+  rotting: Boolean!
+  reason: String!
+}
 type Team {
-  rules: QuadrantRules!  people: [User!]!  unassigned: Matrix!
-  backlogRot: BacklogRot!                 # Drop's share of all open issues, against rules.dropAlertPercent
-  loadMetric: LoadMetric!                 # POINTS if every urgent issue is estimated, else ISSUES
-  weather(metric: LoadMetric): Weather!   # how evenly urgent load is spread
-  forecast(weeks: Int! = 4, metric: LoadMetric): TeamForecast!   # worst: the team's score
+  rules: QuadrantRules!
+  people: [User!]!
+  unassigned: Matrix!
+  backlogRot: BacklogRot! # Drop's share of all open issues, against rules.dropAlertPercent
+  loadMetric: LoadMetric! # POINTS if every urgent issue is estimated, else ISSUES
+  weather(metric: LoadMetric): Weather! # how evenly urgent load is spread
+  forecast(weeks: Int! = 4, metric: LoadMetric): TeamForecast! # worst: the team's score
   rebalanceSuggestions(horizon: Horizon!, weeks: Int! = 4, metric: LoadMetric): [Suggestion!]!
 }
-type Query { today: Date!  viewer: User  teams: [Team]  team(id: ID): Team }
+type Query {
+  today: Date!
+  viewer: User
+  teams: [Team]
+  team(id: ID): Team
+}
 
 type Mutation {
   updateQuadrantRules(teamId: ID!, input: QuadrantRulesInput!): UpdateRulesResult!
   overrideQuadrant(issueId: ID!, quadrant: Quadrant!): OverrideResult!
   clearOverride(issueId: ID!): OverrideResult!
-  reassignIssue(issueId: ID!, userId: ID!): ReassignResult!   # writes to Linear
-  setCapacity(teamId: ID!, userId: ID!, factor: Float!): SetCapacityResult!   # answers with that team
+  reassignIssue(issueId: ID!, userId: ID!): ReassignResult! # writes to Linear
+  setCapacity(teamId: ID!, userId: ID!, factor: Float!): SetCapacityResult! # answers with that team
   addTimeOff(teamId: ID!, userId: ID!, startsOn: Date!, endsOn: Date!): TimeOffResult!
   removeTimeOff(teamId: ID!, userId: ID!, timeOffId: ID!): TimeOffResult!
 }
-union UpdateRulesResult = UpdateRulesSuccess | InvalidRules | TeamNotFound | Unauthorized | LinearRateLimited
+union UpdateRulesResult =
+  | UpdateRulesSuccess
+  | InvalidRules
+  | TeamNotFound
+  | Unauthorized
+  | LinearRateLimited
 union OverrideResult = OverrideSuccess | IssueNotFound | Unauthorized | LinearRateLimited
 union ReassignResult = ReassignSuccess | IssueNotFound | Unauthorized | LinearRateLimited
-union SetCapacityResult = SetCapacitySuccess | InvalidCapacity | TeamNotFound | UserNotFound | Unauthorized | LinearRateLimited
-union TimeOffResult = TimeOffSuccess | InvalidTimeOff | TimeOffNotFound | TeamNotFound | UserNotFound | Unauthorized | LinearRateLimited
-interface Error { message: String! }   # every failure above implements it
+union SetCapacityResult =
+  | SetCapacitySuccess
+  | InvalidCapacity
+  | TeamNotFound
+  | UserNotFound
+  | Unauthorized
+  | LinearRateLimited
+union TimeOffResult =
+  | TimeOffSuccess
+  | InvalidTimeOff
+  | TimeOffNotFound
+  | TeamNotFound
+  | UserNotFound
+  | Unauthorized
+  | LinearRateLimited
+interface Error {
+  message: String!
+} # every failure above implements it
 ```
 
 ### Fair share
@@ -151,6 +236,12 @@ Weather compares each person with their **fair share** of the team's urgent load
 ### Time off
 
 Someone off all of today is **away** (`AWAY`, "Away until Nov 20, holding 3 urgent issues"). They're left out of `Σload / Σcapacity`, so the others' shares cover their absence. Urgent work they still hold is work nobody is doing, so the team turns stormy ("Natasha is away with 4 urgent issues") and rebalancing moves that work first. Stretches that meet, overlap or have only a weekend between them read as one, so "until" names the day before they're back.
+
+### Away statuses
+
+A team can opt in to reading people's Linear status: its rules list `awayStatuses` (empty by default), e.g. `["🌴", "vacation"]`, edited in the rules panel. An entry matches a status whose label holds it, or whose emoji is among the entry's, ignoring case: `🌴🏖️✈️` (or `🌴 🏖️ ✈️`) matches any of the three. Emojis made of several parts (🧑‍💻, 👋🏽, 🇭🇷) stay whole, and Linear shortcodes like `:palm_tree:` count as emojis. Someone with a matching status is away from today until it clears, as a date in their own time zone (one cleared at midnight is over by that day). A status with no end date counts for this week only: today and the 6 days after, the forecast's first week. The status reads as one more stretch of time off (`server/src/domain/away-status.ts`), so it joins up with time off added on the board, and the reason names where it came from: "Away until Nov 20 (Linear status 🌴 On vacation)", or "(Linear status 🌴 On vacation; status has no end date)".
+
+The status comes with each person on the open-issues and members queries (`statusEmoji statusLabel statusUntilAt timezone`, about 0.4 points a person). In the demo, Clint is on vacation until the day after tomorrow and Maria is "Heads down": list "vacation" in the Avengers' rules to see him go away.
 
 ### The forecast
 
@@ -190,25 +281,25 @@ The web Worker loads a page with one query (`BOARD_QUERY` in `web/src/board.ts`)
 
 Resolvers don't fetch anything themselves. They ask the `Workspace` for a team's work: `Team.people` and `Team.unassigned` ask once each, and so does every person's `User.matrix`. The counts below come from the demo workspace (Avengers: 7 people plus unassigned issues; S.H.I.E.L.D. Ops: 4). Tests in `server/src/schema.test.ts` pin the "after" column.
 
-| Query | Team lookups by resolvers | If each lookup fetched (2 requests) | Per-team cache (#8) | + DataLoader (#9) |
-|---|---|---|---|---|
-| `BOARD_QUERY`, one team | 9 | 20 | 4 | 4 |
-| Every team's people and matrices, 2 teams | 15 | 31 | 5 | 3 |
-| … with *T* teams | | ~2 × lookups + 1 | 1 + 2*T* | 2 + ⌈*T*/10⌉ |
+| Query                                     | Team lookups by resolvers | If each lookup fetched (2 requests) | Per-team cache (#8) | + DataLoader (#9) |
+| ----------------------------------------- | ------------------------- | ----------------------------------- | ------------------- | ----------------- |
+| `BOARD_QUERY`, one team                   | 9                         | 20                                  | 4                   | 4                 |
+| Every team's people and matrices, 2 teams | 15                        | 31                                  | 5                   | 3                 |
+| … with _T_ teams                          |                           | ~2 × lookups + 1                    | 1 + 2*T*            | 2 + ⌈_T_/10⌉      |
 
 The per-team cache removed the per-person N+1. That left one per team: each team cost a members query and an issues query of its own. DataLoader removes that too. Requests no longer grow with the number of people or teams, only with the number of issues (one more page per 250).
 
 Measured against a real workspace (2 teams, 5 open issues) through Linear's `x-complexity` header:
 
-| Linear query | Complexity |
-|---|---|
-| `Viewer` | 3 |
-| `Teams` | 376 |
-| `TeamsMembers`, 1 team / 2 teams | 327 / 653 |
-| `OpenIssues`, 1 team / 2 teams | 8 / 8 |
+| Linear query                     | Complexity |
+| -------------------------------- | ---------- |
+| `Viewer`                         | 3          |
+| `Teams`                          | 376        |
+| `TeamsMembers`, 1 team / 2 teams | 327 / 653  |
+| `OpenIssues`, 1 team / 2 teams   | 8 / 8      |
 
 - `TeamsMembers` grows by ~327 points a team, as [Linear's rules](https://linear.app/developers/rate-limiting) predict (250 members at 1.3 points each). Batches stop at 10 teams (~3,300 points), well under the 10,000 cap on one query. `OpenIssues` takes every team at once.
-- `OpenIssues` cost the same for 1 issue and for 5. The ~1,300 a full page of 250 would cost by those rules is an estimate; no workspace we've tried has that many open issues.
+- `OpenIssues` cost the same for 1 issue and for 5. The ~1,400 a full page of 250 would cost by those rules is an estimate; no workspace we've tried has that many open issues.
 
 Errors stay next to the field that failed: `teams` and `team` are nullable, so a rate-limited board still returns the `viewer`. Linear's rate limit comes back as `extensions: { code: "RATE_LIMITED", resetAt }` and a revoked token as `UNAUTHENTICATED`. Any other error is masked.
 
@@ -216,7 +307,7 @@ Errors stay next to the field that failed: `teams` and `team` are nullable, so a
 
 Linear holds the issues. What only this app knows lives in a D1 database (binding `DB`), defined in `server/src/db/tables.ts`:
 
-- **`quadrant_rules`**: one row per team that changed its rules. Teams without a row use the defaults above, so a new team needs no setup.
+- **`quadrant_rules`**: one row per team that changed its rules. Teams without a row use the defaults above, so a new team needs no setup. `away_statuses` is a JSON array of strings.
 - **`quadrant_override`**: issues a PM placed by hand, keyed by Linear's issue id, so an override follows the issue if it moves teams. An overridden issue reports `quadrantSource: OVERRIDE`, and its `placementReason` still says where the rules would put it. `becomesUrgentOn` keeps following the due date.
 - **`member_capacity`**: how much of a full-time week someone works, more than 0 up to 1, keyed by Linear's user id so it's the same on every team. Only people who aren't full time have a row. Someone split across two teams counts at their full capacity on each, so both boards overestimate them.
 - **`time_off`**: stretches someone is away, `starts_on` to `ends_on` as calendar dates with both days included, keyed by Linear's user id. Rows stay once they're over; the board only reads what isn't. Each person can have at most 8 stretches coming up.
@@ -289,5 +380,7 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 ## Status
 
 🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules, including when to flag backlog rot (too much in Drop), which the header then shows; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** suggests who should hand which issue to whom, now and before the storms the forecast sees; **Hand over** makes a move in Linear in one click, and **Make all of today's moves** makes the Now list's moves in order after a yes, stopping at the first that fails.
+
 # linear-weather
+
 Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

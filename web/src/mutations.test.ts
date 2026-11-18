@@ -16,6 +16,7 @@ const rules = {
   urgencyWindowDays: 7,
   noDueDate: "URGENT",
   dropAlertPercent: 30,
+  awayStatuses: [] as string[],
 } as const;
 
 /** A fetch whose answers the test hands out, one call at a time. */

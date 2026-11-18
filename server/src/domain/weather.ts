@@ -151,6 +151,8 @@ export interface Staffed<I extends MatrixIssue = MatrixIssue> {
   away?: Away;
   /** Working days off in the period, already taken off `capacity`, for the reason to say so. */
   daysOff?: number;
+  /** What says they're off those days, when anything besides time off added on the board does. */
+  offSources?: string[];
 }
 
 /**
@@ -181,10 +183,17 @@ export function teamWeather(
   );
 
   const weathers = loads.map((load, i) => {
-    const { away, daysOff } = people[i] as Staffed;
+    const { away, daysOff, offSources } = people[i] as Staffed;
     return away
       ? awayWeather(load, away, teamAverage, metric)
-      : weatherOf(load, teamAverage, capacities[i] ?? FULL_TIME, daysOff ?? 0, metric, thresholds);
+      : weatherOf(
+          load,
+          teamAverage,
+          capacities[i] ?? FULL_TIME,
+          { daysOff: daysOff ?? 0, offSources },
+          metric,
+          thresholds,
+        );
   });
 
   return {
@@ -217,7 +226,7 @@ function weatherOf(
   measured: Load,
   teamAverage: number | null,
   capacity: number,
-  daysOff: number,
+  off: { daysOff: number; offSources?: string[] },
   metric: LoadMetric,
   thresholds: WeatherThresholds,
 ): Weather {
@@ -228,7 +237,7 @@ function weatherOf(
     load,
     teamAverage,
     overdue,
-    reason: describeLoad(measured, teamAverage, capacity, daysOff, metric),
+    reason: describeLoad(measured, teamAverage, capacity, off, metric),
   };
 }
 
@@ -321,7 +330,7 @@ function describeLoad(
   { load, urgent, overdue: late, unknown }: Load,
   teamAverage: number | null,
   capacity: number,
-  daysOff: number,
+  { daysOff, offSources }: { daysOff: number; offSources?: string[] },
   metric: LoadMetric,
 ): string {
   const overdue = late === 0 ? "" : `${plural(late, "issue")} overdue`;
@@ -339,7 +348,7 @@ function describeLoad(
       : load === 0
         ? `${plural(urgent, "urgent issue")}, estimated at 0 points`
         : plural(load, "urgent point");
-  const partTime = describeStaffing(capacity, daysOff);
+  const partTime = describeStaffing(capacity, daysOff, offSources);
   const share = shareOf(teamAverage, capacity);
   const vsShare =
     load === 0

@@ -3,6 +3,7 @@
 
 import SchemaBuilder from "@pothos/core";
 import { GraphQLError } from "graphql";
+import { statusTimeOff } from "./domain/away-status";
 import { type BacklogRot, backlogRot } from "./domain/backlog";
 import { parseCapacity } from "./domain/capacity";
 import {
@@ -15,6 +16,8 @@ import {
 import { buildMatrix, counts, type Matrix, place, points } from "./domain/matrix";
 import {
   type CalendarDate,
+  MAX_AWAY_STATUS_LENGTH,
+  MAX_AWAY_STATUSES,
   MAX_URGENCY_WINDOW_DAYS,
   parseRules,
   type Quadrant,
@@ -99,7 +102,10 @@ function teamMatrix(
   });
 }
 
-/** Each of a team's people with their matrix, capacity and time off. */
+/**
+ * Each of a team's people with their matrix, capacity and time off: what they added on the board,
+ * and any away status of theirs the team lists.
+ */
 async function peopleMatrices(
   context: GraphQLContext,
   teamId: string,
@@ -111,17 +117,23 @@ async function peopleMatrices(
     timeOff: readonly TimeOff[];
   }[]
 > {
-  const { people } = await (await signedIn(context)).teamWork(teamId);
-  return Promise.all(
-    people.map(async (person) => {
-      const [matrix, capacity, timeOff] = await Promise.all([
-        teamMatrix(context, teamId, person.id),
-        context.placements.capacity(person.id),
-        context.placements.timeOff(person.id),
-      ]);
-      return { person, matrix, capacity, timeOff };
-    }),
-  );
+  return once(context, `people:${teamId}`, async () => {
+    const [{ people }, { awayStatuses }] = await Promise.all([
+      signedIn(context).then((workspace) => workspace.teamWork(teamId)),
+      context.placements.rules(teamId),
+    ]);
+    return Promise.all(
+      people.map(async (person) => {
+        const [matrix, capacity, added] = await Promise.all([
+          teamMatrix(context, teamId, person.id),
+          context.placements.capacity(person.id),
+          context.placements.timeOff(person.id),
+        ]);
+        const status = statusTimeOff(person, awayStatuses, context.today);
+        return { person, matrix, capacity, timeOff: status ? [...added, status] : added };
+      }),
+    );
+  });
 }
 
 async function teamLoadMetric(context: GraphQLContext, teamId: string): Promise<LoadMetric> {
@@ -397,6 +409,9 @@ const QuadrantRulesRef = builder.objectRef<QuadrantRules>("QuadrantRules").imple
       description:
         "The team is flagged for backlog rot when more than this percent of its open issues are in Drop.",
     }),
+    awayStatuses: t.exposeStringList("awayStatuses", {
+      description: `Linear statuses that mean someone is away: an entry matches a status whose label holds it, or whose emoji is among the entry's, ignoring case, e.g. "vacation", "🌴" or "🌴🏖️✈️". Someone with one is away from today until the status clears (in their time zone), or for this week when it never does. Empty unless the team opts in.`,
+    }),
   }),
 });
 
@@ -415,6 +430,9 @@ const QuadrantRulesInput = builder.inputType("QuadrantRulesInput", {
     dropAlertPercent: t.int({
       description:
         "Flag backlog rot when more than this percent of open issues are in Drop: 1 to 99. Left out, it stays as it was.",
+    }),
+    awayStatuses: t.stringList({
+      description: `Linear statuses that mean someone is away: at most ${MAX_AWAY_STATUSES}, each at most ${MAX_AWAY_STATUS_LENGTH} characters. Trimmed, with blanks and repeats dropped. Left out, they stay as they were.`,
     }),
   }),
 });
@@ -604,7 +622,7 @@ UserRef.implement({
     }),
     timeOff: t.field({
       type: [TimeOffRef],
-      description: `Time off not over yet, soonest first: at most ${MAX_TIME_OFF}. The same on every team. Away all of today, their weather is AWAY; the forecast counts the working days they miss each week.`,
+      description: `Time off added on the board, not over yet, soonest first: at most ${MAX_TIME_OFF}. The same on every team. Away all of today, their weather is AWAY; the forecast counts the working days they miss each week. A Linear status the team lists as away (QuadrantRules.awayStatuses) counts as time off too, but isn't listed here: it's changed in Linear, and the weather's reason names it.`,
       resolve: async (user, _args, context) =>
         upcoming(await context.placements.timeOff(user.id), context.today),
     }),
@@ -1283,11 +1301,11 @@ builder.mutationType({
         attempt(
           context,
           async (workspace): Promise<UpdateRulesSuccess | InvalidRules | TeamNotFound> => {
+            const saved = await context.placements.rules(String(teamId));
             const { rules, problems } = parseRules({
               ...input,
-              dropAlertPercent:
-                input.dropAlertPercent ??
-                (await context.placements.rules(String(teamId))).dropAlertPercent,
+              dropAlertPercent: input.dropAlertPercent ?? saved.dropAlertPercent,
+              awayStatuses: input.awayStatuses ?? saved.awayStatuses,
             });
             if (problems) {
               return {

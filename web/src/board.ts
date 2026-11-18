@@ -117,6 +117,11 @@ export interface Rules {
   noDueDate: "URGENT" | "NOT_URGENT";
   /** Flag backlog rot when more than this percent of open issues are in Drop: 1 to 99. */
   dropAlertPercent: number;
+  /**
+   * Linear statuses that mean someone is away: text in a status's label, or emojis one of which is
+   * its emoji, ignoring case. Empty unless the team opts in.
+   */
+  awayStatuses: string[];
 }
 
 /** Whether too much of the team's open work sits in Drop, against its alert. */
@@ -180,7 +185,7 @@ export const TEAM_BOARD_FRAGMENTS = `fragment TeamBoard on Team {
   id
   name
   key
-  rules { importantFrom urgencyWindowDays noDueDate dropAlertPercent }
+  rules { importantFrom urgencyWindowDays noDueDate dropAlertPercent awayStatuses }
   weather { kind reason }
   backlogRot { rotting reason }
   rebalanceNow: rebalanceSuggestions(horizon: NOW) { ...Suggestion }

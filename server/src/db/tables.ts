@@ -34,6 +34,11 @@ export const quadrantRules = sqliteTable(
     dropAlertPercent: integer("drop_alert_percent")
       .notNull()
       .default(DEFAULT_RULES.dropAlertPercent),
+    /** A JSON array of strings. Added later too, so rows from before have none: opt-in. */
+    awayStatuses: text("away_statuses", { mode: "json" })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
@@ -47,6 +52,10 @@ export const quadrantRules = sqliteTable(
       sql`${isInteger(t.urgencyWindowDays)} AND ${t.urgencyWindowDays} BETWEEN 1 AND ${sql.raw(String(MAX_URGENCY_WINDOW_DAYS))}`,
     ),
     check("no_due_date_is_known", oneOf(t.noDueDate, NO_DUE_DATE)),
+    check(
+      "away_statuses_is_a_list",
+      sql`json_valid(${t.awayStatuses}) AND json_type(${t.awayStatuses}) = 'array'`,
+    ),
     check(
       "drop_alert_in_range",
       sql`${isInteger(t.dropAlertPercent)} AND ${t.dropAlertPercent} BETWEEN 1 AND 99`,

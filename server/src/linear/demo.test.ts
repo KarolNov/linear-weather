@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { lastDay } from "../domain/away-status";
 import { addDays, becomesUrgentOn, classify, DEFAULT_RULES } from "../domain/quadrant";
 import { DEMO_OPS_TEAM, DEMO_TEAM, DEMO_VIEWER, DemoLinear, demoIssues, inMemory } from "./demo";
 import {
@@ -136,9 +137,23 @@ describe("DemoLinear", () => {
       teamIds: [DEMO_OPS_TEAM.id, "some-other-team"],
       first: 2,
     });
-    expect(teams.nodes).toEqual([
-      { id: DEMO_OPS_TEAM.id, members: { nodes: DEMO_OPS_TEAM.members } },
-    ]);
+    expect(teams.nodes.map(({ id }) => id)).toEqual([DEMO_OPS_TEAM.id]);
+    const members = teams.nodes[0]?.members.nodes ?? [];
+    expect(members.map(({ id }) => id)).toEqual(DEMO_OPS_TEAM.members.map(({ id }) => id));
+    // With their statuses as Linear has them.
+    expect(members.find(({ name }) => name === "Maria Hill")).toMatchObject({
+      statusEmoji: "🎧",
+      statusLabel: "Heads down",
+      statusUntilAt: null,
+    });
+  });
+
+  it("puts Clint on vacation until the end of the day after tomorrow", async () => {
+    const clint = (await fetchOpenIssues(demo, [DEMO_TEAM.id])).find(
+      ({ assignee }) => assignee?.name === "Clint Barton",
+    )?.assignee;
+    expect(clint).toMatchObject({ statusEmoji: "🌴", statusLabel: "On vacation" });
+    expect(clint && lastDay(clint.statusUntilAt as string, clint.timezone)).toBe(addDays(TODAY, 2));
   });
 
   it("pages like Linear", async () => {

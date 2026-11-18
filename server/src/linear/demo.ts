@@ -29,6 +29,10 @@ const member = (key: string, name: string): Assignee => ({
   id: `demo-user-${key}`,
   name,
   avatarUrl: null,
+  statusEmoji: null,
+  statusLabel: null,
+  statusUntilAt: null,
+  timezone: "America/New_York",
 });
 
 const tony = member("tony", "Tony Stark");
@@ -171,6 +175,28 @@ const TEAMS = [
   { team: DEMO_OPS_TEAM, issues: OPS_ISSUES },
 ];
 
+/**
+ * Statuses in Linear, by user id, with their ends counted from `today`. Nobody is away by one
+ * until a team lists it in its rules: try "🌴" or "vacation".
+ * - Clint is on vacation until the end of the day after tomorrow, holding 1 urgent issue.
+ * - Maria is "Heads down" with no end date: a status no team should count as away.
+ */
+const STATUSES: Record<string, (today: CalendarDate) => Partial<Assignee>> = {
+  "demo-user-clint": (today) => ({
+    statusEmoji: "🌴",
+    statusLabel: "On vacation",
+    // The evening of the day after tomorrow in New York, summer or winter.
+    statusUntilAt: `${addDays(today, 3)}T03:30:00.000Z`,
+  }),
+  "demo-user-maria": () => ({ statusEmoji: "🎧", statusLabel: "Heads down" }),
+};
+
+/** Someone as Linear shows them on `today`, with their status if they have one. */
+function withStatus(person: Assignee, today: CalendarDate): Assignee {
+  const status = STATUSES[person.id];
+  return status ? { ...person, ...status(today) } : person;
+}
+
 /** A team's open issues (the Avengers' by default), with due dates counted from `today`. */
 export function demoIssues(today: CalendarDate, teamId: string = DEMO_TEAM.id): IssueCard[] {
   const demo = TEAMS.find(({ team }) => team.id === teamId);
@@ -185,7 +211,7 @@ export function demoIssues(today: CalendarDate, teamId: string = DEMO_TEAM.id): 
     dueDate: dueInDays === null ? null : addDays(today, dueInDays),
     priority,
     estimate,
-    assignee,
+    assignee: assignee && withStatus(assignee, today),
     state: { name: state, type: STATE_TYPE[state] },
   }));
 }
@@ -273,9 +299,13 @@ export class DemoLinear implements LinearSource {
   /** Like Linear's `teams`, teams it doesn't know are left out. */
   private teamsMembers({ teamIds, first }: TeamsMembersQueryVariables) {
     const ids = [teamIds].flat();
+    const today = this.today();
     const nodes = TEAMS.filter(({ team }) => ids.includes(team.id))
       .slice(0, first)
-      .map(({ team }) => ({ id: team.id, members: { nodes: team.members } }));
+      .map(({ team }) => ({
+        id: team.id,
+        members: { nodes: team.members.map((person) => withStatus(person, today)) },
+      }));
     return { teams: { nodes } } satisfies TeamsMembersQuery;
   }
 
@@ -341,7 +371,7 @@ export class DemoLinear implements LinearSource {
     return demoIssues(today, teamId).map((issue) => {
       const userId = this.assignments.assignee(issue.id);
       const assignee = members.find((m) => m.id === userId);
-      return assignee ? { ...issue, assignee } : issue;
+      return assignee ? { ...issue, assignee: withStatus(assignee, today) } : issue;
     });
   }
 

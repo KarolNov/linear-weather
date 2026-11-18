@@ -9,14 +9,24 @@ fragment IssueCard on Issue {
   priority
   estimate
   assignee {
-    id
-    name
-    avatarUrl
+    ...Person
   }
   state {
     name
     type
   }
+}
+
+# Someone who holds or can take work. Their status (with its end, read in their time zone) says
+# whether they're away, when their team lists it: 4 more fields, about 0.4 points a person.
+fragment Person on User {
+  id
+  name
+  avatarUrl
+  statusEmoji
+  statusLabel
+  statusUntilAt
+  timezone
 }
 
 # Several teams' open issues at once, each tagged with its team. `nodes` rather than

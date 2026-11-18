@@ -30,6 +30,7 @@ export class Store {
         urgencyWindowDays: quadrantRules.urgencyWindowDays,
         noDueDate: quadrantRules.noDueDate,
         dropAlertPercent: quadrantRules.dropAlertPercent,
+        awayStatuses: quadrantRules.awayStatuses,
       })
       .from(quadrantRules)
       .where(inIds(quadrantRules.teamId, teamIds));
@@ -38,7 +39,11 @@ export class Store {
   }
 
   async setRules(teamId: string, rules: QuadrantRules): Promise<void> {
-    const row = { ...rules, updatedAt: new Date().toISOString() };
+    const row = {
+      ...rules,
+      awayStatuses: [...rules.awayStatuses],
+      updatedAt: new Date().toISOString(),
+    };
     await this.db
       .insert(quadrantRules)
       .values({ teamId, ...row })

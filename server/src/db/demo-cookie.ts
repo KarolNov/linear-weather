@@ -2,7 +2,7 @@
 // JSON spends most of that on quotes (escaped to %22) and on the demo's long ids. So the cookie is
 // plain text in characters a cookie carries unescaped, with the ids' fixed prefixes dropped:
 //
-//   1~avengers.2.7.0!ops.3.30.1.25~avg-1.3!ops-4.1~avg-10.wanda~tony.50~tony.20261116.4
+//   1~avengers.2.7.0!ops.3.30.1.25~avg-1.3!ops-4.1~avg-10.wanda~tony.50~tony.20261116.4~ops.WyLwn4y0Il0
 //   │ └ rules: team.importantFrom.urgencyWindowDays.noDueDate[.dropAlertPercent]
 //   │          (the alert left off at its default, as cookies from before it have it)
 //   │                                └ overrides: issue.quadrant
@@ -10,7 +10,13 @@
 //   │                                                         └ capacities: user.percent
 //   │                                                                  └ time off: user.firstDay.
 //   │                                                                    days after it to the last
+//   │                                                                              └ away statuses:
+//   │                                                                     team.base64url(JSON list)
 //   └ format version
+//
+// Away statuses can hold any character, separators included, so they go as base64url: letters,
+// digits, - and _ only. They take whatever room the rest leaves under MAX_COOKIE_VALUE_LENGTH, so a
+// team's list may be kept only in part, but the cookie always fits.
 //
 // Trailing sections are left off when empty, as cookies from before them have them. Time off
 // that's over is dropped as the cookie is read, so it can't pile up.
@@ -61,6 +67,12 @@ export const DEMO_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
 
 /** Browsers keep at most 4096 bytes a cookie, so anything longer was never ours. */
 export const MAX_COOKIE_LENGTH = 4096;
+
+/**
+ * The longest value the demo writes: what's left of MAX_COOKIE_LENGTH after the cookie's name and
+ * attributes (`; Max-Age=…; Path=/; HttpOnly; Secure; SameSite=Lax`), with room to spare.
+ */
+export const MAX_COOKIE_VALUE_LENGTH = MAX_COOKIE_LENGTH - 128;
 
 const VERSION = "1";
 const TEAM_PREFIX = "demo-team-";
@@ -119,6 +131,22 @@ export function encodeDemo({
     parts.join("!"),
     away.join("!"),
   ];
+  // Away statuses go last and take what room is left, each team as many of its own as fit: the
+  // cookie must stay short enough for the browser to keep it, or nothing would be saved.
+  let room = MAX_COOKIE_VALUE_LENGTH - sections.join("~").length - 1;
+  const statuses: string[] = [];
+  for (const [teamId, { awayStatuses }] of rules) {
+    for (let kept = awayStatuses.length; kept > 0; kept--) {
+      const entry = `${shorten(teamId, TEAM_PREFIX)}.${toBase64Url(JSON.stringify(awayStatuses.slice(0, kept)))}`;
+      const cost = entry.length + (statuses.length > 0 ? 1 : 0);
+      if (cost <= room) {
+        statuses.push(entry);
+        room -= cost;
+        break;
+      }
+    }
+  }
+  sections.push(statuses.join("!"));
   while (sections.length > 3 && sections.at(-1) === "") sections.pop();
   return sections.join("~");
 }
@@ -140,8 +168,15 @@ export function decodeDemo(
     timeOff: new Map(),
   };
   if (!value || value.length > MAX_COOKIE_LENGTH) return saved;
-  const [version, teams = "", issues = "", assignees = "", capacities = "", away = ""] =
-    value.split("~");
+  const [
+    version,
+    teams = "",
+    issues = "",
+    assignees = "",
+    capacities = "",
+    away = "",
+    statuses = "",
+  ] = value.split("~");
   if (version !== VERSION) return saved;
   for (const [id, importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent] of fields(
     teams,
@@ -158,6 +193,7 @@ export function decodeDemo(
         dropAlertPercent === undefined
           ? DEFAULT_RULES.dropAlertPercent
           : wholeNumber(dropAlertPercent),
+      awayStatuses: [],
     });
     if (rules) saved.rules.set(TEAM_PREFIX + id, rules);
   }
@@ -194,7 +230,45 @@ export function decodeDemo(
     if (theirs.some((stretch) => stretch.id === id)) continue;
     saved.timeOff.set(userId, upcoming([...theirs, { id, startsOn, endsOn }], today));
   }
+  for (const [id, encoded] of fields(statuses, 2)) {
+    const teamId = TEAM_PREFIX + id;
+    const listed = awayStatusesFrom(encoded ?? "");
+    if (!TEAM_IDS.has(teamId) || listed === null) continue;
+    const { rules } = parseRules({
+      ...(saved.rules.get(teamId) ?? DEFAULT_RULES),
+      awayStatuses: listed,
+    });
+    if (rules) saved.rules.set(teamId, rules);
+  }
   return saved;
+}
+
+/** A list of strings from base64url JSON, or null if that's not what it is. */
+function awayStatusesFrom(encoded: string): string[] | null {
+  try {
+    const list: unknown = JSON.parse(fromBase64Url(encoded));
+    return Array.isArray(list) && list.every((entry) => typeof entry === "string") ? list : null;
+  } catch {
+    return null;
+  }
+}
+
+/** UTF-8 text as base64url, unpadded. */
+function toBase64Url(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+}
+
+/** The UTF-8 text in unpadded base64url. Throws if it isn't any. */
+function fromBase64Url(encoded: string): string {
+  if (!/^[A-Za-z0-9_-]*$/.test(encoded)) throw new Error("Not base64url");
+  const binary = atob(encoded.replaceAll("-", "+").replaceAll("_", "/"));
+  return new TextDecoder("utf-8", { fatal: true }).decode(
+    Uint8Array.from(binary, (char) => char.charCodeAt(0)),
+  );
 }
 
 /** 2026-11-16 as 20261116. */

@@ -22,17 +22,15 @@ fragment TeamSummary on Team {
 }
 
 # Everyone on each of several teams, so people with nothing assigned still get an (empty)
-# matrix. Teams the viewer can't see are simply missing. About 330 points a team (250 members
-# at 1.3 each), so callers ask for at most 10 teams at a time.
+# matrix. Teams the viewer can't see are simply missing. About 430 points a team (250 members
+# at 1.7 each), so callers ask for at most 10 teams at a time.
 query TeamsMembers($teamIds: [ID!]!, $first: Int!) {
   teams(first: $first, filter: { id: { in: $teamIds } }) {
     nodes {
       id
       members(first: 250) {
         nodes {
-          id
-          name
-          avatarUrl
+          ...Person
         }
       }
     }

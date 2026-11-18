@@ -108,6 +108,22 @@ describe("describing", () => {
     expect(describeStaffing(0.5)).toBe(" at half time");
     expect(describeStaffing(0.6, 2)).toBe(" at 60% time (2 days off)");
     expect(describeStaffing(0.8, 1)).toBe(" at 80% time (1 day off)");
+    expect(describeStaffing(0.6, 2, ["Linear status 🌴 On vacation"])).toBe(
+      " at 60% time (2 days off: Linear status 🌴 On vacation)",
+    );
+  });
+
+  it("names what a week's days off come from, when not only the board", () => {
+    const status = { ...off("2026-10-19", "2026-10-20"), source: "Linear status 🌴" };
+    expect(staffingFor(1, [status], "2026-10-19", "2026-10-25")).toEqual({
+      capacity: 0.6,
+      daysOff: 2,
+      offSources: ["Linear status 🌴"],
+    });
+    expect(staffingFor(1, [off("2026-10-19", "2026-10-20")], "2026-10-19", "2026-10-25")).toEqual({
+      capacity: 0.6,
+      daysOff: 2,
+    });
   });
 });
 

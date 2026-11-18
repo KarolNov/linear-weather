@@ -427,6 +427,7 @@ describe("stored rules and overrides", () => {
       urgencyWindowDays: 1,
       noDueDate: "notUrgent",
       dropAlertPercent: 40,
+      awayStatuses: [],
     });
     const board = await data<Board>(tony);
     expect(board.team.rules).toEqual({ urgencyWindowDays: 1 });
@@ -746,6 +747,88 @@ describe("mutations", () => {
       issueId: "someone-elses",
     });
     expect(await new Store(env.DB).overrides(["someone-elses"])).toEqual(new Map());
+  });
+});
+
+describe("away statuses", () => {
+  const setStatuses = `mutation ($teamId: ID!, $input: QuadrantRulesInput!) {
+    updateQuadrantRules(teamId: $teamId, input: $input) {
+      __typename
+      ... on InvalidRules { problems { field message } }
+      ... on UpdateRulesSuccess {
+        team {
+          rules { awayStatuses dropAlertPercent }
+          weather { kind reason }
+          people { name weather { kind reason } forecast(weeks: 2) { weather { kind reason } } }
+        }
+      }
+    }
+  }`;
+  const defaults = { importantFrom: 3, urgencyWindowDays: 14, noDueDate: "NOT_URGENT" };
+  type Result = {
+    updateQuadrantRules: {
+      __typename: string;
+      problems?: { field: string; message: string }[];
+      team?: {
+        rules: { awayStatuses: string[]; dropAlertPercent: number };
+        weather: { kind: string; reason: string };
+        people: {
+          name: string;
+          weather: { kind: string; reason: string };
+          forecast: { weather: { kind: string; reason: string } }[];
+        }[];
+      };
+    };
+  };
+
+  it("leaves everyone present until the team lists a status", async () => {
+    const { team } = await data<{
+      team: {
+        rules: { awayStatuses: string[] };
+        people: { name: string; weather: { kind: string } }[];
+      };
+    }>("{ team { rules { awayStatuses } people { name weather { kind } } } }");
+    expect(team.rules.awayStatuses).toEqual([]);
+    expect(team.people.find((p) => p.name === "Clint Barton")?.weather.kind).not.toBe("AWAY");
+  });
+
+  it("marks someone away by their Linear status, naming it", async () => {
+    // Clint's 🌴 On vacation clears on the evening of Oct 20 in New York.
+    const { updateQuadrantRules: result } = await data<Result>(setStatuses, {
+      teamId: DEMO_TEAM.id,
+      input: { ...defaults, awayStatuses: [" vacation ", "VACATION"] },
+    });
+    expect(result.__typename).toBe("UpdateRulesSuccess");
+    expect(result.team?.rules).toEqual({ awayStatuses: ["vacation"], dropAlertPercent: 40 });
+    expect(result.team?.people.find((p) => p.name === "Clint Barton")?.weather).toEqual({
+      kind: "AWAY",
+      reason: "Away until Oct 20 (Linear status 🌴 On vacation), holding 1 urgent issue",
+    });
+    expect(result.team?.weather.kind).toBe("STORM");
+    expect(result.team?.weather.reason).toContain("Clint Barton is away with 1 urgent issue");
+    // Off Monday and Tuesday of the first week, there the rest of it; all of the second.
+    const weeks = result.team?.people.find((p) => p.name === "Clint Barton")?.forecast;
+    expect(weeks?.[0]?.weather.kind).not.toBe("AWAY");
+    expect(weeks?.[0]?.weather.reason).toContain("(2 days off: Linear status 🌴 On vacation)");
+    expect(weeks?.[1]?.weather.reason).not.toContain("days off");
+
+    // Left out of the input, they stay.
+    const { updateQuadrantRules: kept } = await data<Result>(setStatuses, {
+      teamId: DEMO_TEAM.id,
+      input: { ...defaults, dropAlertPercent: 30 },
+    });
+    expect(kept.team?.rules).toEqual({ awayStatuses: ["vacation"], dropAlertPercent: 30 });
+  });
+
+  it("refuses too many away statuses", async () => {
+    const { updateQuadrantRules: result } = await data<Result>(setStatuses, {
+      teamId: DEMO_TEAM.id,
+      input: { ...defaults, awayStatuses: Array.from({ length: 11 }, (_, i) => `s${i}`) },
+    });
+    expect(result).toEqual({
+      __typename: "InvalidRules",
+      problems: [{ field: "awayStatuses", message: "List at most 10 away statuses." }],
+    });
   });
 });
 
@@ -1298,6 +1381,7 @@ describe("the web app's board query", () => {
       urgencyWindowDays: 7,
       noDueDate: "URGENT",
       dropAlertPercent: 25,
+      awayStatuses: ["🌴"],
     };
     const { updateQuadrantRules } = await data<Answer>(UPDATE_RULES_MUTATION, {
       teamId: DEMO_TEAM.id,

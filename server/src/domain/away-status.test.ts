@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAwayStatus, lastDay, STATUS_TIME_OFF_ID, statusTimeOff } from "./away-status";
+import { emojisIn, isAwayStatus, lastDay, STATUS_TIME_OFF_ID, statusTimeOff } from "./away-status";
 import { describeAway, staffingFor, staffingOn, type TimeOff } from "./time-off";
 
 // A Wednesday.
@@ -22,10 +22,44 @@ describe("isAwayStatus", () => {
   it("doesn't match anything else", () => {
     expect(isAwayStatus(vacation, [])).toBe(false);
     expect(isAwayStatus(vacation, ["sick"])).toBe(false);
-    // The emoji has to be the whole of it; only the label is searched.
-    expect(isAwayStatus({ ...vacation, statusEmoji: "🌴🏖️" }, ["🌴"])).toBe(false);
+    // A status's emoji has to be one of the entry's, not part of one.
+    expect(isAwayStatus({ ...vacation, statusEmoji: "🏖️" }, ["🌴"])).toBe(false);
+    expect(isAwayStatus({ ...vacation, statusEmoji: "🧑‍💻" }, ["🧑"])).toBe(false);
     expect(isAwayStatus({ statusEmoji: null, statusLabel: null }, ["vacation"])).toBe(false);
     expect(isAwayStatus(vacation, ["  "])).toBe(false);
+  });
+});
+
+describe("isAwayStatus with several emojis in one entry", () => {
+  const status = (statusEmoji: string) => ({ statusEmoji, statusLabel: "Out" });
+
+  it.each(["🌴🏖️✈️", "🌴 🏖️ ✈️", "🌴, 🏖️, ✈️"])("matches any emoji listed in %s", (entry) => {
+    expect(isAwayStatus(status("🏖️"), [entry])).toBe(true);
+    expect(isAwayStatus(status("✈️"), [entry])).toBe(true);
+    expect(isAwayStatus(status("🤒"), [entry])).toBe(false);
+  });
+
+  it("keeps emojis built of several parts whole", () => {
+    expect(isAwayStatus(status("🧑‍💻"), ["🌴🧑‍💻"])).toBe(true);
+    expect(isAwayStatus(status("👋🏽"), ["🌴👋🏽"])).toBe(true);
+    expect(isAwayStatus(status("🇭🇷"), ["🌴🇭🇷"])).toBe(true);
+    expect(isAwayStatus(status("🇭🇷"), ["🇭🇺🇷🇸"])).toBe(false);
+  });
+
+  it("matches Linear shortcodes too", () => {
+    expect(isAwayStatus(status(":palm_tree:"), [":airplane: :palm_tree:"])).toBe(true);
+  });
+});
+
+describe("emojisIn", () => {
+  it("lists an entry's emojis", () => {
+    expect(emojisIn("🌴🏖️ ✈️")).toEqual(["🌴", "🏖️", "✈️"]);
+  });
+
+  it("is null for an entry with words, so it's searched in the label instead", () => {
+    expect(emojisIn("🌴 vacation")).toBeNull();
+    expect(emojisIn("sick")).toBeNull();
+    expect(emojisIn("2")).toBeNull();
   });
 });
 

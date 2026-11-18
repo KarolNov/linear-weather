@@ -408,8 +408,7 @@ const QuadrantRulesRef = builder.objectRef<QuadrantRules>("QuadrantRules").imple
         "The team is flagged for backlog rot when more than this percent of its open issues are in Drop.",
     }),
     awayStatuses: t.exposeStringList("awayStatuses", {
-      description:
-        'Linear statuses that mean someone is away: an entry matches a status whose emoji it is, or whose label holds it, ignoring case, e.g. "🌴" or "vacation". Someone with one is away from today until the status clears (in their time zone), or for this week when it never does. Empty unless the team opts in.',
+      description: `Linear statuses that mean someone is away: an entry matches a status whose label holds it, or whose emoji is among the entry's, ignoring case, e.g. "vacation", "🌴" or "🌴🏖️✈️". Someone with one is away from today until the status clears (in their time zone), or for this week when it never does. Empty unless the team opts in.`,
     }),
   }),
 });

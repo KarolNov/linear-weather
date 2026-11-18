@@ -148,6 +148,45 @@ describe("the board after a move", () => {
   });
 });
 
+describe("the board's sorting rules", () => {
+  it("sends the away statuses typed in the rules panel, and shows the board that comes back", async () => {
+    const away = {
+      kind: "STORM",
+      reason: "Tony Stark is away with 1 urgent issue",
+    } as const;
+    const answer = avengersBoard(away);
+    answer.rules = { ...answer.rules, awayStatuses: ["🌴"] };
+    const fetch = vi.fn(async (_url: string, _init: RequestInit) =>
+      Response.json({
+        data: { updateQuadrantRules: { __typename: "UpdateRulesSuccess", team: answer } },
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    render(<BoardShell viewer={viewer} board={loaded(avengersBoard(storm))} />, root);
+
+    await userEvent.click(page.getByRole("button", { name: "Sorting rules" }));
+    // Filled, not typed: typing sends an emoji's two UTF-16 halves as separate keys.
+    await userEvent.fill(
+      page.getByRole("textbox", { name: /^Away when their Linear status is/ }),
+      "🌴",
+    );
+    await userEvent.click(page.getByRole("button", { name: "Save rules" }));
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    const { variables } = JSON.parse(String(fetch.mock.calls[0]?.[1].body));
+    expect(variables).toEqual({
+      teamId: avengers.id,
+      input: { ...answer.rules },
+    });
+    await expect.poll(teamForecast).toContain(away.reason);
+    // The panel closes on success; opened again, it starts from what was saved.
+    await userEvent.click(page.getByRole("button", { name: "Sorting rules" }));
+    await expect
+      .element(page.getByRole("textbox", { name: /^Away when their Linear status is/ }))
+      .toHaveValue("🌴");
+  });
+});
+
 describe("the rain on the board's sky", () => {
   it("falls in a storm, and eases to rain when a move's answer brings it", async () => {
     serverAnswering(avengersBoard({ kind: "RAIN", reason: "Tony Stark is busy" }, "schedule"));

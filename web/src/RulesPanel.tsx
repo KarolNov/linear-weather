@@ -47,8 +47,10 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
       urgencyWindowDays: Number(windowDays),
       noDueDate,
       dropAlertPercent: Number(dropAlert),
-      // The server trims them and drops blank lines.
-      awayStatuses: awayStatuses.split("\n"),
+      awayStatuses: awayStatuses
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== ""),
     });
     setSaving(false);
     if (result.ok) onClose();
@@ -178,8 +180,8 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
               {...stylex.props(styles.input, styles.textarea)}
             />
             <span id="rules-away-hint" {...stylex.props(styles.hint)}>
-              One a line: an emoji, or words in the label. Away until the status clears, or for this
-              week if it never does. Empty, nobody's status counts.
+              One a line: words in the label, or emojis (🌴🏖️ matches either). Away until the status
+              clears, or for this week if it never does. Empty, nobody's status counts.
             </span>
             {awayProblem && (
               <span id="rules-away-problem" {...stylex.props(styles.problem)}>

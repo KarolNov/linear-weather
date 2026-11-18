@@ -19,16 +19,44 @@ export interface LinearStatus {
 export const STATUS_TIME_OFF_ID = "linear-status";
 
 /**
- * Whether a status is one of a team's away statuses: an entry matches when it's the status's
- * emoji, or appears in its label, ignoring case.
+ * Whether a status is one of a team's away statuses, ignoring case. An entry matches when its
+ * words appear in the status's label, or when the status's emoji is among the entry's: "🌴",
+ * "🌴🏖️✈️" and "🌴 🤒" all match 🌴. Linear shortcodes like ":palm_tree:" count as emojis too.
  */
 export function isAwayStatus(status: LinearStatus, awayStatuses: readonly string[]): boolean {
   const emoji = status.statusEmoji?.trim().toLowerCase() ?? "";
   const label = status.statusLabel?.toLowerCase() ?? "";
   return awayStatuses.some((entry) => {
     const wanted = entry.trim().toLowerCase();
-    return wanted !== "" && (wanted === emoji || label.includes(wanted));
+    if (wanted === "") return false;
+    if (label.includes(wanted)) return true;
+    return emoji !== "" && (wanted === emoji || (emojisIn(wanted)?.includes(emoji) ?? false));
   });
+}
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** An emoji (with any skin tone, variation selector or ZWJ parts), or a flag. */
+const EMOJI = /^(\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Component})+$/u;
+
+/**
+ * The emojis an entry lists, when it's made of nothing else (spaces and commas between them
+ * allowed); null when it holds words.
+ */
+export function emojisIn(entry: string): string[] | null {
+  const emojis: string[] = [];
+  for (const token of entry.split(/[\s,]+/).filter(Boolean)) {
+    if (/^:[\w+-]+:$/.test(token)) {
+      emojis.push(token);
+      continue;
+    }
+    for (const { segment } of graphemes.segment(token)) {
+      // Keycap digits and # are Emoji_Component, but a bare digit isn't an emoji.
+      if (!EMOJI.test(segment) || /^[\d#*]$/.test(segment)) return null;
+      emojis.push(segment);
+    }
+  }
+  return emojis.length > 0 ? emojis : null;
 }
 
 /**

@@ -24,8 +24,8 @@ export interface QuadrantRules {
   /** The team is flagged for backlog rot when more than this percent of its open issues are in Drop. */
   dropAlertPercent: number;
   /**
-   * Linear statuses that mean someone is away: an entry matches a status whose emoji it is, or
-   * whose label holds it, ignoring case. Empty unless a team opts in.
+   * Linear statuses that mean someone is away: an entry matches a status whose label holds it, or
+   * whose emoji is among the entry's ("🌴🏖️" matches 🌴), ignoring case. Empty unless a team opts in.
    */
   awayStatuses: readonly string[];
 }

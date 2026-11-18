@@ -118,8 +118,8 @@ export interface Rules {
   /** Flag backlog rot when more than this percent of open issues are in Drop: 1 to 99. */
   dropAlertPercent: number;
   /**
-   * Linear statuses that mean someone is away: a status's emoji, or text in its label, ignoring
-   * case. Empty unless the team opts in.
+   * Linear statuses that mean someone is away: text in a status's label, or emojis one of which is
+   * its emoji, ignoring case. Empty unless the team opts in.
    */
   awayStatuses: string[];
 }

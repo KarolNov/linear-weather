@@ -96,19 +96,54 @@ function teamMatrix(
 ): Promise<Matrix<TeamIssue>> {
   return once(context, `matrix:${teamId}:${assigneeId}`, async () => {
     const workspace = await signedIn(context);
-    const { byAssignee } = await workspace.teamWork(teamId);
-    const issues = byAssignee.get(assigneeId) ?? [];
-    const [rules, overrides] = await Promise.all([
-      context.placements.rules(teamId),
-      context.placements.overrides(issues),
+    const rules = context.placements.rules(teamId);
+    // What blocks what goes alongside the team's issues, not after them.
+    const [{ byAssignee }, teamRules, blockers] = await Promise.all([
+      workspace.teamWork(teamId),
+      rules,
+      rules.then((r) => blockersOf(workspace, teamId, r)),
     ]);
-    // Asking Linear what blocks what costs a query, so only teams that use it do.
-    const blockers = rules.blockersAreImportant ? await workspace.blockerIds(teamId) : null;
-    const classified = blockers
-      ? issues.map((issue) => ({ ...issue, blocking: blockers.has(issue.id) }))
-      : issues;
-    return buildMatrix(classified, rules, context.today, overrides);
+    const issues = byAssignee.get(assigneeId) ?? [];
+    const overrides = await context.placements.overrides(issues);
+    return buildMatrix(
+      issues.map((issue) => withBlocking(issue, blockers)),
+      teamRules,
+      context.today,
+      overrides,
+    );
   });
+}
+
+/**
+ * The ids of a team's open issues that block open work, when its rules count blockers as
+ * important; else null. Asking Linear costs a query, so only teams that use it do. Null too when
+ * Linear can't say, so the team is sorted by priority alone rather than its board failing.
+ */
+async function blockersOf(
+  workspace: Workspace,
+  teamId: string,
+  rules: QuadrantRules,
+): Promise<ReadonlySet<string> | null> {
+  if (!rules.blockersAreImportant) return null;
+  try {
+    return await workspace.blockerIds(teamId);
+  } catch (error) {
+    // Signed out or rate limited fails the rest of the request too: let those say so.
+    if (error instanceof LinearAuthError || error instanceof LinearRateLimitError) throw error;
+    console.warn(`Couldn't tell which of team ${teamId}'s issues block others`, error);
+    return null;
+  }
+}
+
+/**
+ * An issue as the rules classify it: with whether it blocks open work, from `blockersOf`. Every
+ * matrix and placement goes through here, so they agree.
+ */
+function withBlocking<I extends { id: string }>(
+  issue: I,
+  blockers: ReadonlySet<string> | null,
+): I & { blocking?: boolean } {
+  return blockers ? { ...issue, blocking: blockers.has(issue.id) } : issue;
 }
 
 /**
@@ -1184,14 +1219,16 @@ async function placeByHand(
   // Only issues the viewer can see, so nobody places issues in workspaces they aren't in.
   const issue = await workspace.issue(issueId);
   if (!issue) return issueNotFound(issueId);
-  const [, rules] = await Promise.all([
+  const rules = context.placements.rules(issue.team.id);
+  const [, teamRules, blockers] = await Promise.all([
     context.placements.setOverride(issue.id, quadrant),
-    context.placements.rules(issue.team.id),
+    rules,
+    rules.then((r) => blockersOf(workspace, issue.team.id, r)),
   ]);
   forgetWork(context);
   return {
     __typename: "OverrideSuccess",
-    issue: place(issue, rules, context.today, quadrant ?? undefined),
+    issue: place(withBlocking(issue, blockers), teamRules, context.today, quadrant ?? undefined),
     team: issue.team,
   };
 }
@@ -1317,13 +1354,15 @@ async function reassign(
   const issue = await workspace.reassign(issueId, userId);
   if (!issue) return issueNotFound(issueId);
   forgetWork(context);
-  const [rules, overrides] = await Promise.all([
-    context.placements.rules(issue.team.id),
+  const rules = context.placements.rules(issue.team.id);
+  const [teamRules, overrides, blockers] = await Promise.all([
+    rules,
     context.placements.overrides([issue]),
+    rules.then((r) => blockersOf(workspace, issue.team.id, r)),
   ]);
   return {
     __typename: "ReassignSuccess",
-    issue: place(issue, rules, context.today, overrides.get(issue.id)),
+    issue: place(withBlocking(issue, blockers), teamRules, context.today, overrides.get(issue.id)),
     team: issue.team,
   };
 }

@@ -67,15 +67,17 @@ describe("DemoStore", () => {
     expect(decodeDemo("1~avengers.2.7.0~").rules.get(team)).toEqual(strict);
   });
 
-  it("keeps blockers counting as important, with the Drop alert written out", async () => {
+  it("keeps blockers counting as important, in a section older code ignores", async () => {
     const before = DemoStore.fromCookie(undefined);
     await before.setRules(team, { ...strict, blockersAreImportant: true });
-    expect(before.cookie()).toBe("1~avengers.2.7.0.40.1~");
+    expect(before.cookie()).toBe("1~avengers.2.7.0~~~~~~avengers");
     const after = DemoStore.fromCookie(before.cookie());
     expect(await after.rules([team])).toEqual(
       new Map([[team, { ...strict, blockersAreImportant: true }]]),
     );
-    expect(decodeDemo("1~avengers.2.7.0.40.2~").rules.size).toBe(0);
+    // Code from before the rule reads the same cookie with the team's other rules intact.
+    expect(decodeDemo("1~avengers.2.7.0~~~~~~avengers").rules.get(team)?.importantFrom).toBe(2);
+    expect(decodeDemo("1~~~~~~~nope!avengers.1").rules.size).toBe(0);
   });
 
   it("keeps a team's away statuses, whatever characters they hold", async () => {
@@ -241,8 +243,7 @@ describe("decodeDemo", () => {
       "ops.2.7.0.0",
       "ops.2.7.0.100",
       "ops.2.7.0.4x",
-      "ops.2.7.0.25.2",
-      "ops.2.7.0.25.1.1",
+      "ops.2.7.0.25.1",
       "ops.2.7.2",
       "x.2.7.0",
     ];

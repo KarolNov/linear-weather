@@ -1,6 +1,5 @@
 import type { LinearSource } from "./client";
 import {
-  type BlockingFragment,
   type IssueCardFragment,
   OpenBlockersDocument,
   type OpenBlockersQuery,
@@ -56,11 +55,21 @@ export function fetchOpenBlockers(
   );
 }
 
-/** Whether the issue blocks another that isn't completed or canceled yet. */
-export function blocksOpenWork(issue: BlockingFragment): boolean {
-  return issue.relations.nodes.some(
+/**
+ * Whether the issue blocks another that isn't completed or canceled yet. Only its first relations
+ * are read, so when none of those is an open block but there are more, it says so in the log.
+ */
+export function blocksOpenWork(issue: OpenBlocker): boolean {
+  const { nodes, pageInfo } = issue.relations;
+  const blocks = nodes.some(
     ({ type, relatedIssue }) => type === "blocks" && !DONE.has(relatedIssue.state.type),
   );
+  if (!blocks && pageInfo.hasNextPage) {
+    console.warn(
+      `Linear issue ${issue.id} has more than ${nodes.length} relations; only those were checked for open work it blocks`,
+    );
+  }
+  return blocks;
 }
 
 /** Follows a Linear connection's cursor to its last page. */

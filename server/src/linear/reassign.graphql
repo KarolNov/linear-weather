@@ -5,7 +5,6 @@ mutation ReassignIssue($id: String!, $assigneeId: String!) {
     success
     issue {
       ...IssueCard
-      ...Blocking
       team {
         ...TeamSummary
       }

@@ -201,7 +201,7 @@ function relationsOf(identifier: string): BlockingFragment["relations"] {
       relatedIssue: { state: { type: issue ? issue.state.type : blocked } },
     };
   });
-  return { nodes };
+  return { nodes, pageInfo: { hasNextPage: false } };
 }
 
 /**
@@ -351,11 +351,7 @@ export class DemoLinear implements LinearSource {
     const nodes = TEAMS.flatMap(({ team: { id: teamId, name, key } }) =>
       this.teamIssues(today, teamId)
         .filter((issue) => issue.id === id)
-        .map((issue) => ({
-          ...issue,
-          relations: relationsOf(issue.identifier),
-          team: { id: teamId, name, key },
-        })),
+        .map((issue) => ({ ...issue, team: { id: teamId, name, key } })),
     );
     return { issues: { nodes } } satisfies IssueByIdQuery;
   }
@@ -417,9 +413,7 @@ export class DemoLinear implements LinearSource {
     return {
       issueUpdate: {
         success: true,
-        issue: issue
-          ? { ...issue, relations: relationsOf(issue.identifier), team: { id: teamId, name, key } }
-          : null,
+        issue: issue ? { ...issue, team: { id: teamId, name, key } } : null,
       },
     } satisfies ReassignIssueMutation;
   }

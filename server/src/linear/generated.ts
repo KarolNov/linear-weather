@@ -3,7 +3,7 @@ type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
 /** Internal type. DO NOT USE DIRECTLY. */
 export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
 import type { DocumentTypeDecoration } from '@graphql-typed-document-node/core';
-export type BlockingFragment = { relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }> } };
+export type BlockingFragment = { relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }>, pageInfo: { hasNextPage: boolean } } };
 
 export type OpenBlockersQueryVariables = Exact<{
   teamIds: Array<string> | string;
@@ -12,14 +12,14 @@ export type OpenBlockersQueryVariables = Exact<{
 }>;
 
 
-export type OpenBlockersQuery = { issues: { nodes: Array<{ id: string, team: { id: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }> } }>, pageInfo: { hasNextPage: boolean, endCursor: string | null } } };
+export type OpenBlockersQuery = { issues: { nodes: Array<{ id: string, team: { id: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }>, pageInfo: { hasNextPage: boolean } } }>, pageInfo: { hasNextPage: boolean, endCursor: string | null } } };
 
 export type IssueByIdQueryVariables = Exact<{
   id: string;
 }>;
 
 
-export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }> } }> } };
+export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } }> } };
 
 export type ReassignIssueMutationVariables = Exact<{
   id: string;
@@ -27,7 +27,7 @@ export type ReassignIssueMutationVariables = Exact<{
 }>;
 
 
-export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }> } } | null } };
+export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } } | null } };
 
 export type IssueCardFragment = { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } };
 
@@ -90,6 +90,9 @@ export const BlockingFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
           type
         }
       }
+    }
+    pageInfo {
+      hasNextPage
     }
   }
 }
@@ -172,6 +175,9 @@ export const OpenBlockersDocument = /*#__PURE__*/ new TypedDocumentString(`
         }
       }
     }
+    pageInfo {
+      hasNextPage
+    }
   }
 }`) as unknown as TypedDocumentString<OpenBlockersQuery, OpenBlockersQueryVariables>;
 export const IssueByIdDocument = /*#__PURE__*/ new TypedDocumentString(`
@@ -179,26 +185,13 @@ export const IssueByIdDocument = /*#__PURE__*/ new TypedDocumentString(`
   issues(first: 1, includeArchived: true, filter: { id: { eq: $id } }) {
     nodes {
       ...IssueCard
-      ...Blocking
       team {
         ...TeamSummary
       }
     }
   }
 }
-    fragment Blocking on Issue {
-  relations(first: 20) {
-    nodes {
-      type
-      relatedIssue {
-        state {
-          type
-        }
-      }
-    }
-  }
-}
-fragment IssueCard on Issue {
+    fragment IssueCard on Issue {
   id
   identifier
   title
@@ -234,26 +227,13 @@ export const ReassignIssueDocument = /*#__PURE__*/ new TypedDocumentString(`
     success
     issue {
       ...IssueCard
-      ...Blocking
       team {
         ...TeamSummary
       }
     }
   }
 }
-    fragment Blocking on Issue {
-  relations(first: 20) {
-    nodes {
-      type
-      relatedIssue {
-        state {
-          type
-        }
-      }
-    }
-  }
-}
-fragment IssueCard on Issue {
+    fragment IssueCard on Issue {
   id
   identifier
   title

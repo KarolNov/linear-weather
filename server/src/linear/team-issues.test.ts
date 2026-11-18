@@ -112,12 +112,17 @@ describe("fetchOpenIssues", () => {
 });
 
 /** A blocker whose relations are of these types, to issues in these states. */
-function blocker(n: number, relations: [type: string, state: string][]): OpenBlocker {
+function blocker(
+  n: number,
+  relations: [type: string, state: string][],
+  hasNextPage = false,
+): OpenBlocker {
   return {
     id: `issue-${n}`,
     team: { id: "team-1" },
     relations: {
       nodes: relations.map(([type, state]) => ({ type, relatedIssue: { state: { type: state } } })),
+      pageInfo: { hasNextPage },
     },
   };
 }
@@ -175,5 +180,14 @@ describe("blocksOpenWork", () => {
       ),
     ).toBe(false);
     expect(blocksOpenWork(blocker(1, []))).toBe(false);
+  });
+
+  it("says so when more relations than it read might hold an open block", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(blocksOpenWork(blocker(1, [["related", "started"]], true))).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("issue-1"));
+    warn.mockClear();
+    expect(blocksOpenWork(blocker(2, [["blocks", "started"]], true))).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

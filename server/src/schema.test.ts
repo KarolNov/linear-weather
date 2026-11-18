@@ -505,11 +505,11 @@ describe("stored rules and overrides", () => {
   it("reads rules and overrides once per request, however many teams", async () => {
     const everyTeam = `{ teams { rules { importantFrom } people { matrix { counts { do } } } } }`;
     expect(await storeReads(everyTeam)).toEqual({ rules: 1, overrides: 1 });
-    // Unassigned matrices are reached a tick before people's, so they share a second read.
+    // Overrides are read once every team's issues are in, so unassigned matrices share it too.
     const withUnassigned = `{
       teams { people { matrix { counts { do } } } unassigned { counts { do } } }
     }`;
-    expect(await storeReads(withUnassigned)).toEqual({ rules: 1, overrides: 2 });
+    expect(await storeReads(withUnassigned)).toEqual({ rules: 1, overrides: 1 });
   });
 
   it("still shows the board by the default rules when the database fails", async () => {
@@ -741,21 +741,12 @@ describe("mutations", () => {
   });
 
   it("counts blockers as important once the team does, on the board and placed alone", async () => {
-    const quadrantOf = async (identifier: string) => {
-      const { team } = await data<{
-        team: { people: { matrix: Record<string, { identifier: string }[]> }[] };
-      }>(
-        `{ team(id: "${DEMO_TEAM.id}") { people { matrix { do { identifier } schedule { identifier } delegate { identifier } drop { identifier } } } } }`,
-      );
-      for (const { matrix } of team.people) {
-        for (const [quadrant, issues] of Object.entries(matrix)) {
-          if (issues.some((issue) => issue.identifier === identifier)) return quadrant;
-        }
-      }
-      return null;
+    const quadrantOf = async (issueId: string) => {
+      const { team } = await data(TEAM_QUERY, { teamId: DEMO_TEAM.id });
+      return placementOn(team ?? undefined, issueId)?.quadrant ?? null;
     };
     // The lab door, the coffee machine, and the blueberries that only blocked finished work.
-    const blockers = ["AVG-27", "AVG-36", "AVG-11"];
+    const blockers = ["demo-issue-avg-27", "demo-issue-avg-36", "demo-issue-avg-11"];
     expect(await Promise.all(blockers.map(quadrantOf))).toEqual(["delegate", "drop", "delegate"]);
 
     await new Store(env.DB).setRules(DEMO_TEAM.id, {
@@ -1391,6 +1382,18 @@ describe("an id Linear can't take", () => {
 });
 
 /** A Linear that fails every request this way. */
+/** Where an issue sits on a TeamBoard answer, and who put it there. */
+function placementOn(team: TeamBoardData | undefined, issueId: string) {
+  const matrices = team ? [...team.people.flatMap((p) => p.matrix ?? []), team.unassigned] : [];
+  for (const matrix of matrices) {
+    for (const quadrant of QUADRANTS) {
+      const issue = matrix[quadrant].find((i) => i.id === issueId);
+      if (issue) return { quadrant, source: issue.quadrantSource };
+    }
+  }
+  return null;
+}
+
 function failingWith(error: Error): LinearSource {
   return { request: () => Promise.reject(error) };
 }
@@ -1408,18 +1411,6 @@ describe("the web app's board query", () => {
 
   /** A mutation's answer, whichever union member it is; codegen checks each fits. */
   type Answer = Record<string, { __typename: string; team?: TeamBoardData }>;
-
-  /** Where an issue sits on a TeamBoard answer, and who put it there. */
-  function placement(team: TeamBoardData | undefined, issueId: string) {
-    const matrices = team ? [...team.people.flatMap((p) => p.matrix ?? []), team.unassigned] : [];
-    for (const matrix of matrices) {
-      for (const quadrant of QUADRANTS) {
-        const issue = matrix[quadrant].find((i) => i.id === issueId);
-        if (issue) return { quadrant, source: issue.quadrantSource };
-      }
-    }
-    return null;
-  }
 
   it("changes the rules and answers with the team's board", async () => {
     const rules: QuadrantRulesInput = {
@@ -1445,7 +1436,7 @@ describe("the web app's board query", () => {
       quadrant: "DROP",
     });
     expect(overrideQuadrant?.__typename).toBe("OverrideSuccess");
-    expect(placement(overrideQuadrant?.team, "demo-issue-avg-1")).toEqual({
+    expect(placementOn(overrideQuadrant?.team, "demo-issue-avg-1")).toEqual({
       quadrant: "drop",
       source: "OVERRIDE",
     });
@@ -1453,7 +1444,7 @@ describe("the web app's board query", () => {
       issueId: "demo-issue-avg-1",
     });
     expect(clearOverride?.__typename).toBe("OverrideSuccess");
-    expect(placement(clearOverride?.team, "demo-issue-avg-1")).toMatchObject({ source: "RULE" });
+    expect(placementOn(clearOverride?.team, "demo-issue-avg-1")).toMatchObject({ source: "RULE" });
   });
 
   it("hands an issue to someone else, answering with the team's board planned again", async () => {
@@ -1554,5 +1545,20 @@ describe("Linear requests per query", () => {
       teams { people { matrix { counts { do } } } unassigned { counts { do } } }
     }`;
     expect(await linearRequests(everyTeam)).toEqual(["OpenIssues", "Teams", "TeamsMembers"]);
+  });
+
+  it("asks what blocks what only for teams that count blockers, in one request for all", async () => {
+    const everyTeam = `{
+      teams { people { matrix { counts { do } } } unassigned { counts { do } } backlogRot { rotting } }
+    }`;
+    const store = new Store(env.DB);
+    await store.setRules(DEMO_TEAM.id, { ...DEFAULT_RULES, blockersAreImportant: true });
+    await store.setRules(DEMO_OPS_TEAM.id, { ...DEFAULT_RULES, blockersAreImportant: true });
+    expect(await linearRequests(everyTeam)).toEqual([
+      "OpenBlockers",
+      "OpenIssues",
+      "Teams",
+      "TeamsMembers",
+    ]);
   });
 });

@@ -7,7 +7,6 @@ import DataLoader from "dataloader";
 import type { LinearPriority } from "./domain/quadrant";
 import { LinearInvalidInputError, type LinearSource } from "./linear/client";
 import {
-  type BlockingFragment,
   IssueByIdDocument,
   ReassignIssueDocument,
   type TeamSummaryFragment,
@@ -27,12 +26,8 @@ import {
 export type Team = TeamSummaryFragment;
 export type Viewer = ViewerQuery["viewer"];
 
-/**
- * An open issue as the matrix reads it: Linear's priority is an Int, but only ever 0–4. Whether it
- * blocks open work is known when it was fetched on its own; a team's issues leave it out, since
- * only teams that count blockers as important ask (`Workspace.blockerIds`).
- */
-export type TeamIssue = IssueCard & { priority: LinearPriority; blocking?: boolean };
+/** An open issue as the matrix reads it: Linear's priority is an Int, but only ever 0–4. */
+export type TeamIssue = IssueCard & { priority: LinearPriority };
 
 export interface TeamWork {
   /** Team members by name, then anyone else holding the team's issues, e.g. after moving teams. */
@@ -100,8 +95,7 @@ export class Workspace {
   async issue(id: string): Promise<(TeamIssue & { team: Team }) | null> {
     try {
       const { issues } = await this.linear.request(IssueByIdDocument, { id });
-      const [issue] = issues.nodes;
-      return issue ? withBlocking(issue) : null;
+      return (issues.nodes[0] as (TeamIssue & { team: Team }) | undefined) ?? null;
     } catch (error) {
       if (error instanceof LinearInvalidInputError) return null;
       throw error;
@@ -120,7 +114,7 @@ export class Workspace {
     const issue = issueUpdate.success ? issueUpdate.issue : null;
     if (!issue) return null;
     this.work.delete(issue.team.id);
-    return withBlocking(issue);
+    return issue as TeamIssue & { team: Team };
   }
 
   /**
@@ -215,15 +209,4 @@ export class Workspace {
           : this.linear.request(document, ...variables),
     };
   }
-}
-
-/** An issue fetched on its own, with whether it blocks open work in place of its relations. */
-function withBlocking<I extends IssueCard & BlockingFragment>({
-  relations,
-  ...issue
-}: I): TeamIssue & Omit<I, "relations"> {
-  return {
-    ...(issue as Omit<I, "relations"> & TeamIssue),
-    blocking: blocksOpenWork({ relations }),
-  };
 }

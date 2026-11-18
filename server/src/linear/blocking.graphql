@@ -1,7 +1,7 @@
 # Whether an issue blocks work that's still open. Linear keeps a "blocks" relation after the
 # blocked issue is done, and `relations` can't be filtered, so it's every relation with the other
-# issue's state. 20 covers any issue a person would hold; the rare one with more relations may be
-# missed. About 3.2 points a relation, so 65 an issue.
+# issue's state. 20 covers any issue a person would hold; `hasNextPage` flags the rare one with
+# more, whose open block may be past them. About 3.2 points a relation, so 65 an issue.
 fragment Blocking on Issue {
   relations(first: 20) {
     nodes {
@@ -11,6 +11,9 @@ fragment Blocking on Issue {
           type
         }
       }
+    }
+    pageInfo {
+      hasNextPage
     }
   }
 }

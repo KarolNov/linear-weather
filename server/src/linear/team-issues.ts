@@ -6,7 +6,7 @@ export type Assignee = NonNullable<IssueCard["assignee"]>;
 /** An open issue, with the team it belongs to. */
 export type OpenIssue = OpenIssuesQuery["issues"]["nodes"][number];
 
-// Linear's largest page. About 5 points per issue, so ~1,300 per page: well under the 10,000
+// Linear's largest page. About 5.6 points per issue, so ~1,400 per page: well under the 10,000
 // cap on a single query, and big pages mean fewer requests against the hourly request limit.
 export const PAGE_SIZE = 250;
 

@@ -23,6 +23,11 @@ export interface QuadrantRules {
   noDueDate: (typeof NO_DUE_DATE)[number];
   /** The team is flagged for backlog rot when more than this percent of its open issues are in Drop. */
   dropAlertPercent: number;
+  /**
+   * Linear statuses that mean someone is away: an entry matches a status whose label holds it, or
+   * whose emoji is among the entry's ("🌴🏖️" matches 🌴), ignoring case. Empty unless a team opts in.
+   */
+  awayStatuses: readonly string[];
 }
 
 export const DEFAULT_RULES: QuadrantRules = {
@@ -30,14 +35,31 @@ export const DEFAULT_RULES: QuadrantRules = {
   urgencyWindowDays: 14,
   noDueDate: "notUrgent",
   dropAlertPercent: 40,
+  awayStatuses: [],
 };
+
+/** Whether two teams' rules are the same, lists compared by what they hold. */
+export function sameRules(a: QuadrantRules, b: QuadrantRules): boolean {
+  return (Object.keys(DEFAULT_RULES) as (keyof QuadrantRules)[]).every((key) => {
+    const [x, y] = [a[key], b[key]];
+    return Array.isArray(x) && Array.isArray(y)
+      ? x.length === y.length && x.every((item, i) => item === y[i])
+      : x === y;
+  });
+}
+
+/** The most away statuses a team can list. */
+export const MAX_AWAY_STATUSES = 10;
+
+/** The longest away status, in characters: about as long as a Linear status label. */
+export const MAX_AWAY_STATUS_LENGTH = 40;
 
 /** The longest urgency window a team can pick. Past a year, every dated issue is urgent anyway. */
 export const MAX_URGENCY_WINDOW_DAYS = 365;
 
 /** Something wrong with proposed rules, on the field a settings form would mark. */
 export interface RuleProblem {
-  field: "importantFrom" | "urgencyWindowDays" | "dropAlertPercent";
+  field: "importantFrom" | "urgencyWindowDays" | "dropAlertPercent" | "awayStatuses";
   message: string;
 }
 
@@ -52,6 +74,7 @@ export function parseRules(
   input: RulesInput,
 ): { rules: QuadrantRules; problems?: never } | { rules?: never; problems: RuleProblem[] } {
   const { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent } = input;
+  const awayStatuses = tidyAwayStatuses(input.awayStatuses);
   const problems: RuleProblem[] = [];
   if (!isImportantFrom(importantFrom)) {
     problems.push({
@@ -75,10 +98,41 @@ export function parseRules(
       message: "The Drop alert must be 1 to 99 whole percent.",
     });
   }
+  if (awayStatuses.length > MAX_AWAY_STATUSES) {
+    problems.push({
+      field: "awayStatuses",
+      message: `List at most ${MAX_AWAY_STATUSES} away statuses.`,
+    });
+  }
+  if (awayStatuses.some((status) => [...status].length > MAX_AWAY_STATUS_LENGTH)) {
+    problems.push({
+      field: "awayStatuses",
+      message: `An away status is at most ${MAX_AWAY_STATUS_LENGTH} characters.`,
+    });
+  }
   if (problems.length === 0 && isImportantFrom(importantFrom)) {
-    return { rules: { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent } };
+    return {
+      rules: { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent, awayStatuses },
+    };
   }
   return { problems };
+}
+
+/**
+ * Away statuses as a team keeps them: trimmed, blanks dropped, and each kept once, ignoring case,
+ * since matching does.
+ */
+function tidyAwayStatuses(statuses: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const tidy: string[] = [];
+  for (const status of statuses) {
+    const trimmed = status.trim();
+    const key = trimmed.toLowerCase();
+    if (trimmed === "" || seen.has(key)) continue;
+    seen.add(key);
+    tidy.push(trimmed);
+  }
+  return tidy;
 }
 
 function isImportantFrom(priority: number): priority is QuadrantRules["importantFrom"] {

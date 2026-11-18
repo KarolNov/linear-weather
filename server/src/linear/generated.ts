@@ -8,7 +8,7 @@ export type IssueByIdQueryVariables = Exact<{
 }>;
 
 
-export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } }> } };
+export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } }> } };
 
 export type ReassignIssueMutationVariables = Exact<{
   id: string;
@@ -16,9 +16,11 @@ export type ReassignIssueMutationVariables = Exact<{
 }>;
 
 
-export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } } | null } };
+export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } } | null } };
 
-export type IssueCardFragment = { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } };
+export type IssueCardFragment = { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } };
+
+export type PersonFragment = { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null };
 
 export type OpenIssuesQueryVariables = Exact<{
   teamIds: Array<string> | string;
@@ -27,7 +29,7 @@ export type OpenIssuesQueryVariables = Exact<{
 }>;
 
 
-export type OpenIssuesQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string }, assignee: { id: string, name: string, avatarUrl: string | null } | null, state: { name: string, type: string } }>, pageInfo: { hasNextPage: boolean, endCursor: string | null } } };
+export type OpenIssuesQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } }>, pageInfo: { hasNextPage: boolean, endCursor: string | null } } };
 
 export type TeamsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -42,7 +44,7 @@ export type TeamsMembersQueryVariables = Exact<{
 }>;
 
 
-export type TeamsMembersQuery = { teams: { nodes: Array<{ id: string, members: { nodes: Array<{ id: string, name: string, avatarUrl: string | null }> } }> } };
+export type TeamsMembersQuery = { teams: { nodes: Array<{ id: string, members: { nodes: Array<{ id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null }> } }> } };
 
 export type ViewerQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -67,6 +69,17 @@ export class TypedDocumentString<TResult, TVariables>
     return this.value;
   }
 }
+export const PersonFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
+    fragment Person on User {
+  id
+  name
+  avatarUrl
+  statusEmoji
+  statusLabel
+  statusUntilAt
+  timezone
+}
+    `, {"fragmentName":"Person"}) as unknown as TypedDocumentString<PersonFragment, unknown>;
 export const IssueCardFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
     fragment IssueCard on Issue {
   id
@@ -77,16 +90,22 @@ export const IssueCardFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
   priority
   estimate
   assignee {
-    id
-    name
-    avatarUrl
+    ...Person
   }
   state {
     name
     type
   }
 }
-    `, {"fragmentName":"IssueCard"}) as unknown as TypedDocumentString<IssueCardFragment, unknown>;
+    fragment Person on User {
+  id
+  name
+  avatarUrl
+  statusEmoji
+  statusLabel
+  statusUntilAt
+  timezone
+}`, {"fragmentName":"IssueCard"}) as unknown as TypedDocumentString<IssueCardFragment, unknown>;
 export const TeamSummaryFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
     fragment TeamSummary on Team {
   id
@@ -114,14 +133,21 @@ export const IssueByIdDocument = /*#__PURE__*/ new TypedDocumentString(`
   priority
   estimate
   assignee {
-    id
-    name
-    avatarUrl
+    ...Person
   }
   state {
     name
     type
   }
+}
+fragment Person on User {
+  id
+  name
+  avatarUrl
+  statusEmoji
+  statusLabel
+  statusUntilAt
+  timezone
 }
 fragment TeamSummary on Team {
   id
@@ -149,14 +175,21 @@ export const ReassignIssueDocument = /*#__PURE__*/ new TypedDocumentString(`
   priority
   estimate
   assignee {
-    id
-    name
-    avatarUrl
+    ...Person
   }
   state {
     name
     type
   }
+}
+fragment Person on User {
+  id
+  name
+  avatarUrl
+  statusEmoji
+  statusLabel
+  statusUntilAt
+  timezone
 }
 fragment TeamSummary on Team {
   id
@@ -194,14 +227,21 @@ export const OpenIssuesDocument = /*#__PURE__*/ new TypedDocumentString(`
   priority
   estimate
   assignee {
-    id
-    name
-    avatarUrl
+    ...Person
   }
   state {
     name
     type
   }
+}
+fragment Person on User {
+  id
+  name
+  avatarUrl
+  statusEmoji
+  statusLabel
+  statusUntilAt
+  timezone
 }`) as unknown as TypedDocumentString<OpenIssuesQuery, OpenIssuesQueryVariables>;
 export const TeamsDocument = /*#__PURE__*/ new TypedDocumentString(`
     query Teams {
@@ -230,15 +270,21 @@ export const TeamsMembersDocument = /*#__PURE__*/ new TypedDocumentString(`
       id
       members(first: 250) {
         nodes {
-          id
-          name
-          avatarUrl
+          ...Person
         }
       }
     }
   }
 }
-    `) as unknown as TypedDocumentString<TeamsMembersQuery, TeamsMembersQueryVariables>;
+    fragment Person on User {
+  id
+  name
+  avatarUrl
+  statusEmoji
+  statusLabel
+  statusUntilAt
+  timezone
+}`) as unknown as TypedDocumentString<TeamsMembersQuery, TeamsMembersQueryVariables>;
 export const ViewerDocument = /*#__PURE__*/ new TypedDocumentString(`
     query Viewer {
   viewer {

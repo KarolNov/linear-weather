@@ -2,8 +2,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { LinearClient } from "./client";
 import { fetchOpenIssues, type OpenIssue, PAGE_SIZE } from "./team-issues";
 
-const ada = { id: "u-ada", name: "Ada", avatarUrl: null };
-const grace = { id: "u-grace", name: "Grace", avatarUrl: "https://example.com/grace.png" };
+const ada = {
+  id: "u-ada",
+  name: "Ada",
+  avatarUrl: null,
+  statusEmoji: null,
+  statusLabel: null,
+  statusUntilAt: null,
+  timezone: null,
+};
+const grace = {
+  id: "u-grace",
+  name: "Grace",
+  avatarUrl: "https://example.com/grace.png",
+  statusEmoji: null,
+  statusLabel: null,
+  statusUntilAt: null,
+  timezone: null,
+};
 
 function issue(n: number, assignee: OpenIssue["assignee"]): OpenIssue {
   return {

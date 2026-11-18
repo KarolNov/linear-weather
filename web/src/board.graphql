@@ -29,6 +29,7 @@ fragment TeamBoard on Team {
     urgencyWindowDays
     noDueDate
     dropAlertPercent
+    awayStatuses
   }
   weather {
     kind

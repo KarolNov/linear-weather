@@ -269,6 +269,11 @@ type QuadrantPoints {
 """How a team sorts issues into quadrants."""
 type QuadrantRules {
   """
+  Linear statuses that mean someone is away: an entry matches a status whose label holds it, or whose emoji is among the entry's, ignoring case, e.g. "vacation", "🌴" or "🌴🏖️✈️". Someone with one is away from today until the status clears (in their time zone), or for this week when it never does. Empty unless the team opts in.
+  """
+  awayStatuses: [String!]!
+
+  """
   The team is flagged for backlog rot when more than this percent of its open issues are in Drop.
   """
   dropAlertPercent: Int!
@@ -287,6 +292,11 @@ type QuadrantRules {
 
 """A team's new rules, all of them: the ones left as they were included."""
 input QuadrantRulesInput {
+  """
+  Linear statuses that mean someone is away: at most 10, each at most 40 characters. Trimmed, with blanks and repeats dropped. Left out, they stay as they were.
+  """
+  awayStatuses: [String!]
+
   """
   Flag backlog rot when more than this percent of open issues are in Drop: 1 to 99. Left out, it stays as it was.
   """
@@ -539,7 +549,7 @@ type User {
   organization: Organization!
 
   """
-  Time off not over yet, soonest first: at most 8. The same on every team. Away all of today, their weather is AWAY; the forecast counts the working days they miss each week.
+  Time off added on the board, not over yet, soonest first: at most 8. The same on every team. Away all of today, their weather is AWAY; the forecast counts the working days they miss each week. A Linear status the team lists as away (QuadrantRules.awayStatuses) counts as time off too, but isn't listed here: it's changed in Linear, and the weather's reason names it.
   """
   timeOff: [TimeOff!]!
 

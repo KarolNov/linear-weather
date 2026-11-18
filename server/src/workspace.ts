@@ -33,7 +33,7 @@ export interface TeamWork {
   byAssignee: Map<string | null, TeamIssue[]>;
 }
 
-// The members query costs ~330 complexity points a team, so 10 teams stay well under Linear's
+// The members query costs ~430 complexity points a team, so 10 teams stay well under Linear's
 // 10,000 cap on one query. Issues are paged at a fixed cost however many teams they cover, so
 // one batch takes every team. `teamWork` already caches each team, so the loaders only batch.
 const TEAMS_PER_BATCH = 10;

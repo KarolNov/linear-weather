@@ -17,6 +17,7 @@ describe("Store", () => {
       urgencyWindowDays: 7,
       noDueDate: "urgent",
       dropAlertPercent: 25,
+      awayStatuses: ["🌴", "vacation"],
     } as const;
     await store().setRules("team-a", rules);
     expect(await store().rules(["team-a"])).toEqual(new Map([["team-a", rules]]));

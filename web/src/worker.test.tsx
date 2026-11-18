@@ -73,6 +73,7 @@ const defaultRules: Rules = {
   urgencyWindowDays: 14,
   noDueDate: "NOT_URGENT",
   dropAlertPercent: 40,
+  awayStatuses: [],
 };
 
 const healthyBacklog = { rotting: false, reason: "1 of 4 open issues (25%) are in Drop" };

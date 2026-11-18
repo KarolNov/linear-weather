@@ -6,12 +6,22 @@ import {
   type BoardIssueFragment,
   type BoardQuery,
   type MatrixFragment,
+  type Quadrant as QuadrantEnum,
   type SuggestionFragment,
   type TeamBoardFragment,
   type WeatherKind,
 } from "./generated";
 
-export type Quadrant = "do" | "schedule" | "delegate" | "drop";
+/** A quadrant as the board names it: the server's Quadrant enum, lowercase. */
+export type Quadrant = Lowercase<QuadrantEnum>;
+
+/** Each quadrant as the server's Quadrant enum spells it, for a mutation's variables. */
+export const QUADRANT_ENUM: Record<Quadrant, QuadrantEnum> = {
+  do: "DO",
+  schedule: "SCHEDULE",
+  delegate: "DELEGATE",
+  drop: "DROP",
+};
 
 export const QUADRANTS: Quadrant[] = ["do", "schedule", "delegate", "drop"];
 
@@ -54,10 +64,10 @@ export type Weather = TeamBoardData["weather"];
  * A person's weather, with their overdue urgent (Do or Delegate) issues, which keep them in a
  * storm whatever is handed over.
  */
-export type PersonWeather = TeamPerson["weather"];
+export type PersonWeather = NonNullable<TeamPerson["weather"]>;
 
 /** One week ahead: the weather expected by its end (`endsOn`), and what turns urgent during it. */
-export type ForecastWeek = TeamPerson["forecast"][number];
+export type ForecastWeek = NonNullable<TeamPerson["forecast"]>[number];
 
 /** Hand one issue from one person to another, to even out urgent load. */
 export type Suggestion = SuggestionFragment;
@@ -109,6 +119,12 @@ export interface Board {
   people: PersonMatrix[];
 }
 
+/** A GraphQL response's body. */
+export interface GraphQLResponse<T> {
+  data?: T | null;
+  errors?: { message: string; path?: (string | number)[]; extensions?: Record<string, unknown> }[];
+}
+
 /** Why the board couldn't load: Linear's rate limit (with when it resets), or anything else. */
 export type BoardError = { kind: "rate_limited"; resetAt: number | null } | { kind: "unavailable" };
 
@@ -124,15 +140,13 @@ export function teamBoard({
   unassigned,
   ...team
 }: TeamBoardData): Pick<Board, "team" | "people"> {
-  const matrices: PersonMatrix[] = people.map(
-    ({ matrix, weather, forecast, capacity, timeOff, ...assignee }) => ({
-      assignee,
-      capacity,
-      timeOff,
-      matrix,
-      weather,
-      forecast,
-    }),
+  // The server nulls a person's matrix, weather or forecast only alongside an error, which the
+  // board reports instead; someone without them has nothing to draw.
+  const matrices: PersonMatrix[] = people.flatMap(
+    ({ matrix, weather, forecast, capacity, timeOff, ...assignee }) =>
+      matrix && weather && forecast
+        ? [{ assignee, capacity, timeOff, matrix, weather, forecast }]
+        : [],
   );
   if (total(unassigned) > 0) {
     matrices.push({

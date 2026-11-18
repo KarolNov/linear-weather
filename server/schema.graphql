@@ -290,6 +290,14 @@ type QuadrantRules {
   urgencyWindowDays: Int!
 }
 
+"""A QuadrantRulesInput field that can be at fault."""
+enum QuadrantRulesField {
+  awayStatuses
+  dropAlertPercent
+  importantFrom
+  urgencyWindowDays
+}
+
 """A team's new rules, all of them: the ones left as they were included."""
 input QuadrantRulesInput {
   """
@@ -354,7 +362,7 @@ type ReassignSuccess {
 """One thing wrong with proposed rules."""
 type RuleProblem {
   """The QuadrantRulesInput field at fault."""
-  field: String!
+  field: QuadrantRulesField!
   message: String!
 }
 
@@ -411,7 +419,7 @@ type Team {
 
     """1 to 12."""
     weeks: Int! = 4
-  ): TeamForecast!
+  ): TeamForecast
   id: ID!
 
   """The prefix of its issue identifiers, e.g. ENG."""
@@ -535,7 +543,7 @@ type User {
 
     """1 to 12."""
     weeks: Int! = 4
-  ): [ForecastWeek!]!
+  ): [ForecastWeek!]
   id: ID!
 
   """
@@ -544,7 +552,7 @@ type User {
   matrix(
     """Defaults to the team this user was reached through, e.g. Team.people."""
     teamId: ID
-  ): Matrix!
+  ): Matrix
   name: String!
   organization: Organization!
 
@@ -560,7 +568,7 @@ type User {
 
     """Defaults to the team this user was reached through, e.g. Team.people."""
     teamId: ID
-  ): Weather!
+  ): Weather
 }
 
 """

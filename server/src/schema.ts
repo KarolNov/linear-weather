@@ -638,6 +638,8 @@ UserRef.implement({
           : (await (await signedIn(context)).viewer()).organization,
     }),
     matrix: t.field({
+      // Nullable: a bad argument (no team, too many weeks) fails this field, not its parent.
+      nullable: true,
       type: MatrixRef,
       description: "Their open issues in a team, sorted into quadrants by the team's rules.",
       args: {
@@ -652,6 +654,8 @@ UserRef.implement({
       },
     }),
     weather: t.field({
+      // Nullable: a bad argument (no team, too many weeks) fails this field, not its parent.
+      nullable: true,
       type: WeatherRef,
       description: "Their urgent load in a team now, against the team's average.",
       args: {
@@ -673,6 +677,8 @@ UserRef.implement({
       },
     }),
     forecast: t.field({
+      // Nullable: a bad argument (no team, too many weeks) fails this field, not its parent.
+      nullable: true,
       type: [ForecastWeekRef],
       description:
         "Their weather in a team for the weeks ahead, as dated issues turn urgent. The first week starts today.",
@@ -763,6 +769,8 @@ TeamRef.implement({
         (await teamWeatherOf(context, team.id, args.metric)).team,
     }),
     forecast: t.field({
+      // Nullable: a bad argument (no team, too many weeks) fails this field, not its parent.
+      nullable: true,
       type: TeamForecastRef,
       description:
         "How evenly urgent load is expected to be spread in the weeks ahead, and the worst week.",
@@ -1011,10 +1019,25 @@ const TimeOffSuccessRef = builder.objectRef<TimeOffSuccess>("TimeOffSuccess").im
   }),
 });
 
+const RULE_PROBLEM_FIELDS = [
+  "importantFrom",
+  "urgencyWindowDays",
+  "dropAlertPercent",
+  "awayStatuses",
+] as const satisfies readonly RuleProblem["field"][];
+
+const QuadrantRulesFieldEnum = builder.enumType("QuadrantRulesField", {
+  description: "A QuadrantRulesInput field that can be at fault.",
+  values: RULE_PROBLEM_FIELDS,
+});
+
 const RuleProblemRef = builder.objectRef<RuleProblem>("RuleProblem").implement({
   description: "One thing wrong with proposed rules.",
   fields: (t) => ({
-    field: t.exposeString("field", { description: "The QuadrantRulesInput field at fault." }),
+    field: t.expose("field", {
+      type: QuadrantRulesFieldEnum,
+      description: "The QuadrantRulesInput field at fault.",
+    }),
     message: t.exposeString("message"),
   }),
 });

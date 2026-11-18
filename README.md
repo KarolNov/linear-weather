@@ -62,7 +62,7 @@ Queries to Linear live in `.graphql` files under `server/src/` (e.g. `server/src
 Linear also publishes a ready-made, typed SDK ([`@linear/sdk`](https://github.com/linear/linear/tree/master/packages/sdk)), generated from that same schema. We don't use it, because writing the queries and running codegen ourselves is part of what this project is for. It's also a fair trade on cost: our own queries fetch exactly the fields we need, and Linear's rate-limiting guide recommends custom queries over the SDK for fetching many issues.
 
 - After adding or changing a query, run `pnpm --filter server codegen` and commit what it generates. `pnpm codegen:check` fails if the committed output is stale.
-- The same command prints our own schema to `server/schema.graphql`. After changing `server/src/schema.ts` or the board's operations in `web/src/*.graphql`, run it and then `pnpm --filter web codegen`, and commit both.
+- The same command prints our own schema to `server/schema.graphql`. After changing `server/src/schema.ts` or the board's operations in `web/src/*.graphql`, run `pnpm codegen`, which runs both the server's codegen and web's (`pnpm --filter web codegen`), and commit what they generate.
 - The schema is fetched from Linear's SDK repo at a pinned commit (`LINEAR_SCHEMA_COMMIT` in `server/codegen.ts`). To pick up schema changes, bump the commit and rerun codegen.
 
 Linear limits each user to 5,000 requests and 2,000,000 [complexity points](https://linear.app/developers/rate-limiting) an hour, and rejects any single query over 10,000 points. These limits shaped the open-issues query:

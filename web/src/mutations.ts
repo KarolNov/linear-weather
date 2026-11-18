@@ -4,7 +4,9 @@
 
 import {
   type CalendarDate,
+  type GraphQLResponse,
   listOf,
+  QUADRANT_ENUM,
   type Quadrant,
   type Rules,
   type Suggestion,
@@ -14,6 +16,7 @@ import {
   AddTimeOffDocument,
   ClearOverrideDocument,
   OverrideQuadrantDocument,
+  type QuadrantRulesField,
   ReassignIssueDocument,
   RemoveTimeOffDocument,
   SetCapacityDocument,
@@ -37,8 +40,7 @@ export const TEAM_QUERY = TeamDocument;
 
 /** Something wrong with proposed rules, on the field the form should mark. */
 export interface RuleProblem {
-  /** The rules field at fault, e.g. `importantFrom`. */
-  field: string;
+  field: QuadrantRulesField;
   message: string;
 }
 
@@ -49,12 +51,6 @@ export interface RuleProblem {
 export type MutationResult =
   | { ok: true; team: TeamBoardData | null }
   | { ok: false; message: string; problems: RuleProblem[] };
-
-/** A GraphQL response's body. */
-interface GraphQLResponse<T> {
-  data?: T | null;
-  errors?: { message: string; path?: (string | number)[] }[];
-}
 
 /** What a mutation field answers, whichever union member it is. */
 interface MutationPayload {
@@ -190,10 +186,7 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
     updateRules: (teamId, rules) => queued(UPDATE_RULES_MUTATION, { teamId, input: rules }),
     placeIssue: (issueId, quadrant) =>
       quadrant
-        ? queued(OVERRIDE_MUTATION, {
-            issueId,
-            quadrant: quadrant.toUpperCase() as Uppercase<Quadrant>,
-          })
+        ? queued(OVERRIDE_MUTATION, { issueId, quadrant: QUADRANT_ENUM[quadrant] })
         : queued(CLEAR_OVERRIDE_MUTATION, { issueId }),
     reassign: (issueId, userId) => queued(REASSIGN_MUTATION, { issueId, userId }),
     setCapacity: (teamId, userId, factor) =>

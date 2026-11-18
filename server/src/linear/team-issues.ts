@@ -1,3 +1,4 @@
+import type { CalendarDate } from "../domain/quadrant";
 import type { LinearSource } from "./client";
 import {
   type BlockingFragment,
@@ -82,7 +83,7 @@ export function blocksOpenWork(issue: { id: string } & BlockingFragment): boolea
 export function fetchCurrentCycleIssues(
   linear: LinearSource,
   teamIds: readonly string[],
-): Promise<{ id: string; team: { id: string } }[]> {
+): Promise<{ id: string; team: { id: string }; cycle?: { endsAt: string } | null }[]> {
   return allPages((after) =>
     linear
       .request(CurrentCycleIssuesDocument, { teamIds: [...teamIds], first: CYCLE_PAGE_SIZE, after })
@@ -90,9 +91,14 @@ export function fetchCurrentCycleIssues(
   );
 }
 
-/** Whether the issue is in its team's cycle that's running now. */
-export function inActiveCycle(issue: InCycleFragment): boolean {
-  return issue.cycle?.isActive === true;
+/** The last day of the issue's cycle, if that's running now; else null. */
+export function activeCycleEndsOn(issue: InCycleFragment): CalendarDate | null {
+  return issue.cycle?.isActive ? cycleLastDay(issue.cycle.endsAt) : null;
+}
+
+/** A cycle's last day, as the board's `today` reads days (UTC): the day of its last moment. */
+export function cycleLastDay(endsAt: string): CalendarDate {
+  return new Date(Date.parse(endsAt) - 1).toISOString().slice(0, 10);
 }
 
 /** Follows a Linear connection's cursor to its last page. */

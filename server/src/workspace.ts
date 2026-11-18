@@ -4,7 +4,7 @@
 // batches them: one members query and one issues query cover every team on the page.
 
 import DataLoader from "dataloader";
-import type { LinearPriority } from "./domain/quadrant";
+import type { CalendarDate, LinearPriority } from "./domain/quadrant";
 import { LinearInvalidInputError, type LinearSource } from "./linear/client";
 import {
   type BlockingFragment,
@@ -20,6 +20,7 @@ import {
 import {
   type Assignee,
   blocksOpenWork,
+  cycleLastDay,
   fetchCurrentCycleIssues,
   fetchOpenBlockers,
   fetchOpenIssues,
@@ -72,7 +73,7 @@ export class Workspace {
   private readonly blockers = new DataLoader<string, ReadonlySet<string>>((teamIds) =>
     this.loadBlockers(teamIds),
   );
-  private readonly cycles = new DataLoader<string, ReadonlySet<string>>((teamIds) =>
+  private readonly cycles = new DataLoader<string, ReadonlyMap<string, CalendarDate>>((teamIds) =>
     this.loadCurrentCycles(teamIds),
   );
 
@@ -140,10 +141,11 @@ export class Workspace {
   }
 
   /**
-   * The ids of a team's open issues in its current cycle. A separate query from the team's issues,
-   * so teams that don't count the cycle as urgent don't pay for it on every issue.
+   * A team's open issues in its current cycle, by id, with the cycle's last day. A separate query
+   * from the team's issues, so teams that don't count the cycle as urgent don't pay for it on
+   * every issue.
    */
-  currentCycleIds(teamId: string): Promise<ReadonlySet<string>> {
+  currentCycleEnds(teamId: string): Promise<ReadonlyMap<string, CalendarDate>> {
     return this.cycles.load(teamId);
   }
 
@@ -220,10 +222,16 @@ export class Workspace {
   }
 
   /** Each team's open issues in its current cycle, in the order asked, from one paged query. */
-  private async loadCurrentCycles(teamIds: readonly string[]): Promise<ReadonlySet<string>[]> {
-    const byTeam = new Map<string, Set<string>>(teamIds.map((id) => [id, new Set()]));
-    for (const issue of await fetchCurrentCycleIssues(this.wanted(teamIds), teamIds)) {
-      byTeam.get(issue.team.id)?.add(issue.id);
+  private async loadCurrentCycles(
+    teamIds: readonly string[],
+  ): Promise<ReadonlyMap<string, CalendarDate>[]> {
+    const byTeam = new Map(teamIds.map((id) => [id, new Map<string, CalendarDate>()]));
+    for (const { id, team, cycle } of await fetchCurrentCycleIssues(
+      this.wanted(teamIds),
+      teamIds,
+    )) {
+      // Filtered to an active cycle, so it has one.
+      if (cycle) byTeam.get(team.id)?.set(id, cycleLastDay(cycle.endsAt));
     }
     return [...byTeam.values()];
   }

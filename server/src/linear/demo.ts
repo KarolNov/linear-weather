@@ -215,12 +215,21 @@ function relationsOf(identifier: string): BlockingFragment["relations"] {
  * - Clint's farmhouse roof (Low, no due date, Drop) moves to Delegate.
  * - Melinda's cavalry refresher (High, due in 20 days, Schedule) moves to Do.
  * - Tony's arc reactor, Mark XLII suits and JARVIS work are urgent already, so they stay put.
+ * The cycle ends in `CYCLE_DAYS_LEFT` days, so the Forecast shows them leaving Do after that.
  */
 const IN_CYCLE = new Set(["AVG-1", "AVG-2", "AVG-4", "AVG-16", "AVG-34", "AVG-43", "OPS-6"]);
 
 /** An issue's cycle as Linear gives it: here, the current one or none. */
-function cycleOf(identifier: string): InCycleFragment["cycle"] {
-  return IN_CYCLE.has(identifier) ? { isActive: true } : null;
+function cycleOf(identifier: string, today: CalendarDate): InCycleFragment["cycle"] {
+  return IN_CYCLE.has(identifier) ? { isActive: true, endsAt: cycleEndsAt(today) } : null;
+}
+
+/** Days until the demo's current cycle ends, today included. */
+const CYCLE_DAYS_LEFT = 10;
+
+/** When the demo's current cycle ends: midnight UTC after its last day. */
+function cycleEndsAt(today: CalendarDate): string {
+  return `${addDays(today, CYCLE_DAYS_LEFT)}T00:00:00.000Z`;
 }
 
 /**
@@ -376,7 +385,7 @@ export class DemoLinear implements LinearSource {
         .map((issue) => ({
           ...issue,
           relations: relationsOf(issue.identifier),
-          cycle: cycleOf(issue.identifier),
+          cycle: cycleOf(issue.identifier, today),
           team: { id: teamId, name, key },
         })),
     );
@@ -406,7 +415,11 @@ export class DemoLinear implements LinearSource {
     const nodes = [teamIds].flat().flatMap((teamId) =>
       this.teamIssues(today, teamId)
         .filter((issue) => IN_CYCLE.has(issue.identifier))
-        .map((issue) => ({ id: issue.id, team: { id: teamId } })),
+        .map((issue) => ({
+          id: issue.id,
+          team: { id: teamId },
+          cycle: { endsAt: cycleEndsAt(today) },
+        })),
     );
     return {
       issues: { nodes, pageInfo: { hasNextPage: false, endCursor: null } },
@@ -457,7 +470,7 @@ export class DemoLinear implements LinearSource {
           ? {
               ...issue,
               relations: relationsOf(issue.identifier),
-              cycle: cycleOf(issue.identifier),
+              cycle: cycleOf(issue.identifier, this.today()),
               team: { id: teamId, name, key },
             }
           : null,

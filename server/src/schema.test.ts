@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { graphql } from "graphql";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 // The web app's operations, typed by codegen against schema.graphql; running them here checks
 // they also load what the board expects.
 import {
@@ -797,6 +797,55 @@ describe("mutations", () => {
     expect(overrideQuadrant.issue).toMatchObject({
       placementReason:
         "Placed by hand; the rules say Delegate (Low priority, no due date, in the current cycle)",
+    });
+  });
+
+  it("sorts the board without the cycle when Linear can't say what's in it", async () => {
+    await new Store(env.DB).setRules(DEMO_TEAM.id, {
+      ...DEFAULT_RULES,
+      currentCycleIsUrgent: true,
+    });
+    const demo = new DemoLinear({ today });
+    const linear: LinearSource = {
+      request: (document, ...rest) =>
+        /\bquery CurrentCycleIssues\b/.test(document.toString())
+          ? Promise.reject(new Error("Linear API error: something broke"))
+          : demo.request(document, ...rest),
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await run(TEAM_QUERY, { teamId: DEMO_TEAM.id }, { linear });
+      expect(result.errors).toBeUndefined();
+      const { team } = result.data as { team: Parameters<typeof placementOn>[0] };
+      // Steve's training plan stays in Schedule, as without the rule.
+      expect(placementOn(team ?? undefined, "demo-issue-avg-16")?.quadrant).toBe("schedule");
+      expect(warn).toHaveBeenCalledWith(
+        `Couldn't tell which of team ${DEMO_TEAM.id}'s issues are in the current cycle`,
+        expect.any(Error),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("places a reassigned issue by its own cycle, when the team counts it", async () => {
+    await new Store(env.DB).setRules(DEMO_TEAM.id, {
+      ...DEFAULT_RULES,
+      currentCycleIsUrgent: true,
+    });
+    // AVG-43, Clint's farmhouse roof: Low priority, undated, in the cycle.
+    const { reassignIssue } = await data<{
+      reassignIssue: { issue: { quadrant: string; placementReason: string } };
+    }>(
+      `mutation {
+        reassignIssue(issueId: "demo-issue-avg-43", userId: "demo-user-wanda") {
+          ... on ReassignSuccess { issue { quadrant placementReason } }
+        }
+      }`,
+    );
+    expect(reassignIssue.issue).toEqual({
+      quadrant: "DELEGATE",
+      placementReason: "Low priority, no due date, in the current cycle",
     });
   });
 

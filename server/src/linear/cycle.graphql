@@ -1,13 +1,15 @@
-# Whether an issue is in its team's cycle that's running now: Linear works out `isActive` from the
-# cycle's start and end. A nested object and a field, so about 1.1 points an issue.
+# Whether an issue is in its team's cycle that's running now (Linear works out `isActive` from the
+# cycle's start and end), and when that ends. A nested object and two fields, about 1.2 points.
 fragment InCycle on Issue {
   cycle {
     isActive
+    endsAt
   }
 }
 
 # The open issues in these teams that are in their team's current cycle. Only asked when a team
-# counts those as urgent. Just ids and teams, about 1.2 points an issue, so pages of 250.
+# counts those as urgent. Just ids, teams and the cycle's end, about 1.3 points an issue, so pages
+# of 250.
 query CurrentCycleIssues($teamIds: [ID!]!, $first: Int!, $after: String) {
   issues(
     first: $first
@@ -22,6 +24,9 @@ query CurrentCycleIssues($teamIds: [ID!]!, $first: Int!, $after: String) {
       id
       team {
         id
+      }
+      cycle {
+        endsAt
       }
     }
     pageInfo {

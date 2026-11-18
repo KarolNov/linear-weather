@@ -17,6 +17,7 @@ describe("place", () => {
         quadrantSource: "rule",
         placementReason: "High priority, due in 43 days",
         becomesUrgentOn: "2026-11-17",
+        urgentOn: expect.any(Function),
       },
     );
   });

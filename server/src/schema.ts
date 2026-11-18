@@ -16,6 +16,7 @@ import {
 import { buildMatrix, counts, type Matrix, place, points } from "./domain/matrix";
 import {
   type CalendarDate,
+  type ClassifiableIssue,
   MAX_AWAY_STATUS_LENGTH,
   MAX_AWAY_STATUSES,
   MAX_URGENCY_WINDOW_DAYS,
@@ -34,7 +35,7 @@ import {
   type Weather,
 } from "./domain/weather";
 import { LinearAuthError, LinearForbiddenError, LinearRateLimitError } from "./linear/client";
-import { type Assignee, blocksOpenWork, inActiveCycle } from "./linear/team-issues";
+import { type Assignee, activeCycleEndsOn, blocksOpenWork } from "./linear/team-issues";
 import type { Placements } from "./placements";
 import type { SingleIssue, Team, TeamIssue, Viewer, Workspace } from "./workspace";
 
@@ -133,28 +134,28 @@ function blockersOf(
 }
 
 /**
- * The ids of a team's open issues in its current cycle, when its rules count those as urgent;
- * else null.
+ * A team's open issues in its current cycle, each with the cycle's last day, when its rules count
+ * those as urgent; else null.
  */
 function currentCycleOf(
   context: GraphQLContext,
   workspace: Workspace,
   teamId: string,
-): Promise<ReadonlySet<string> | null> {
+): Promise<ReadonlyMap<string, CalendarDate> | null> {
   return lookUp(context, teamId, {
     key: "cycle",
     wanted: (rules) => rules.currentCycleIsUrgent,
-    load: () => workspace.currentCycleIds(teamId),
+    load: () => workspace.currentCycleEnds(teamId),
     failure: "are in the current cycle",
   });
 }
 
 /**
- * Some of a team's issue ids that only an opted-in rule reads; else null. Asking Linear costs a
+ * What only an opted-in rule reads about a team's issues; else null. Asking Linear costs a
  * query, so only teams that use the rule do, once a request. Null too when Linear can't say, so
  * the team is sorted without that rule rather than its board failing.
  */
-function lookUp(
+function lookUp<T>(
   context: GraphQLContext,
   teamId: string,
   {
@@ -165,11 +166,11 @@ function lookUp(
   }: {
     key: string;
     wanted: (rules: QuadrantRules) => boolean;
-    load: () => Promise<ReadonlySet<string>>;
+    load: () => Promise<T>;
     /** What couldn't be told about the issues, for the log: "Couldn't tell which … {failure}". */
     failure: string;
   },
-): Promise<ReadonlySet<string> | null> {
+): Promise<T | null> {
   return once(context, `${key}:${teamId}`, async () => {
     if (!wanted(await context.placements.rules(teamId))) return null;
     try {
@@ -191,13 +192,25 @@ function lookUp(
 function withLookups<I extends { id: string }>(
   issue: I,
   blockers: ReadonlySet<string> | null,
-  cycle: ReadonlySet<string> | null,
-): I & { blocking?: boolean; inCurrentCycle?: boolean } {
+  cycle: ReadonlyMap<string, CalendarDate> | null,
+): I & Lookups {
+  // Most teams use neither rule: leave their issues as they are.
+  if (!blockers && !cycle) return issue;
   return {
     ...issue,
     ...(blockers && { blocking: blockers.has(issue.id) }),
-    ...(cycle && { inCurrentCycle: cycle.has(issue.id) }),
+    ...(cycle && inCycle(cycle.get(issue.id) ?? null)),
   };
+}
+
+/** What a lookup adds to an issue for the rules to read. */
+type Lookups = Pick<ClassifiableIssue, "blocking" | "inCurrentCycle" | "currentCycleEndsOn">;
+
+/** In the current cycle or not, from its last day (null: not in one). */
+function inCycle(endsOn: CalendarDate | null): Lookups {
+  return endsOn === null
+    ? { inCurrentCycle: false }
+    : { inCurrentCycle: true, currentCycleEndsOn: endsOn };
 }
 
 /**
@@ -205,14 +218,11 @@ function withLookups<I extends { id: string }>(
  * relations and cycle it came with: no further request, so a mutation that already changed
  * something can't fail on it.
  */
-function ownLookups(
-  issue: SingleIssue,
-  rules: QuadrantRules,
-): SingleIssue & { blocking?: boolean; inCurrentCycle?: boolean } {
+function ownLookups(issue: SingleIssue, rules: QuadrantRules): SingleIssue & Lookups {
   return {
     ...issue,
     ...(rules.blockersAreImportant && { blocking: blocksOpenWork(issue) }),
-    ...(rules.currentCycleIsUrgent && { inCurrentCycle: inActiveCycle(issue) }),
+    ...(rules.currentCycleIsUrgent && inCycle(activeCycleEndsOn(issue))),
   };
 }
 
@@ -663,7 +673,7 @@ const IssueRef = builder.objectRef<IssueModel>("Issue").implement({
       type: "Date",
       nullable: true,
       description:
-        "The first day the rules call it urgent: today if it already is (including undated issues when the team counts those as urgent), null if it never will be (undated, and the team doesn't).",
+        "The first day the rules call it urgent: today if it already is (including undated issues when the team counts those as urgent, and issues in the current cycle when the team counts those), null if it never will be (undated, not urgent for its cycle, and the team doesn't count undated issues as urgent).",
     }),
   }),
 });

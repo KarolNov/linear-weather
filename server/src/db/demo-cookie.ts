@@ -112,14 +112,8 @@ export function encodeDemo({
         dropAlertPercent === DEFAULT_RULES.dropAlertPercent ? "" : `.${dropAlertPercent}`
       }`,
   );
-  const blockers = [...rules]
-    .filter(([, { blockersAreImportant }]) => blockersAreImportant)
-    .map(([teamId]) => shorten(teamId, TEAM_PREFIX))
-    .join("!");
-  const cycles = [...rules]
-    .filter(([, { currentCycleIsUrgent }]) => currentCycleIsUrgent)
-    .map(([teamId]) => shorten(teamId, TEAM_PREFIX))
-    .join("!");
+  const blockers = teamsWith(rules, "blockersAreImportant");
+  const cycles = teamsWith(rules, "currentCycleIsUrgent");
   const issues = [...overrides].map(
     ([issueId, quadrant]) => `${shorten(issueId, ISSUE_PREFIX)}.${QUADRANTS.indexOf(quadrant)}`,
   );
@@ -260,23 +254,29 @@ export function decodeDemo(
     });
     if (rules) saved.rules.set(teamId, rules);
   }
-  for (const [id] of fields(blockers, 1)) {
-    const teamId = TEAM_PREFIX + id;
-    if (!TEAM_IDS.has(teamId)) continue;
-    saved.rules.set(teamId, {
-      ...(saved.rules.get(teamId) ?? DEFAULT_RULES),
-      blockersAreImportant: true,
-    });
-  }
-  for (const [id] of fields(cycles, 1)) {
-    const teamId = TEAM_PREFIX + id;
-    if (!TEAM_IDS.has(teamId)) continue;
-    saved.rules.set(teamId, {
-      ...(saved.rules.get(teamId) ?? DEFAULT_RULES),
-      currentCycleIsUrgent: true,
-    });
-  }
+  turnOn(saved, blockers, "blockersAreImportant");
+  turnOn(saved, cycles, "currentCycleIsUrgent");
   return saved;
+}
+
+/** A rule that's off unless a team opts in, kept in the cookie as a section listing those teams. */
+type OptInRule = "blockersAreImportant" | "currentCycleIsUrgent";
+
+/** The section for an opt-in rule: the teams that turned it on. */
+function teamsWith(rules: DemoSaved["rules"], rule: OptInRule): string {
+  return [...rules]
+    .filter(([, teamRules]) => teamRules[rule])
+    .map(([teamId]) => shorten(teamId, TEAM_PREFIX))
+    .join("!");
+}
+
+/** Turns an opt-in rule on for the demo teams its section lists. */
+function turnOn(saved: DemoSaved, section: string, rule: OptInRule): void {
+  for (const [id] of fields(section, 1)) {
+    const teamId = TEAM_PREFIX + id;
+    if (!TEAM_IDS.has(teamId)) continue;
+    saved.rules.set(teamId, { ...(saved.rules.get(teamId) ?? DEFAULT_RULES), [rule]: true });
+  }
 }
 
 /** A list of strings from base64url JSON, or null if that's not what it is. */

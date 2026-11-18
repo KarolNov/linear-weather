@@ -6,6 +6,7 @@ import {
   type CalendarDate,
   type ClassifiableIssue,
   classify,
+  isUrgentOn,
   type LinearPriority,
   type Quadrant,
   type QuadrantRules,
@@ -18,6 +19,8 @@ export interface Placement {
   quadrantSource: "rule" | "override";
   placementReason: string;
   becomesUrgentOn: CalendarDate | null;
+  /** Whether the rules call it urgent on that day, for the Forecast: a cycle can end. */
+  urgentOn(day: CalendarDate): boolean;
 }
 
 /** What placing an issue reads, plus `estimate` for the points tally. */
@@ -61,6 +64,7 @@ export function place<I extends MatrixIssue>(
     get becomesUrgentOn() {
       return becomesUrgentOn(issue, rules, today);
     },
+    urgentOn: (day) => isUrgentOn(issue, rules, day),
   };
 }
 

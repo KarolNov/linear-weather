@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { forecast } from "./forecast";
+import { forecast, project } from "./forecast";
 import { buildMatrix, type MatrixIssue, type Overrides } from "./matrix";
 import { DEFAULT_RULES } from "./quadrant";
 
@@ -20,6 +20,20 @@ const person = (
 ) => ({ name, matrix: buildMatrix(issues, DEFAULT_RULES, TODAY, overrides) });
 
 const kinds = (weeks: { weather: { kind: string } }[]) => weeks.map((w) => w.weather.kind);
+
+describe("project", () => {
+  it("keeps an issue urgent for its cycle only until the cycle ends", () => {
+    const rules = { ...DEFAULT_RULES, currentCycleIsUrgent: true };
+    const roof = { id: "roof", priority: 4, dueDate: null, inCurrentCycle: true } as const;
+    const matrix = buildMatrix([{ ...roof, currentCycleEndsOn: "2026-10-27" }], rules, TODAY);
+    const where = (on: string) =>
+      Object.entries(project(matrix, TODAY, on)).flatMap(([q, issues]) =>
+        issues.length ? [q] : [],
+      );
+    expect(where("2026-10-24")).toEqual(["delegate"]);
+    expect(where("2026-10-31")).toEqual(["drop"]);
+  });
+});
 
 describe("forecast", () => {
   it("dates each week from today", () => {

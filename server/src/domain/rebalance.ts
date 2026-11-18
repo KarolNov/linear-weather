@@ -2,13 +2,7 @@
 // storm, now or in the weeks ahead. A greedy pass over the weather and forecast, and as pure.
 
 import { FULL_TIME } from "./capacity";
-import {
-  isForecastHorizon,
-  MAX_FORECAST_WEEKS,
-  project,
-  type UrgentFrom,
-  urgentFrom,
-} from "./forecast";
+import { isForecastHorizon, MAX_FORECAST_WEEKS, project } from "./forecast";
 import {
   byPriority,
   isImportant,
@@ -167,14 +161,6 @@ export function rebalanceAhead<I extends MatrixIssue, P extends { name: string }
     throw new RangeError(`A forecast covers 1 to ${MAX_FORECAST_WEEKS} weeks, not ${weeks}`);
   }
   const { state, settle, suggestions } = balancer(people, today, thresholds);
-  // When an issue turns urgent doesn't depend on who holds it, and is worked out on each read,
-  // so read it once.
-  const firstUrgent = new Map(
-    state
-      .flatMap(({ matrix }) => Object.values(matrix).flat())
-      .map((i) => [i, urgentFrom(i, today)]),
-  );
-  const from: UrgentFrom = (issue) => firstUrgent.get(issue as Placed<I>) ?? null;
   const spans = Array.from({ length: weeks }, (_, week) => {
     const startsOn = addDays(today, 7 * week);
     return { startsOn, endsOn: addDays(startsOn, 6) };
@@ -187,7 +173,7 @@ export function rebalanceAhead<I extends MatrixIssue, P extends { name: string }
   const projectAll = () =>
     spans.map(({ endsOn }, week) =>
       staffed(
-        state.map(({ name, matrix }) => ({ name, matrix: project(matrix, from, today, endsOn) })),
+        state.map(({ name, matrix }) => ({ name, matrix: project(matrix, today, endsOn) })),
         staffing[week] ?? [],
       ),
     );

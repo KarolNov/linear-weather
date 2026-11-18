@@ -92,7 +92,7 @@ type Issue {
   assignee: User
 
   """
-  The first day the rules call it urgent: today if it already is (including undated issues when the team counts those as urgent), null if it never will be (undated, and the team doesn't).
+  The first day the rules call it urgent: today if it already is (including undated issues when the team counts those as urgent, and issues in the current cycle when the team counts those), null if it never will be (undated, not urgent for its cycle, and the team doesn't count undated issues as urgent).
   """
   becomesUrgentOn: Date
   dueDate: Date

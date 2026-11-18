@@ -4,6 +4,7 @@ import {
   type ClassifiableIssue,
   classify,
   DEFAULT_RULES,
+  isUrgentOn,
   parseRules,
   type QuadrantRules,
   type RulesInput,
@@ -158,6 +159,19 @@ describe("classify with custom rules", () => {
       quadrant: "schedule",
       reason: "High priority, due in 43 days",
     });
+  });
+
+  it("stops counting the cycle once it ends", () => {
+    const rules: QuadrantRules = { ...DEFAULT_RULES, currentCycleIsUrgent: true };
+    const cycle = { inCurrentCycle: true, currentCycleEndsOn: TODAY };
+    expect(run({ priority: 4, dueDate: null, ...cycle }, rules).quadrant).toBe("delegate");
+    expect(classify({ priority: 4, dueDate: null, ...cycle }, rules, "2026-10-19")).toEqual({
+      quadrant: "drop",
+      reason: "Low priority, no due date",
+    });
+    expect(isUrgentOn({ dueDate: LATER, ...cycle }, rules, "2026-10-19")).toBe(false);
+    // Its due date takes over: 13 days before.
+    expect(isUrgentOn({ dueDate: LATER, ...cycle }, rules, "2026-11-17")).toBe(true);
   });
 
   it("ignores the cycle unless the team counts it as urgent", () => {

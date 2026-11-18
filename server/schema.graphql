@@ -92,7 +92,7 @@ type Issue {
   assignee: User
 
   """
-  The first day the rules call it urgent: today if it already is (including undated issues when the team counts those as urgent), null if it never will be (undated, and the team doesn't).
+  The first day the rules call it urgent: today if it already is (including undated issues when the team counts those as urgent, and issues in the current cycle when the team counts those), null if it never will be (undated, not urgent for its cycle, and the team doesn't count undated issues as urgent).
   """
   becomesUrgentOn: Date
   dueDate: Date
@@ -279,6 +279,11 @@ type QuadrantRules {
   blockersAreImportant: Boolean!
 
   """
+  An issue in its team's current cycle counts as urgent whatever its due date. Off unless the team opts in.
+  """
+  currentCycleIsUrgent: Boolean!
+
+  """
   The team is flagged for backlog rot when more than this percent of its open issues are in Drop.
   """
   dropAlertPercent: Int!
@@ -314,6 +319,11 @@ input QuadrantRulesInput {
   Count an issue that blocks another, still open, as important whatever its priority. Left out, it stays as it was.
   """
   blockersAreImportant: Boolean
+
+  """
+  Count an issue in its team's current cycle as urgent whatever its due date. Left out, it stays as it was.
+  """
+  currentCycleIsUrgent: Boolean
 
   """
   Flag backlog rot when more than this percent of open issues are in Drop: 1 to 99. Left out, it stays as it was.

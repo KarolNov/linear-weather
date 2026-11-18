@@ -11,6 +11,7 @@ Each developer's assigned issues are sorted into an **Eisenhower matrix** (Do / 
   - _Urgent_: due within 14 days, or overdue
   - Issues with no due date count as not urgent
   - Optionally, an issue that blocks another still-open issue counts as important whatever its priority
+  - Optionally, an issue in its team's current cycle counts as urgent whatever its due date
 
   A PM can still override any issue by hand.
 - **Backlog rot.** When more than 40% of a team's open issues (configurable per team) sit in Drop, the board's header flags it: a backlog filling with work nobody means to do.
@@ -73,6 +74,7 @@ Linear limits each user to 5,000 requests and 2,000,000 [complexity points](http
 - **Pages of 250**, Linear's maximum. A full page should cost about 1,400 points, which leaves plenty of room under the cap and keeps the request count low.
 - **Filtering on the server**: only issues that aren't completed or canceled, in the teams asked for. One query covers several teams, and each issue carries its `team { id }` so they can be split up again.
 - **Blockers only when asked.** Teams that count blocking issues as important need a second query (`OpenBlockers` in `server/src/linear/blocking.graphql`). Linear's `hasBlockingRelations` filter narrows it to issues with a "blocks" relation, and each one brings its first 20 relations, since Linear keeps the relation after the blocked issue is done. That's about 65 points an issue, so it's paged 100 at a time.
+- **The current cycle only when asked.** Teams that count the current cycle as urgent need a third query (`CurrentCycleIssues` in `server/src/linear/cycle.graphql`), filtered by Linear to issues in an active cycle. It asks only for ids and the cycle's end, about 1.3 points an issue, so it's paged 250 at a time. Adding the cycle to `IssueCard` instead would cost every team about 275 points a page, whether it uses the rule or not.
 
 The client reads Linear's rate-limit headers after each request and remembers what each query cost. Linear's budget refills continuously, so before sending a query the client waits until the remaining budget covers one more request at that cost. When Linear still answers `RATELIMITED`, it retries up to 3 times, waiting at least 0.25s, 0.5s, then 1s. If the budget would take more than 5s to refill, or the retries run out, it gives up with the time the budget resets.
 
@@ -250,10 +252,10 @@ The status comes with each person on the open-issues and members queries (`statu
 
 `forecast(weeks:)` takes a field argument, so one query can ask for 4 weeks on the board and 12 somewhere else, each with its own alias. (A REST API would need a query string or another endpoint.) Each week projects every matrix to the week's last day (`server/src/domain/forecast.ts`) and reads the weather as it is now, against that week's fair share. The projection assumes:
 
-- **Issues turn urgent when their due dates say** (`becomesUrgentOn`), and issues placed by hand stay where they were put.
+- **Issues turn urgent when their due dates say** (`becomesUrgentOn`), and issues placed by hand stay where they were put. When a team counts the current cycle as urgent, its issues in the cycle are urgent until the cycle's last day, then go back to what their due dates say.
 - **Work is done by its due date**, so it leaves the load once that's passed. Work that's already overdue has missed its date, so it stays, and keeps the weather stormy, until it's done.
 - **Load is counted in points only if every issue urgent in any week is estimated** (unless `metric` says otherwise), so an unestimated issue arriving later doesn't fog a week.
-- **Undated work never turns urgent.** Someone holding it with nothing urgent projected is 🌫️ fog, a nudge to set dates.
+- **Undated work never turns urgent**, outside the current cycle when the team counts that. Someone holding it with nothing urgent projected is 🌫️ fog, a nudge to set dates.
 - **Time off lowers a week's capacity** by the working days missed: `capacity × days present / 5`, so a full-timer off two days reads "at 60% time (2 days off)". Off all five, they're away that week.
 
 The team's `worst` week is the most lopsided one (storm, then rain, then fog, then cloudy), the earliest of equals.

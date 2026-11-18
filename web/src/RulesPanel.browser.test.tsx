@@ -12,6 +12,7 @@ const defaults: Rules = {
   dropAlertPercent: 40,
   awayStatuses: [],
   blockersAreImportant: false,
+  currentCycleIsUrgent: false,
 };
 
 let root: HTMLElement;
@@ -95,11 +96,37 @@ describe("the rules panel's blockers rule", () => {
       ...defaults,
       awayStatuses: [""],
       blockersAreImportant: true,
+      currentCycleIsUrgent: false,
     });
   });
 
   it("starts checked when the team already counts them", async () => {
     panel({ ...defaults, blockersAreImportant: true });
+    await expect.element(box()).toBeChecked();
+  });
+});
+
+describe("the rules panel's current cycle rule", () => {
+  const box = () => page.getByRole("checkbox", { name: "Are always urgent" });
+
+  it("shows whether the team counts the current cycle as urgent, and saves the change", async () => {
+    const { onSave, onClose } = panel(defaults);
+    await expect.element(box()).not.toBeChecked();
+    await expect.element(box()).toHaveAccessibleDescription(expect.stringContaining("cycle ends"));
+
+    await userEvent.click(box());
+    await userEvent.click(page.getByRole("button", { name: "Save rules" }));
+
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(onSave).toHaveBeenCalledWith({
+      ...defaults,
+      awayStatuses: [""],
+      currentCycleIsUrgent: true,
+    });
+  });
+
+  it("starts checked when the team already counts it", async () => {
+    panel({ ...defaults, currentCycleIsUrgent: true });
     await expect.element(box()).toBeChecked();
   });
 });

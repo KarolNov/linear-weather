@@ -1,0 +1,1 @@
+ALTER TABLE `quadrant_rules` ADD `current_cycle_is_urgent` integer DEFAULT false NOT NULL;

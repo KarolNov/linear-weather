@@ -3,6 +3,7 @@ import { LinearClient } from "./client";
 import {
   BLOCKERS_PAGE_SIZE,
   blocksOpenWork,
+  cycleLastDay,
   fetchOpenBlockers,
   fetchOpenIssues,
   type OpenBlocker,
@@ -189,5 +190,12 @@ describe("blocksOpenWork", () => {
     warn.mockClear();
     expect(blocksOpenWork(blocker(2, [["blocks", "started"]], true))).toBe(true);
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("cycleLastDay", () => {
+  it("is the day of the cycle's last moment, in UTC", () => {
+    expect(cycleLastDay("2026-11-28T00:00:00.000Z")).toBe("2026-11-27");
+    expect(cycleLastDay("2026-11-28T05:00:00.000Z")).toBe("2026-11-28");
   });
 });

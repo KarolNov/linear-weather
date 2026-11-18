@@ -4,8 +4,11 @@
 
 import { addDays, type CalendarDate, type LinearPriority } from "../domain/quadrant";
 import type { LinearSource } from "./client";
-import type { BlockingFragment } from "./generated";
+import type { BlockingFragment, InCycleFragment } from "./generated";
 import {
+  CurrentCycleIssuesDocument,
+  type CurrentCycleIssuesQuery,
+  type CurrentCycleIssuesQueryVariables,
   IssueByIdDocument,
   type IssueByIdQuery,
   type IssueByIdQueryVariables,
@@ -205,6 +208,31 @@ function relationsOf(identifier: string): BlockingFragment["relations"] {
 }
 
 /**
+ * The issues in each team's current cycle, by identifier. Nothing moves until a team counts the
+ * current cycle as urgent:
+ * - Steve's training plan (Medium, due in 25 days, Schedule) moves to Do.
+ * - Thor's Mjölnir (High, no due date, Schedule) moves to Do.
+ * - Clint's farmhouse roof (Low, no due date, Drop) moves to Delegate.
+ * - Melinda's cavalry refresher (High, due in 20 days, Schedule) moves to Do.
+ * - Tony's arc reactor, Mark XLII suits and JARVIS work are urgent already, so they stay put.
+ * The cycle ends in `CYCLE_DAYS_LEFT` days, so the Forecast shows them leaving Do after that.
+ */
+const IN_CYCLE = new Set(["AVG-1", "AVG-2", "AVG-4", "AVG-16", "AVG-34", "AVG-43", "OPS-6"]);
+
+/** An issue's cycle as Linear gives it: here, the current one or none. */
+function cycleOf(identifier: string, today: CalendarDate): InCycleFragment["cycle"] {
+  return IN_CYCLE.has(identifier) ? { isActive: true, endsAt: cycleEndsAt(today) } : null;
+}
+
+/** Days until the demo's current cycle ends, today included. */
+const CYCLE_DAYS_LEFT = 10;
+
+/** When the demo's current cycle ends: midnight UTC after its last day. */
+function cycleEndsAt(today: CalendarDate): string {
+  return `${addDays(today, CYCLE_DAYS_LEFT)}T00:00:00.000Z`;
+}
+
+/**
  * Statuses in Linear, by user id, with their ends counted from `today`. Nobody is away by one
  * until a team lists it in its rules: try "🌴" or "vacation".
  * - Clint is on vacation until the end of the day after tomorrow, holding 1 urgent issue.
@@ -323,6 +351,9 @@ export class DemoLinear implements LinearSource {
     if (query === OpenBlockersDocument.toString()) {
       return this.openBlockers(variables as OpenBlockersQueryVariables) as TResult;
     }
+    if (query === CurrentCycleIssuesDocument.toString()) {
+      return this.currentCycleIssues(variables as CurrentCycleIssuesQueryVariables) as TResult;
+    }
     if (query === IssueByIdDocument.toString()) {
       return this.issueById(variables as IssueByIdQueryVariables) as TResult;
     }
@@ -354,6 +385,7 @@ export class DemoLinear implements LinearSource {
         .map((issue) => ({
           ...issue,
           relations: relationsOf(issue.identifier),
+          cycle: cycleOf(issue.identifier, today),
           team: { id: teamId, name, key },
         })),
     );
@@ -375,6 +407,23 @@ export class DemoLinear implements LinearSource {
     return {
       issues: { nodes, pageInfo: { hasNextPage: false, endCursor: null } },
     } satisfies OpenBlockersQuery;
+  }
+
+  /** Like Linear's `issues` filtered to the active cycle. One page. */
+  private currentCycleIssues({ teamIds }: CurrentCycleIssuesQueryVariables) {
+    const today = this.today();
+    const nodes = [teamIds].flat().flatMap((teamId) =>
+      this.teamIssues(today, teamId)
+        .filter((issue) => IN_CYCLE.has(issue.identifier))
+        .map((issue) => ({
+          id: issue.id,
+          team: { id: teamId },
+          cycle: { endsAt: cycleEndsAt(today) },
+        })),
+    );
+    return {
+      issues: { nodes, pageInfo: { hasNextPage: false, endCursor: null } },
+    } satisfies CurrentCycleIssuesQuery;
   }
 
   /** Pages like Linear's `issues` connection; cursors are the index of the next issue. */
@@ -418,7 +467,12 @@ export class DemoLinear implements LinearSource {
       issueUpdate: {
         success: true,
         issue: issue
-          ? { ...issue, relations: relationsOf(issue.identifier), team: { id: teamId, name, key } }
+          ? {
+              ...issue,
+              relations: relationsOf(issue.identifier),
+              cycle: cycleOf(issue.identifier, this.today()),
+              team: { id: teamId, name, key },
+            }
           : null,
       },
     } satisfies ReassignIssueMutation;

@@ -43,6 +43,10 @@ export const quadrantRules = sqliteTable(
     blockersAreImportant: integer("blockers_are_important", { mode: "boolean" })
       .notNull()
       .default(false),
+    /** Likewise opt-in: rows from before don't count the current cycle as urgent. */
+    currentCycleIsUrgent: integer("current_cycle_is_urgent", { mode: "boolean" })
+      .notNull()
+      .default(false),
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [

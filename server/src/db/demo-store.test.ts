@@ -25,6 +25,7 @@ const strict = {
   dropAlertPercent: DEFAULT_RULES.dropAlertPercent,
   awayStatuses: [],
   blockersAreImportant: false,
+  currentCycleIsUrgent: false,
 } as const;
 const team = DEMO_TEAM.id;
 const [first, second] = ["demo-issue-avg-1", "demo-issue-avg-2"];
@@ -78,6 +79,18 @@ describe("DemoStore", () => {
     // Code from before the rule reads the same cookie with the team's other rules intact.
     expect(decodeDemo("1~avengers.2.7.0~~~~~~avengers").rules.get(team)?.importantFrom).toBe(2);
     expect(decodeDemo("1~~~~~~~nope!avengers.1").rules.size).toBe(0);
+  });
+
+  it("keeps the current cycle counting as urgent, in a section after blockers", async () => {
+    const before = DemoStore.fromCookie(undefined);
+    await before.setRules(team, { ...strict, currentCycleIsUrgent: true });
+    expect(before.cookie()).toBe("1~avengers.2.7.0~~~~~~~avengers");
+    const both = { ...strict, blockersAreImportant: true, currentCycleIsUrgent: true };
+    await before.setRules(team, both);
+    expect(before.cookie()).toBe("1~avengers.2.7.0~~~~~~avengers~avengers");
+    const after = DemoStore.fromCookie(before.cookie());
+    expect(await after.rules([team])).toEqual(new Map([[team, both]]));
+    expect(decodeDemo("1~~~~~~~~nope!avengers.1").rules.size).toBe(0);
   });
 
   it("keeps a team's away statuses, whatever characters they hold", async () => {

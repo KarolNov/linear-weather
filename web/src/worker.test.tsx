@@ -76,6 +76,7 @@ const defaultRules: Rules = {
   dropAlertPercent: 40,
   awayStatuses: [],
   blockersAreImportant: false,
+  currentCycleIsUrgent: false,
 };
 
 const healthyBacklog = { rotting: false, reason: "1 of 4 open issues (25%) are in Drop" };

@@ -1,6 +1,9 @@
+import type { CalendarDate } from "../domain/quadrant";
 import type { LinearSource } from "./client";
 import {
   type BlockingFragment,
+  CurrentCycleIssuesDocument,
+  type InCycleFragment,
   type IssueCardFragment,
   OpenBlockersDocument,
   type OpenBlockersQuery,
@@ -21,6 +24,9 @@ export const PAGE_SIZE = 250;
 
 // Each blocker brings up to 20 relations at ~65 points, so a page of 100 is ~6,500.
 export const BLOCKERS_PAGE_SIZE = 100;
+
+/** Ids only, ~1.2 points an issue, so Linear's largest page. */
+export const CYCLE_PAGE_SIZE = 250;
 
 /** Linear's state types for work that's over. */
 const DONE = new Set(["completed", "canceled"]);
@@ -71,6 +77,28 @@ export function blocksOpenWork(issue: { id: string } & BlockingFragment): boolea
     );
   }
   return blocks;
+}
+
+/** The open issues in these teams that are in their team's current cycle, with their teams. */
+export function fetchCurrentCycleIssues(
+  linear: LinearSource,
+  teamIds: readonly string[],
+): Promise<{ id: string; team: { id: string }; cycle?: { endsAt: string } | null }[]> {
+  return allPages((after) =>
+    linear
+      .request(CurrentCycleIssuesDocument, { teamIds: [...teamIds], first: CYCLE_PAGE_SIZE, after })
+      .then((page) => page.issues),
+  );
+}
+
+/** The last day of the issue's cycle, if that's running now; else null. */
+export function activeCycleEndsOn(issue: InCycleFragment): CalendarDate | null {
+  return issue.cycle?.isActive ? cycleLastDay(issue.cycle.endsAt) : null;
+}
+
+/** A cycle's last day, as the board's `today` reads days (UTC): the day of its last moment. */
+export function cycleLastDay(endsAt: string): CalendarDate {
+  return new Date(Date.parse(endsAt) - 1).toISOString().slice(0, 10);
 }
 
 /** Follows a Linear connection's cursor to its last page. */

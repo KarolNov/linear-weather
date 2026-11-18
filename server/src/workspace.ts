@@ -4,10 +4,11 @@
 // batches them: one members query and one issues query cover every team on the page.
 
 import DataLoader from "dataloader";
-import type { LinearPriority } from "./domain/quadrant";
+import type { CalendarDate, LinearPriority } from "./domain/quadrant";
 import { LinearInvalidInputError, type LinearSource } from "./linear/client";
 import {
   type BlockingFragment,
+  type InCycleFragment,
   IssueByIdDocument,
   ReassignIssueDocument,
   type TeamSummaryFragment,
@@ -19,6 +20,8 @@ import {
 import {
   type Assignee,
   blocksOpenWork,
+  cycleLastDay,
+  fetchCurrentCycleIssues,
   fetchOpenBlockers,
   fetchOpenIssues,
   type IssueCard,
@@ -30,8 +33,13 @@ export type Viewer = ViewerQuery["viewer"];
 /** An open issue as the matrix reads it: Linear's priority is an Int, but only ever 0–4. */
 export type TeamIssue = IssueCard & { priority: LinearPriority };
 
-/** One issue with its team, and its relations to tell whether it blocks open work. */
-export type SingleIssue = TeamIssue & BlockingFragment & { id: string; team: Team };
+/**
+ * One issue with its team, its relations to tell whether it blocks open work, and its cycle to
+ * tell whether that's the current one.
+ */
+export type SingleIssue = TeamIssue &
+  BlockingFragment &
+  InCycleFragment & { id: string; team: Team };
 
 export interface TeamWork {
   /** Team members by name, then anyone else holding the team's issues, e.g. after moving teams. */
@@ -64,6 +72,9 @@ export class Workspace {
   );
   private readonly blockers = new DataLoader<string, ReadonlySet<string>>((teamIds) =>
     this.loadBlockers(teamIds),
+  );
+  private readonly cycles = new DataLoader<string, ReadonlyMap<string, CalendarDate>>((teamIds) =>
+    this.loadCurrentCycles(teamIds),
   );
 
   constructor(private readonly linear: LinearSource) {}
@@ -127,6 +138,15 @@ export class Workspace {
    */
   blockerIds(teamId: string): Promise<ReadonlySet<string>> {
     return this.blockers.load(teamId);
+  }
+
+  /**
+   * A team's open issues in its current cycle, by id, with the cycle's last day. A separate query
+   * from the team's issues, so teams that don't count the cycle as urgent don't pay for it on
+   * every issue.
+   */
+  currentCycleEnds(teamId: string): Promise<ReadonlyMap<string, CalendarDate>> {
+    return this.cycles.load(teamId);
   }
 
   teamWork(teamId: string): Promise<TeamWork> {
@@ -197,6 +217,21 @@ export class Workspace {
     const byTeam = new Map<string, Set<string>>(teamIds.map((id) => [id, new Set()]));
     for (const issue of await fetchOpenBlockers(this.wanted(teamIds), teamIds)) {
       if (blocksOpenWork(issue)) byTeam.get(issue.team.id)?.add(issue.id);
+    }
+    return [...byTeam.values()];
+  }
+
+  /** Each team's open issues in its current cycle, in the order asked, from one paged query. */
+  private async loadCurrentCycles(
+    teamIds: readonly string[],
+  ): Promise<ReadonlyMap<string, CalendarDate>[]> {
+    const byTeam = new Map(teamIds.map((id) => [id, new Map<string, CalendarDate>()]));
+    for (const { id, team, cycle } of await fetchCurrentCycleIssues(
+      this.wanted(teamIds),
+      teamIds,
+    )) {
+      // Filtered to an active cycle, so it has one.
+      if (cycle) byTeam.get(team.id)?.set(id, cycleLastDay(cycle.endsAt));
     }
     return [...byTeam.values()];
   }

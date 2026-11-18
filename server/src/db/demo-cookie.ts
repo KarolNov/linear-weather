@@ -2,7 +2,7 @@
 // JSON spends most of that on quotes (escaped to %22) and on the demo's long ids. So the cookie is
 // plain text in characters a cookie carries unescaped, with the ids' fixed prefixes dropped:
 //
-//   1~avengers.2.7.0!ops.3.30.1.25~avg-1.3!ops-4.1~avg-10.wanda~tony.50~tony.20261116.4~ops.WyLwn4y0Il0~ops
+//   1~avengers.2.7.0!ops.3.30.1.25~avg-1.3!ops-4.1~avg-10.wanda~tony.50~tony.20261116.4~ops.WyLwn4y0Il0~ops~avengers
 //   │ └ rules: team.importantFrom.urgencyWindowDays.noDueDate[.dropAlertPercent]
 //   │          (the alert left off at its default, as cookies from before it have it)
 //   │                                └ overrides: issue.quadrant
@@ -12,7 +12,8 @@
 //   │                                                                    days after it to the last
 //   │                                                                              └ away statuses:
 //   │                                                                     team.base64url(JSON list)
-//   │                                                   teams counting blockers as important: team ┘
+//   │                                                   teams counting blockers as important: team ┘ │
+//   │                                          teams counting the current cycle as urgent: team ┘
 //   └ format version
 //
 // A rule added later goes in a section of its own after the others, which code from before it
@@ -111,10 +112,8 @@ export function encodeDemo({
         dropAlertPercent === DEFAULT_RULES.dropAlertPercent ? "" : `.${dropAlertPercent}`
       }`,
   );
-  const blockers = [...rules]
-    .filter(([, { blockersAreImportant }]) => blockersAreImportant)
-    .map(([teamId]) => shorten(teamId, TEAM_PREFIX))
-    .join("!");
+  const blockers = teamsWith(rules, "blockersAreImportant");
+  const cycles = teamsWith(rules, "currentCycleIsUrgent");
   const issues = [...overrides].map(
     ([issueId, quadrant]) => `${shorten(issueId, ISSUE_PREFIX)}.${QUADRANTS.indexOf(quadrant)}`,
   );
@@ -141,9 +140,10 @@ export function encodeDemo({
   ];
   // Away statuses go last and take what room is left, each team as many of its own as fit: the
   // cookie must stay short enough for the browser to keep it, or nothing would be saved.
-  // Blockers go after them, so leave their room too.
+  // Blockers and cycles go after them, so leave their room too.
+  const after = [blockers, cycles].join("~").replace(/~+$/, "");
   let room =
-    MAX_COOKIE_VALUE_LENGTH - sections.join("~").length - 1 - (blockers ? blockers.length + 1 : 0);
+    MAX_COOKIE_VALUE_LENGTH - sections.join("~").length - 1 - (after ? after.length + 1 : 0);
   const statuses: string[] = [];
   for (const [teamId, { awayStatuses }] of rules) {
     for (let kept = awayStatuses.length; kept > 0; kept--) {
@@ -156,7 +156,7 @@ export function encodeDemo({
       }
     }
   }
-  sections.push(statuses.join("!"), blockers);
+  sections.push(statuses.join("!"), blockers, cycles);
   while (sections.length > 3 && sections.at(-1) === "") sections.pop();
   return sections.join("~");
 }
@@ -187,6 +187,7 @@ export function decodeDemo(
     away = "",
     statuses = "",
     blockers = "",
+    cycles = "",
   ] = value.split("~");
   if (version !== VERSION) return saved;
   for (const [id, importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent] of fields(
@@ -206,6 +207,7 @@ export function decodeDemo(
           : wholeNumber(dropAlertPercent),
       awayStatuses: [],
       blockersAreImportant: false,
+      currentCycleIsUrgent: false,
     });
     if (rules) saved.rules.set(TEAM_PREFIX + id, rules);
   }
@@ -252,15 +254,29 @@ export function decodeDemo(
     });
     if (rules) saved.rules.set(teamId, rules);
   }
-  for (const [id] of fields(blockers, 1)) {
+  turnOn(saved, blockers, "blockersAreImportant");
+  turnOn(saved, cycles, "currentCycleIsUrgent");
+  return saved;
+}
+
+/** A rule that's off unless a team opts in, kept in the cookie as a section listing those teams. */
+type OptInRule = "blockersAreImportant" | "currentCycleIsUrgent";
+
+/** The section for an opt-in rule: the teams that turned it on. */
+function teamsWith(rules: DemoSaved["rules"], rule: OptInRule): string {
+  return [...rules]
+    .filter(([, teamRules]) => teamRules[rule])
+    .map(([teamId]) => shorten(teamId, TEAM_PREFIX))
+    .join("!");
+}
+
+/** Turns an opt-in rule on for the demo teams its section lists. */
+function turnOn(saved: DemoSaved, section: string, rule: OptInRule): void {
+  for (const [id] of fields(section, 1)) {
     const teamId = TEAM_PREFIX + id;
     if (!TEAM_IDS.has(teamId)) continue;
-    saved.rules.set(teamId, {
-      ...(saved.rules.get(teamId) ?? DEFAULT_RULES),
-      blockersAreImportant: true,
-    });
+    saved.rules.set(teamId, { ...(saved.rules.get(teamId) ?? DEFAULT_RULES), [rule]: true });
   }
-  return saved;
 }
 
 /** A list of strings from base64url JSON, or null if that's not what it is. */

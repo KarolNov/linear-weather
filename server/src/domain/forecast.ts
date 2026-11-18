@@ -57,7 +57,8 @@ export function isForecastHorizon(weeks: number): boolean {
  * Everyone's weather for `weeks` weeks from today, and the team's.
  *
  * Each week projects every matrix to the week's last day, assuming:
- * - an issue turns urgent when its due date says (`becomesUrgentOn`);
+ * - an issue turns urgent when its due date says (`becomesUrgentOn`), and one urgent for being
+ *   in the current cycle stops being so once the cycle ends (`urgentOn`);
  * - an issue placed by hand stays where it was put;
  * - work is done by its due date, so it leaves the load once that's passed. Work already
  *   overdue has missed that, so it stays (and keeps the weather stormy) until it's done.
@@ -97,7 +98,7 @@ export function forecast<I extends MatrixIssue>(
     people.map(
       ({ name, matrix, capacity, timeOff }): Staffed<I> => ({
         name,
-        matrix: project(matrix, from, today, endsOn),
+        matrix: project(matrix, today, endsOn),
         ...staffingFor(capacity, timeOff, startsOn, endsOn),
       }),
     ),
@@ -145,7 +146,6 @@ export type UrgentFrom = (issue: Placed<MatrixIssue>) => CalendarDate | null;
 /** A matrix as it should stand on `on`: work due before then is done, unless already overdue. */
 export function project<I extends MatrixIssue>(
   matrix: Matrix<I>,
-  from: UrgentFrom,
   today: CalendarDate,
   on: CalendarDate,
 ): Matrix<I> {
@@ -153,19 +153,15 @@ export function project<I extends MatrixIssue>(
   for (const issue of Object.values(matrix).flat()) {
     const done = issue.dueDate !== null && issue.dueDate >= today && issue.dueDate < on;
     if (done) continue;
-    projected[projectedQuadrant(issue, from, on)].push(issue);
+    projected[projectedQuadrant(issue, on)].push(issue);
   }
   return projected;
 }
 
-function projectedQuadrant(
-  issue: Placed<MatrixIssue>,
-  from: UrgentFrom,
-  on: CalendarDate,
-): Quadrant {
+function projectedQuadrant(issue: Placed<MatrixIssue>, on: CalendarDate): Quadrant {
   if (issue.quadrantSource === "override") return issue.quadrant;
-  const urgentOn = from(issue);
-  const urgent = urgentOn !== null && urgentOn <= on;
+  // Not just `becomesUrgentOn <= on`: urgent for being in the cycle stops when the cycle ends.
+  const urgent = issue.urgentOn(on);
   return isImportant(issue) ? (urgent ? "do" : "schedule") : urgent ? "delegate" : "drop";
 }
 

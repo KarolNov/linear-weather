@@ -274,6 +274,11 @@ type QuadrantRules {
   awayStatuses: [String!]!
 
   """
+  An issue that blocks another, still open, counts as important whatever its priority. Off unless the team opts in.
+  """
+  blockersAreImportant: Boolean!
+
+  """
   The team is flagged for backlog rot when more than this percent of its open issues are in Drop.
   """
   dropAlertPercent: Int!
@@ -304,6 +309,11 @@ input QuadrantRulesInput {
   Linear statuses that mean someone is away: at most 10, each at most 40 characters. Trimmed, with blanks and repeats dropped. Left out, they stay as they were.
   """
   awayStatuses: [String!]
+
+  """
+  Count an issue that blocks another, still open, as important whatever its priority. Left out, it stays as it was.
+  """
+  blockersAreImportant: Boolean
 
   """
   Flag backlog rot when more than this percent of open issues are in Drop: 1 to 99. Left out, it stays as it was.

@@ -440,6 +440,7 @@ describe("stored rules and overrides", () => {
       noDueDate: "notUrgent",
       dropAlertPercent: 40,
       awayStatuses: [],
+      blockersAreImportant: false,
     });
     const board = await data<Board>(tony);
     expect(board.team.rules).toEqual({ urgencyWindowDays: 1 });
@@ -737,6 +738,39 @@ describe("mutations", () => {
     });
     expect(tonyIn(back)).toEqual({ do: 9, drop: 1 });
     expect(await new Store(env.DB).overrides(["demo-issue-avg-1"])).toEqual(new Map());
+  });
+
+  it("counts blockers as important once the team does, on the board and placed alone", async () => {
+    const quadrantOf = async (identifier: string) => {
+      const { team } = await data<{
+        team: { people: { matrix: Record<string, { identifier: string }[]> }[] };
+      }>(
+        `{ team(id: "${DEMO_TEAM.id}") { people { matrix { do { identifier } schedule { identifier } delegate { identifier } drop { identifier } } } } }`,
+      );
+      for (const { matrix } of team.people) {
+        for (const [quadrant, issues] of Object.entries(matrix)) {
+          if (issues.some((issue) => issue.identifier === identifier)) return quadrant;
+        }
+      }
+      return null;
+    };
+    // The lab door, the coffee machine, and the blueberries that only blocked finished work.
+    const blockers = ["AVG-27", "AVG-36", "AVG-11"];
+    expect(await Promise.all(blockers.map(quadrantOf))).toEqual(["delegate", "drop", "delegate"]);
+
+    await new Store(env.DB).setRules(DEMO_TEAM.id, {
+      ...DEFAULT_RULES,
+      blockersAreImportant: true,
+    });
+
+    expect(await Promise.all(blockers.map(quadrantOf))).toEqual(["do", "schedule", "delegate"]);
+    const { overrideQuadrant } = await data<{ overrideQuadrant: PlacementResult }>(
+      `mutation { overrideQuadrant(issueId: "demo-issue-avg-27", quadrant: DROP) { ${placement} } }`,
+    );
+    expect(overrideQuadrant.issue).toMatchObject({
+      placementReason:
+        "Placed by hand; the rules say Do (Low priority, blocks other issues, due in 3 days)",
+    });
   });
 
   it("keeps a hand placement for later requests", async () => {
@@ -1394,6 +1428,7 @@ describe("the web app's board query", () => {
       noDueDate: "URGENT",
       dropAlertPercent: 25,
       awayStatuses: ["🌴"],
+      blockersAreImportant: false,
     };
     const { updateQuadrantRules }: Answer = await data(UPDATE_RULES_MUTATION, {
       teamId: DEMO_TEAM.id,

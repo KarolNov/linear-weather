@@ -7,6 +7,7 @@ import DataLoader from "dataloader";
 import type { LinearPriority } from "./domain/quadrant";
 import { LinearInvalidInputError, type LinearSource } from "./linear/client";
 import {
+  type BlockingFragment,
   IssueByIdDocument,
   ReassignIssueDocument,
   type TeamSummaryFragment,
@@ -15,13 +16,23 @@ import {
   ViewerDocument,
   type ViewerQuery,
 } from "./linear/generated";
-import { type Assignee, fetchOpenIssues, type IssueCard } from "./linear/team-issues";
+import {
+  type Assignee,
+  blocksOpenWork,
+  fetchOpenBlockers,
+  fetchOpenIssues,
+  type IssueCard,
+} from "./linear/team-issues";
 
 export type Team = TeamSummaryFragment;
 export type Viewer = ViewerQuery["viewer"];
 
-/** An open issue as the matrix reads it: Linear's priority is an Int, but only ever 0–4. */
-export type TeamIssue = IssueCard & { priority: LinearPriority };
+/**
+ * An open issue as the matrix reads it: Linear's priority is an Int, but only ever 0–4. Whether it
+ * blocks open work is known when it was fetched on its own; a team's issues leave it out, since
+ * only teams that count blockers as important ask (`Workspace.blockerIds`).
+ */
+export type TeamIssue = IssueCard & { priority: LinearPriority; blocking?: boolean };
 
 export interface TeamWork {
   /** Team members by name, then anyone else holding the team's issues, e.g. after moving teams. */
@@ -51,6 +62,9 @@ export class Workspace {
   private readonly openIssues = new DataLoader<string, IssueCard[]>(
     (teamIds) => this.loadOpenIssues(teamIds),
     { cache: false },
+  );
+  private readonly blockers = new DataLoader<string, ReadonlySet<string>>((teamIds) =>
+    this.loadBlockers(teamIds),
   );
 
   constructor(private readonly linear: LinearSource) {}
@@ -86,7 +100,8 @@ export class Workspace {
   async issue(id: string): Promise<(TeamIssue & { team: Team }) | null> {
     try {
       const { issues } = await this.linear.request(IssueByIdDocument, { id });
-      return (issues.nodes[0] as (TeamIssue & { team: Team }) | undefined) ?? null;
+      const [issue] = issues.nodes;
+      return issue ? withBlocking(issue) : null;
     } catch (error) {
       if (error instanceof LinearInvalidInputError) return null;
       throw error;
@@ -105,7 +120,15 @@ export class Workspace {
     const issue = issueUpdate.success ? issueUpdate.issue : null;
     if (!issue) return null;
     this.work.delete(issue.team.id);
-    return issue as TeamIssue & { team: Team };
+    return withBlocking(issue);
+  }
+
+  /**
+   * The ids of a team's open issues that block another still open. A separate query from the
+   * team's issues, since it costs more a page and only teams counting blockers as important ask.
+   */
+  blockerIds(teamId: string): Promise<ReadonlySet<string>> {
+    return this.blockers.load(teamId);
   }
 
   teamWork(teamId: string): Promise<TeamWork> {
@@ -171,6 +194,15 @@ export class Workspace {
     return [...byTeam.values()];
   }
 
+  /** Each team's open blockers, in the order asked, from one paged query. */
+  private async loadBlockers(teamIds: readonly string[]): Promise<ReadonlySet<string>[]> {
+    const byTeam = new Map<string, Set<string>>(teamIds.map((id) => [id, new Set()]));
+    for (const issue of await fetchOpenBlockers(this.wanted(teamIds), teamIds)) {
+      if (blocksOpenWork(issue)) byTeam.get(issue.team.id)?.add(issue.id);
+    }
+    return [...byTeam.values()];
+  }
+
   /**
    * Linear, for as long as some of these teams are still wanted. Checked before each request,
    * so a batch holding only an abandoned prefetch stops paging.
@@ -183,4 +215,15 @@ export class Workspace {
           : this.linear.request(document, ...variables),
     };
   }
+}
+
+/** An issue fetched on its own, with whether it blocks open work in place of its relations. */
+function withBlocking<I extends IssueCard & BlockingFragment>({
+  relations,
+  ...issue
+}: I): TeamIssue & Omit<I, "relations"> {
+  return {
+    ...(issue as Omit<I, "relations"> & TeamIssue),
+    blocking: blocksOpenWork({ relations }),
+  };
 }

@@ -1,0 +1,43 @@
+# Whether an issue blocks work that's still open. Linear keeps a "blocks" relation after the
+# blocked issue is done, and `relations` can't be filtered, so it's every relation with the other
+# issue's state. 20 covers any issue a person would hold; the rare one with more relations may be
+# missed. About 3.2 points a relation, so 65 an issue.
+fragment Blocking on Issue {
+  relations(first: 20) {
+    nodes {
+      type
+      relatedIssue {
+        state {
+          type
+        }
+      }
+    }
+  }
+}
+
+# The open issues in these teams that block another, by Linear's own filter, with what they
+# block. Only asked when a team counts blockers as important. Pages of 100: about 6,500 points,
+# under Linear's 10,000 cap on one query, and few issues block anything.
+query OpenBlockers($teamIds: [ID!]!, $first: Int!, $after: String) {
+  issues(
+    first: $first
+    after: $after
+    filter: {
+      team: { id: { in: $teamIds } }
+      state: { type: { nin: ["completed", "canceled"] } }
+      hasBlockingRelations: { eq: true }
+    }
+  ) {
+    nodes {
+      id
+      team {
+        id
+      }
+      ...Blocking
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

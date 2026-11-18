@@ -11,6 +11,7 @@ const defaults: Rules = {
   noDueDate: "NOT_URGENT",
   dropAlertPercent: 40,
   awayStatuses: [],
+  blockersAreImportant: false,
 };
 
 let root: HTMLElement;
@@ -75,5 +76,30 @@ describe("the rules panel's away statuses", () => {
     await expect.element(awayField()).toHaveAttribute("aria-invalid", "true");
     await expect.element(awayField()).toHaveAccessibleDescription(expect.stringContaining(message));
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("the rules panel's blockers rule", () => {
+  const box = () => page.getByRole("checkbox", { name: "Are always important" });
+
+  it("shows whether the team counts blockers as important, and saves the change", async () => {
+    const { onSave, onClose } = panel(defaults);
+    await expect.element(box()).not.toBeChecked();
+
+    await userEvent.click(box());
+    await userEvent.click(page.getByRole("button", { name: "Save rules" }));
+
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    // The empty away field goes as one blank line, which the server drops.
+    expect(onSave).toHaveBeenCalledWith({
+      ...defaults,
+      awayStatuses: [""],
+      blockersAreImportant: true,
+    });
+  });
+
+  it("starts checked when the team already counts them", async () => {
+    panel({ ...defaults, blockersAreImportant: true });
+    await expect.element(box()).toBeChecked();
   });
 });

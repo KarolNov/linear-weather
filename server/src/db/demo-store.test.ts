@@ -24,6 +24,7 @@ const strict = {
   noDueDate: "urgent",
   dropAlertPercent: DEFAULT_RULES.dropAlertPercent,
   awayStatuses: [],
+  blockersAreImportant: false,
 } as const;
 const team = DEMO_TEAM.id;
 const [first, second] = ["demo-issue-avg-1", "demo-issue-avg-2"];
@@ -64,6 +65,17 @@ describe("DemoStore", () => {
       new Map([[team, { ...strict, dropAlertPercent: 25 }]]),
     );
     expect(decodeDemo("1~avengers.2.7.0~").rules.get(team)).toEqual(strict);
+  });
+
+  it("keeps blockers counting as important, with the Drop alert written out", async () => {
+    const before = DemoStore.fromCookie(undefined);
+    await before.setRules(team, { ...strict, blockersAreImportant: true });
+    expect(before.cookie()).toBe("1~avengers.2.7.0.40.1~");
+    const after = DemoStore.fromCookie(before.cookie());
+    expect(await after.rules([team])).toEqual(
+      new Map([[team, { ...strict, blockersAreImportant: true }]]),
+    );
+    expect(decodeDemo("1~avengers.2.7.0.40.2~").rules.size).toBe(0);
   });
 
   it("keeps a team's away statuses, whatever characters they hold", async () => {
@@ -229,7 +241,8 @@ describe("decodeDemo", () => {
       "ops.2.7.0.0",
       "ops.2.7.0.100",
       "ops.2.7.0.4x",
-      "ops.2.7.0.25.1",
+      "ops.2.7.0.25.2",
+      "ops.2.7.0.25.1.1",
       "ops.2.7.2",
       "x.2.7.0",
     ];

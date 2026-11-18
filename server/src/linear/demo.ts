@@ -4,10 +4,14 @@
 
 import { addDays, type CalendarDate, type LinearPriority } from "../domain/quadrant";
 import type { LinearSource } from "./client";
+import type { BlockingFragment } from "./generated";
 import {
   IssueByIdDocument,
   type IssueByIdQuery,
   type IssueByIdQueryVariables,
+  OpenBlockersDocument,
+  type OpenBlockersQuery,
+  type OpenBlockersQueryVariables,
   OpenIssuesDocument,
   type OpenIssuesQuery,
   type OpenIssuesQueryVariables,
@@ -176,6 +180,31 @@ const TEAMS = [
 ];
 
 /**
+ * What blocks what, by identifier: open issues on the same team, or "completed" for work that's
+ * done. Nothing moves until a team counts blockers as important:
+ * - Bruce's lab door (Low, Delegate) holds up the Hulk containment protocol: it moves to Do.
+ * - Thor's coffee machine (Low, no due date, Drop) holds up Bruce's tea: it moves to Schedule.
+ * - Tony's blueberries only held up work that's done, so they stay in Delegate.
+ */
+const BLOCKS: Record<string, string[]> = {
+  "AVG-27": ["AVG-26"],
+  "AVG-36": ["AVG-30"],
+  "AVG-11": ["completed"],
+};
+
+/** An issue's relations as Linear lists them: here, only what it blocks. */
+function relationsOf(identifier: string): BlockingFragment["relations"] {
+  const nodes = (BLOCKS[identifier] ?? []).map((blocked) => {
+    const issue = BY_IDENTIFIER.get(blocked);
+    return {
+      type: "blocks",
+      relatedIssue: { state: { type: issue ? issue.state.type : blocked } },
+    };
+  });
+  return { nodes };
+}
+
+/**
  * Statuses in Linear, by user id, with their ends counted from `today`. Nobody is away by one
  * until a team lists it in its rules: try "🌴" or "vacation".
  * - Clint is on vacation until the end of the day after tomorrow, holding 1 urgent issue.
@@ -245,6 +274,10 @@ const BY_ID = new Map(
   ),
 );
 
+const BY_IDENTIFIER = new Map(
+  [...BY_ID.values()].map(({ issue }) => [issue.identifier, issue] as const),
+);
+
 /** A demo issue, its team, and who the demo gives it to; undefined for an id it doesn't know. */
 export function demoIssue(id: string) {
   return BY_ID.get(id);
@@ -287,6 +320,9 @@ export class DemoLinear implements LinearSource {
     if (query === OpenIssuesDocument.toString()) {
       return this.openIssues(variables as OpenIssuesQueryVariables) as TResult;
     }
+    if (query === OpenBlockersDocument.toString()) {
+      return this.openBlockers(variables as OpenBlockersQueryVariables) as TResult;
+    }
     if (query === IssueByIdDocument.toString()) {
       return this.issueById(variables as IssueByIdQueryVariables) as TResult;
     }
@@ -315,9 +351,30 @@ export class DemoLinear implements LinearSource {
     const nodes = TEAMS.flatMap(({ team: { id: teamId, name, key } }) =>
       this.teamIssues(today, teamId)
         .filter((issue) => issue.id === id)
-        .map((issue) => ({ ...issue, team: { id: teamId, name, key } })),
+        .map((issue) => ({
+          ...issue,
+          relations: relationsOf(issue.identifier),
+          team: { id: teamId, name, key },
+        })),
     );
     return { issues: { nodes } } satisfies IssueByIdQuery;
+  }
+
+  /** Like Linear's `hasBlockingRelations` filter: any blocks relation, done or not. One page. */
+  private openBlockers({ teamIds }: OpenBlockersQueryVariables) {
+    const today = this.today();
+    const nodes = [teamIds].flat().flatMap((teamId) =>
+      this.teamIssues(today, teamId)
+        .filter((issue) => issue.identifier in BLOCKS)
+        .map((issue) => ({
+          id: issue.id,
+          team: { id: teamId },
+          relations: relationsOf(issue.identifier),
+        })),
+    );
+    return {
+      issues: { nodes, pageInfo: { hasNextPage: false, endCursor: null } },
+    } satisfies OpenBlockersQuery;
   }
 
   /** Pages like Linear's `issues` connection; cursors are the index of the next issue. */
@@ -360,7 +417,9 @@ export class DemoLinear implements LinearSource {
     return {
       issueUpdate: {
         success: true,
-        issue: issue ? { ...issue, team: { id: teamId, name, key } } : null,
+        issue: issue
+          ? { ...issue, relations: relationsOf(issue.identifier), team: { id: teamId, name, key } }
+          : null,
       },
     } satisfies ReassignIssueMutation;
   }

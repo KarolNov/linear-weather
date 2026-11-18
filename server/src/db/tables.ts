@@ -39,6 +39,10 @@ export const quadrantRules = sqliteTable(
       .$type<string[]>()
       .notNull()
       .default(sql`'[]'`),
+    /** Added later still, so rows from before don't count blockers: opt-in. */
+    blockersAreImportant: integer("blockers_are_important", { mode: "boolean" })
+      .notNull()
+      .default(false),
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [

@@ -30,6 +30,7 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
   const [dropAlert, setDropAlert] = useState(String(rules.dropAlertPercent));
   // One a line: a label could hold a comma.
   const [awayStatuses, setAwayStatuses] = useState(rules.awayStatuses.join("\n"));
+  const [blockers, setBlockers] = useState(rules.blockersAreImportant);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<{ message: string; problems: RuleProblem[] } | null>(null);
   const problem = (field: keyof Rules) => failure?.problems.find((p) => p.field === field);
@@ -49,6 +50,7 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
       dropAlertPercent: Number(dropAlert),
       // As typed: the server trims them and drops blanks and repeats.
       awayStatuses: awayStatuses.split("\n"),
+      blockersAreImportant: blockers,
     });
     setSaving(false);
     if (result.ok) onClose();
@@ -90,6 +92,22 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
               </span>
             )}
           </label>
+
+          <fieldset {...stylex.props(styles.field, styles.fieldset)}>
+            <legend {...stylex.props(styles.label, styles.legend)}>Issues blocking others</legend>
+            <label {...stylex.props(styles.radio)}>
+              <input
+                type="checkbox"
+                checked={blockers}
+                onChange={(event) => setBlockers(event.currentTarget.checked)}
+                aria-describedby="rules-blockers-hint"
+              />
+              Are always important
+            </label>
+            <span id="rules-blockers-hint" {...stylex.props(styles.hint)}>
+              Whatever their priority, while the issue they block is still open.
+            </span>
+          </fieldset>
 
           <label {...stylex.props(styles.field)}>
             <span {...stylex.props(styles.label)}>Urgent when due within</span>

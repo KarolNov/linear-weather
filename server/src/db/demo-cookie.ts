@@ -3,8 +3,9 @@
 // plain text in characters a cookie carries unescaped, with the ids' fixed prefixes dropped:
 //
 //   1~avengers.2.7.0!ops.3.30.1.25~avg-1.3!ops-4.1~avg-10.wanda~tony.50~tony.20261116.4~ops.WyLwn4y0Il0
-//   │ └ rules: team.importantFrom.urgencyWindowDays.noDueDate[.dropAlertPercent]
-//   │          (the alert left off at its default, as cookies from before it have it)
+//   │ └ rules: team.importantFrom.urgencyWindowDays.noDueDate[.dropAlertPercent[.1]]
+//   │          (the alert left off at its default, as cookies from before it have it, unless
+//   │          a trailing 1 says blockers count as important)
 //   │                                └ overrides: issue.quadrant
 //   │                                            └ assignees: issue.user
 //   │                                                         └ capacities: user.percent
@@ -102,9 +103,16 @@ export function encodeDemo({
   timeOff,
 }: DemoSaved): string {
   const teams = [...rules].map(
-    ([teamId, { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent }]) =>
+    ([
+      teamId,
+      { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent, blockersAreImportant },
+    ]) =>
       `${shorten(teamId, TEAM_PREFIX)}.${importantFrom}.${urgencyWindowDays}.${NO_DUE_DATE.indexOf(noDueDate)}${
-        dropAlertPercent === DEFAULT_RULES.dropAlertPercent ? "" : `.${dropAlertPercent}`
+        blockersAreImportant
+          ? `.${dropAlertPercent}.1`
+          : dropAlertPercent === DEFAULT_RULES.dropAlertPercent
+            ? ""
+            : `.${dropAlertPercent}`
       }`,
   );
   const issues = [...overrides].map(
@@ -178,13 +186,17 @@ export function decodeDemo(
     statuses = "",
   ] = value.split("~");
   if (version !== VERSION) return saved;
-  for (const [id, importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent] of fields(
-    teams,
-    4,
-    5,
-  )) {
+  for (const [
+    id,
+    importantFrom,
+    urgencyWindowDays,
+    noDueDate,
+    dropAlertPercent,
+    blockers,
+  ] of fields(teams, 4, 6)) {
     const undated = NO_DUE_DATE[index(noDueDate)];
     if (!undated || !TEAM_IDS.has(TEAM_PREFIX + id)) continue;
+    if (blockers !== undefined && blockers !== "1") continue;
     const { rules } = parseRules({
       importantFrom: Number(importantFrom),
       urgencyWindowDays: Number(urgencyWindowDays),
@@ -194,6 +206,7 @@ export function decodeDemo(
           ? DEFAULT_RULES.dropAlertPercent
           : wholeNumber(dropAlertPercent),
       awayStatuses: [],
+      blockersAreImportant: blockers === "1",
     });
     if (rules) saved.rules.set(TEAM_PREFIX + id, rules);
   }

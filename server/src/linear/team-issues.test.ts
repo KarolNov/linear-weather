@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LinearClient } from "./client";
-import { fetchOpenIssues, type OpenIssue, PAGE_SIZE } from "./team-issues";
+import {
+  BLOCKERS_PAGE_SIZE,
+  blocksOpenWork,
+  fetchOpenBlockers,
+  fetchOpenIssues,
+  type OpenBlocker,
+  type OpenIssue,
+  PAGE_SIZE,
+} from "./team-issues";
 
 const ada = {
   id: "u-ada",
@@ -37,7 +45,7 @@ function issue(n: number, assignee: OpenIssue["assignee"]): OpenIssue {
 }
 
 /** Answers like Linear's `issues` connection, one page per call, with the given headers. */
-function mockPages(pages: { nodes: OpenIssue[]; headers?: Record<string, string> }[]) {
+function mockPages<T>(pages: { nodes: T[]; headers?: Record<string, string> }[]) {
   const fetchMock = vi.spyOn(globalThis, "fetch");
   pages.forEach(({ nodes, headers }, i) => {
     const last = i === pages.length - 1;
@@ -100,5 +108,72 @@ describe("fetchOpenIssues", () => {
     await expect(
       fetchOpenIssues(new LinearClient("Bearer t"), ["team-1", "team-2"]),
     ).rejects.toThrow("no cursor");
+  });
+});
+
+/** A blocker whose relations are of these types, to issues in these states. */
+function blocker(n: number, relations: [type: string, state: string][]): OpenBlocker {
+  return {
+    id: `issue-${n}`,
+    team: { id: "team-1" },
+    relations: {
+      nodes: relations.map(([type, state]) => ({ type, relatedIssue: { state: { type: state } } })),
+    },
+  };
+}
+
+describe("fetchOpenBlockers", () => {
+  it("follows the cursor in pages small enough for the relations they carry", async () => {
+    const fetchMock = mockPages([
+      { nodes: [blocker(1, [["blocks", "started"]])] },
+      { nodes: [blocker(2, [["blocks", "backlog"]])] },
+    ]);
+
+    const blockers = await fetchOpenBlockers(new LinearClient("Bearer t"), ["team-1"]);
+
+    expect(blockers.map((b) => b.id)).toEqual(["issue-1", "issue-2"]);
+    expect(await sentVariables(fetchMock, 0)).toEqual({
+      teamIds: ["team-1"],
+      first: BLOCKERS_PAGE_SIZE,
+      after: null,
+    });
+    expect(await sentVariables(fetchMock, 1)).toMatchObject({ after: "cursor-1" });
+  });
+});
+
+describe("blocksOpenWork", () => {
+  it("is true when it blocks an issue that's still open", () => {
+    expect(blocksOpenWork(blocker(1, [["blocks", "unstarted"]]))).toBe(true);
+    expect(
+      blocksOpenWork(
+        blocker(1, [
+          ["blocks", "completed"],
+          ["blocks", "triage"],
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it("is false when everything it blocks is done", () => {
+    expect(
+      blocksOpenWork(
+        blocker(1, [
+          ["blocks", "completed"],
+          ["blocks", "canceled"],
+        ]),
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores relations that aren't blocking", () => {
+    expect(
+      blocksOpenWork(
+        blocker(1, [
+          ["related", "started"],
+          ["duplicate", "backlog"],
+        ]),
+      ),
+    ).toBe(false);
+    expect(blocksOpenWork(blocker(1, []))).toBe(false);
   });
 });

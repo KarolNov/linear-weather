@@ -95,13 +95,19 @@ function teamMatrix(
   assigneeId: string | null,
 ): Promise<Matrix<TeamIssue>> {
   return once(context, `matrix:${teamId}:${assigneeId}`, async () => {
-    const { byAssignee } = await (await signedIn(context)).teamWork(teamId);
+    const workspace = await signedIn(context);
+    const { byAssignee } = await workspace.teamWork(teamId);
     const issues = byAssignee.get(assigneeId) ?? [];
     const [rules, overrides] = await Promise.all([
       context.placements.rules(teamId),
       context.placements.overrides(issues),
     ]);
-    return buildMatrix(issues, rules, context.today, overrides);
+    // Asking Linear what blocks what costs a query, so only teams that use it do.
+    const blockers = rules.blockersAreImportant ? await workspace.blockerIds(teamId) : null;
+    const classified = blockers
+      ? issues.map((issue) => ({ ...issue, blocking: blockers.has(issue.id) }))
+      : issues;
+    return buildMatrix(classified, rules, context.today, overrides);
   });
 }
 
@@ -415,6 +421,10 @@ const QuadrantRulesRef = builder.objectRef<QuadrantRules>("QuadrantRules").imple
     awayStatuses: t.exposeStringList("awayStatuses", {
       description: `Linear statuses that mean someone is away: an entry matches a status whose label holds it, or whose emoji is among the entry's, ignoring case, e.g. "vacation", "🌴" or "🌴🏖️✈️". Someone with one is away from today until the status clears (in their time zone), or for this week when it never does. Empty unless the team opts in.`,
     }),
+    blockersAreImportant: t.exposeBoolean("blockersAreImportant", {
+      description:
+        "An issue that blocks another, still open, counts as important whatever its priority. Off unless the team opts in.",
+    }),
   }),
 });
 
@@ -436,6 +446,10 @@ const QuadrantRulesInput = builder.inputType("QuadrantRulesInput", {
     }),
     awayStatuses: t.stringList({
       description: `Linear statuses that mean someone is away: at most ${MAX_AWAY_STATUSES}, each at most ${MAX_AWAY_STATUS_LENGTH} characters. Trimmed, with blanks and repeats dropped. Left out, they stay as they were.`,
+    }),
+    blockersAreImportant: t.boolean({
+      description:
+        "Count an issue that blocks another, still open, as important whatever its priority. Left out, it stays as it was.",
     }),
   }),
 });
@@ -1332,6 +1346,7 @@ builder.mutationType({
               ...input,
               dropAlertPercent: input.dropAlertPercent ?? saved.dropAlertPercent,
               awayStatuses: input.awayStatuses ?? saved.awayStatuses,
+              blockersAreImportant: input.blockersAreImportant ?? saved.blockersAreImportant,
             });
             if (problems) {
               return {

@@ -10,6 +10,7 @@ Each developer's assigned issues are sorted into an **Eisenhower matrix** (Do / 
   - _Important_: Linear priority Medium or higher
   - _Urgent_: due within 14 days, or overdue
   - Issues with no due date count as not urgent
+  - Optionally, an issue that blocks another still-open issue counts as important whatever its priority
 
   A PM can still override any issue by hand.
 - **Backlog rot.** When more than 40% of a team's open issues (configurable per team) sit in Drop, the board's header flags it: a backlog filling with work nobody means to do.
@@ -71,6 +72,7 @@ Linear limits each user to 5,000 requests and 2,000,000 [complexity points](http
 - **`nodes` instead of `edges { node cursor }`**, which saves an object per issue. `pageInfo.endCursor` is the only cursor needed.
 - **Pages of 250**, Linear's maximum. A full page should cost about 1,400 points, which leaves plenty of room under the cap and keeps the request count low.
 - **Filtering on the server**: only issues that aren't completed or canceled, in the teams asked for. One query covers several teams, and each issue carries its `team { id }` so they can be split up again.
+- **Blockers only when asked.** Teams that count blocking issues as important need a second query (`OpenBlockers` in `server/src/linear/blocking.graphql`). Linear's `hasBlockingRelations` filter narrows it to issues with a "blocks" relation, and each one brings its first 20 relations, since Linear keeps the relation after the blocked issue is done. That's about 65 points an issue, so it's paged 100 at a time.
 
 The client reads Linear's rate-limit headers after each request and remembers what each query cost. Linear's budget refills continuously, so before sending a query the client waits until the remaining budget covers one more request at that cost. When Linear still answers `RATELIMITED`, it retries up to 3 times, waiting at least 0.25s, 0.5s, then 1s. If the budget would take more than 5s to refill, or the retries run out, it gives up with the time the budget resets.
 

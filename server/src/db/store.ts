@@ -31,6 +31,7 @@ export class Store {
         noDueDate: quadrantRules.noDueDate,
         dropAlertPercent: quadrantRules.dropAlertPercent,
         awayStatuses: quadrantRules.awayStatuses,
+        blockersAreImportant: quadrantRules.blockersAreImportant,
       })
       .from(quadrantRules)
       .where(inIds(quadrantRules.teamId, teamIds));

@@ -3,12 +3,23 @@ type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
 /** Internal type. DO NOT USE DIRECTLY. */
 export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
 import type { DocumentTypeDecoration } from '@graphql-typed-document-node/core';
+export type BlockingFragment = { relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }> } };
+
+export type OpenBlockersQueryVariables = Exact<{
+  teamIds: Array<string> | string;
+  first: number;
+  after?: string | null | undefined;
+}>;
+
+
+export type OpenBlockersQuery = { issues: { nodes: Array<{ id: string, team: { id: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }> } }>, pageInfo: { hasNextPage: boolean, endCursor: string | null } } };
+
 export type IssueByIdQueryVariables = Exact<{
   id: string;
 }>;
 
 
-export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } }> } };
+export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }> } }> } };
 
 export type ReassignIssueMutationVariables = Exact<{
   id: string;
@@ -16,7 +27,7 @@ export type ReassignIssueMutationVariables = Exact<{
 }>;
 
 
-export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } } | null } };
+export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }> } } | null } };
 
 export type IssueCardFragment = { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } };
 
@@ -69,6 +80,20 @@ export class TypedDocumentString<TResult, TVariables>
     return this.value;
   }
 }
+export const BlockingFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
+    fragment Blocking on Issue {
+  relations(first: 20) {
+    nodes {
+      type
+      relatedIssue {
+        state {
+          type
+        }
+      }
+    }
+  }
+}
+    `, {"fragmentName":"Blocking"}) as unknown as TypedDocumentString<BlockingFragment, unknown>;
 export const PersonFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
     fragment Person on User {
   id
@@ -113,18 +138,67 @@ export const TeamSummaryFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
   key
 }
     `, {"fragmentName":"TeamSummary"}) as unknown as TypedDocumentString<TeamSummaryFragment, unknown>;
+export const OpenBlockersDocument = /*#__PURE__*/ new TypedDocumentString(`
+    query OpenBlockers($teamIds: [ID!]!, $first: Int!, $after: String) {
+  issues(
+    first: $first
+    after: $after
+    filter: {
+      team: { id: { in: $teamIds } }
+      state: { type: { nin: ["completed", "canceled"] } }
+      hasBlockingRelations: { eq: true }
+    }
+  ) {
+    nodes {
+      id
+      team {
+        id
+      }
+      ...Blocking
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+    fragment Blocking on Issue {
+  relations(first: 20) {
+    nodes {
+      type
+      relatedIssue {
+        state {
+          type
+        }
+      }
+    }
+  }
+}`) as unknown as TypedDocumentString<OpenBlockersQuery, OpenBlockersQueryVariables>;
 export const IssueByIdDocument = /*#__PURE__*/ new TypedDocumentString(`
     query IssueById($id: ID!) {
   issues(first: 1, includeArchived: true, filter: { id: { eq: $id } }) {
     nodes {
       ...IssueCard
+      ...Blocking
       team {
         ...TeamSummary
       }
     }
   }
 }
-    fragment IssueCard on Issue {
+    fragment Blocking on Issue {
+  relations(first: 20) {
+    nodes {
+      type
+      relatedIssue {
+        state {
+          type
+        }
+      }
+    }
+  }
+}
+fragment IssueCard on Issue {
   id
   identifier
   title
@@ -160,13 +234,26 @@ export const ReassignIssueDocument = /*#__PURE__*/ new TypedDocumentString(`
     success
     issue {
       ...IssueCard
+      ...Blocking
       team {
         ...TeamSummary
       }
     }
   }
 }
-    fragment IssueCard on Issue {
+    fragment Blocking on Issue {
+  relations(first: 20) {
+    nodes {
+      type
+      relatedIssue {
+        state {
+          type
+        }
+      }
+    }
+  }
+}
+fragment IssueCard on Issue {
   id
   identifier
   title

@@ -2,7 +2,7 @@
 // JSON spends most of that on quotes (escaped to %22) and on the demo's long ids. So the cookie is
 // plain text in characters a cookie carries unescaped, with the ids' fixed prefixes dropped:
 //
-//   1~avengers.2.7.0!ops.3.30.1.25~avg-1.3!ops-4.1~avg-10.wanda~tony.50~tony.20261116.4~ops.WyLwn4y0Il0
+//   1~avengers.2.7.0!ops.3.30.1.25~avg-1.3!ops-4.1~avg-10.wanda~tony.50~tony.20261116.4~ops.WyLwn4y0Il0~ops
 //   │ └ rules: team.importantFrom.urgencyWindowDays.noDueDate[.dropAlertPercent]
 //   │          (the alert left off at its default, as cookies from before it have it)
 //   │                                └ overrides: issue.quadrant
@@ -12,7 +12,11 @@
 //   │                                                                    days after it to the last
 //   │                                                                              └ away statuses:
 //   │                                                                     team.base64url(JSON list)
+//   │                                                   teams counting blockers as important: team ┘
 //   └ format version
+//
+// A rule added later goes in a section of its own after the others, which code from before it
+// ignores, so rolling back keeps the rest of a visitor's rules.
 //
 // Away statuses can hold any character, separators included, so they go as base64url: letters,
 // digits, - and _ only. They take whatever room the rest leaves under MAX_COOKIE_VALUE_LENGTH, so a
@@ -107,6 +111,10 @@ export function encodeDemo({
         dropAlertPercent === DEFAULT_RULES.dropAlertPercent ? "" : `.${dropAlertPercent}`
       }`,
   );
+  const blockers = [...rules]
+    .filter(([, { blockersAreImportant }]) => blockersAreImportant)
+    .map(([teamId]) => shorten(teamId, TEAM_PREFIX))
+    .join("!");
   const issues = [...overrides].map(
     ([issueId, quadrant]) => `${shorten(issueId, ISSUE_PREFIX)}.${QUADRANTS.indexOf(quadrant)}`,
   );
@@ -133,7 +141,9 @@ export function encodeDemo({
   ];
   // Away statuses go last and take what room is left, each team as many of its own as fit: the
   // cookie must stay short enough for the browser to keep it, or nothing would be saved.
-  let room = MAX_COOKIE_VALUE_LENGTH - sections.join("~").length - 1;
+  // Blockers go after them, so leave their room too.
+  let room =
+    MAX_COOKIE_VALUE_LENGTH - sections.join("~").length - 1 - (blockers ? blockers.length + 1 : 0);
   const statuses: string[] = [];
   for (const [teamId, { awayStatuses }] of rules) {
     for (let kept = awayStatuses.length; kept > 0; kept--) {
@@ -146,7 +156,7 @@ export function encodeDemo({
       }
     }
   }
-  sections.push(statuses.join("!"));
+  sections.push(statuses.join("!"), blockers);
   while (sections.length > 3 && sections.at(-1) === "") sections.pop();
   return sections.join("~");
 }
@@ -176,6 +186,7 @@ export function decodeDemo(
     capacities = "",
     away = "",
     statuses = "",
+    blockers = "",
   ] = value.split("~");
   if (version !== VERSION) return saved;
   for (const [id, importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent] of fields(
@@ -194,6 +205,7 @@ export function decodeDemo(
           ? DEFAULT_RULES.dropAlertPercent
           : wholeNumber(dropAlertPercent),
       awayStatuses: [],
+      blockersAreImportant: false,
     });
     if (rules) saved.rules.set(TEAM_PREFIX + id, rules);
   }
@@ -239,6 +251,14 @@ export function decodeDemo(
       awayStatuses: listed,
     });
     if (rules) saved.rules.set(teamId, rules);
+  }
+  for (const [id] of fields(blockers, 1)) {
+    const teamId = TEAM_PREFIX + id;
+    if (!TEAM_IDS.has(teamId)) continue;
+    saved.rules.set(teamId, {
+      ...(saved.rules.get(teamId) ?? DEFAULT_RULES),
+      blockersAreImportant: true,
+    });
   }
   return saved;
 }

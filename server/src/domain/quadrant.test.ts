@@ -123,6 +123,26 @@ describe("classify with custom rules", () => {
     expect(run({ priority: 2, dueDate: "2026-10-20" }, rules).quadrant).toBe("do");
     expect(run({ priority: 2, dueDate: SOON }, rules).quadrant).toBe("schedule");
   });
+
+  it("counts an issue that blocks open work as important, whatever its priority", () => {
+    const rules: QuadrantRules = { ...DEFAULT_RULES, blockersAreImportant: true };
+    expect(run({ priority: 4, dueDate: SOON, blocking: true }, rules)).toEqual({
+      quadrant: "do",
+      reason: "Low priority, blocks other issues, due in 3 days",
+    });
+    expect(run({ priority: 0, dueDate: null, blocking: true }, rules).quadrant).toBe("schedule");
+    expect(run({ priority: 4, dueDate: SOON, blocking: false }, rules)).toEqual({
+      quadrant: "delegate",
+      reason: "Low priority, due in 3 days",
+    });
+  });
+
+  it("ignores blocking unless the team counts blockers as important", () => {
+    expect(run({ priority: 4, dueDate: SOON, blocking: true })).toEqual({
+      quadrant: "delegate",
+      reason: "Low priority, due in 3 days",
+    });
+  });
 });
 
 describe("becomesUrgentOn", () => {
@@ -230,6 +250,7 @@ describe("parseRules", () => {
         noDueDate: "urgent",
         dropAlertPercent: 1,
         awayStatuses: [],
+        blockersAreImportant: true,
       },
       {
         importantFrom: 4,
@@ -237,6 +258,7 @@ describe("parseRules", () => {
         noDueDate: "notUrgent",
         dropAlertPercent: 99,
         awayStatuses: ["🌴", "x".repeat(40), ..."abcdefgh"],
+        blockersAreImportant: false,
       },
     ] satisfies QuadrantRules[]) {
       expect(parseRules(rules)).toEqual({ rules });

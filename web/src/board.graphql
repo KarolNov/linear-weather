@@ -30,6 +30,7 @@ fragment TeamBoard on Team {
     noDueDate
     dropAlertPercent
     awayStatuses
+    blockersAreImportant
   }
   weather {
     kind

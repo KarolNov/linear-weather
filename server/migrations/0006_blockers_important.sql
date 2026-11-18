@@ -1,0 +1,1 @@
+ALTER TABLE `quadrant_rules` ADD `blockers_are_important` integer DEFAULT false NOT NULL;

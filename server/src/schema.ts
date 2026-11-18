@@ -34,9 +34,9 @@ import {
   type Weather,
 } from "./domain/weather";
 import { LinearAuthError, LinearForbiddenError, LinearRateLimitError } from "./linear/client";
-import type { Assignee } from "./linear/team-issues";
+import { type Assignee, blocksOpenWork } from "./linear/team-issues";
 import type { Placements } from "./placements";
-import type { Team, TeamIssue, Viewer, Workspace } from "./workspace";
+import type { SingleIssue, Team, TeamIssue, Viewer, Workspace } from "./workspace";
 
 export interface GraphQLContext {
   /** Linear as the signed-in user sees it; null when nobody is signed in. */
@@ -95,14 +95,69 @@ function teamMatrix(
   assigneeId: string | null,
 ): Promise<Matrix<TeamIssue>> {
   return once(context, `matrix:${teamId}:${assigneeId}`, async () => {
-    const { byAssignee } = await (await signedIn(context)).teamWork(teamId);
-    const issues = byAssignee.get(assigneeId) ?? [];
-    const [rules, overrides] = await Promise.all([
+    const workspace = await signedIn(context);
+    // What blocks what goes alongside the team's issues, not after them.
+    const [{ byAssignee }, teamRules, blockers] = await Promise.all([
+      workspace.teamWork(teamId),
       context.placements.rules(teamId),
-      context.placements.overrides(issues),
+      blockersOf(context, workspace, teamId),
     ]);
-    return buildMatrix(issues, rules, context.today, overrides);
+    const issues = byAssignee.get(assigneeId) ?? [];
+    // Read once all of it is in, so every matrix's overrides share one read.
+    const overrides = await context.placements.overrides(issues);
+    return buildMatrix(
+      issues.map((issue) => withBlocking(issue, blockers)),
+      teamRules,
+      context.today,
+      overrides,
+    );
   });
+}
+
+/**
+ * The ids of a team's open issues that block open work, when its rules count blockers as
+ * important; else null. Asking Linear costs a query, so only teams that use it do, once a request.
+ * Null too when Linear can't say, so the team is sorted by priority alone rather than its board
+ * failing.
+ */
+function blockersOf(
+  context: GraphQLContext,
+  workspace: Workspace,
+  teamId: string,
+): Promise<ReadonlySet<string> | null> {
+  return once(context, `blockers:${teamId}`, async () => {
+    if (!(await context.placements.rules(teamId)).blockersAreImportant) return null;
+    try {
+      return await workspace.blockerIds(teamId);
+    } catch (error) {
+      // Signed out or rate limited fails the rest of the request too: let those say so.
+      if (error instanceof LinearAuthError || error instanceof LinearRateLimitError) throw error;
+      console.warn(`Couldn't tell which of team ${teamId}'s issues block others`, error);
+      return null;
+    }
+  });
+}
+
+/**
+ * An issue as the rules classify it: with whether it blocks open work, from `blockersOf`. A single
+ * issue placed by a mutation reads its own relations instead (`ownBlocking`), by the same test.
+ */
+function withBlocking<I extends { id: string }>(
+  issue: I,
+  blockers: ReadonlySet<string> | null,
+): I & { blocking?: boolean } {
+  return blockers ? { ...issue, blocking: blockers.has(issue.id) } : issue;
+}
+
+/**
+ * One issue with whether it blocks open work, from the relations it came with: no further request,
+ * so a mutation that already changed something can't fail on it.
+ */
+function ownBlocking(
+  issue: SingleIssue,
+  rules: QuadrantRules,
+): SingleIssue & { blocking?: boolean } {
+  return rules.blockersAreImportant ? { ...issue, blocking: blocksOpenWork(issue) } : issue;
 }
 
 /**
@@ -415,6 +470,10 @@ const QuadrantRulesRef = builder.objectRef<QuadrantRules>("QuadrantRules").imple
     awayStatuses: t.exposeStringList("awayStatuses", {
       description: `Linear statuses that mean someone is away: an entry matches a status whose label holds it, or whose emoji is among the entry's, ignoring case, e.g. "vacation", "🌴" or "🌴🏖️✈️". Someone with one is away from today until the status clears (in their time zone), or for this week when it never does. Empty unless the team opts in.`,
     }),
+    blockersAreImportant: t.exposeBoolean("blockersAreImportant", {
+      description:
+        "An issue that blocks another, still open, counts as important whatever its priority. Off unless the team opts in.",
+    }),
   }),
 });
 
@@ -436,6 +495,10 @@ const QuadrantRulesInput = builder.inputType("QuadrantRulesInput", {
     }),
     awayStatuses: t.stringList({
       description: `Linear statuses that mean someone is away: at most ${MAX_AWAY_STATUSES}, each at most ${MAX_AWAY_STATUS_LENGTH} characters. Trimmed, with blanks and repeats dropped. Left out, they stay as they were.`,
+    }),
+    blockersAreImportant: t.boolean({
+      description:
+        "Count an issue that blocks another, still open, as important whatever its priority. Left out, it stays as it was.",
     }),
   }),
 });
@@ -1177,7 +1240,7 @@ async function placeByHand(
   forgetWork(context);
   return {
     __typename: "OverrideSuccess",
-    issue: place(issue, rules, context.today, quadrant ?? undefined),
+    issue: place(ownBlocking(issue, rules), rules, context.today, quadrant ?? undefined),
     team: issue.team,
   };
 }
@@ -1309,7 +1372,7 @@ async function reassign(
   ]);
   return {
     __typename: "ReassignSuccess",
-    issue: place(issue, rules, context.today, overrides.get(issue.id)),
+    issue: place(ownBlocking(issue, rules), rules, context.today, overrides.get(issue.id)),
     team: issue.team,
   };
 }
@@ -1332,6 +1395,7 @@ builder.mutationType({
               ...input,
               dropAlertPercent: input.dropAlertPercent ?? saved.dropAlertPercent,
               awayStatuses: input.awayStatuses ?? saved.awayStatuses,
+              blockersAreImportant: input.blockersAreImportant ?? saved.blockersAreImportant,
             });
             if (problems) {
               return {

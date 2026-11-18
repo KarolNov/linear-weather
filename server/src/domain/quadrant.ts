@@ -28,6 +28,8 @@ export interface QuadrantRules {
    * whose emoji is among the entry's ("🌴🏖️" matches 🌴), ignoring case. Empty unless a team opts in.
    */
   awayStatuses: readonly string[];
+  /** An issue that blocks another, still open, counts as important whatever its priority. */
+  blockersAreImportant: boolean;
 }
 
 export const DEFAULT_RULES: QuadrantRules = {
@@ -36,6 +38,7 @@ export const DEFAULT_RULES: QuadrantRules = {
   noDueDate: "notUrgent",
   dropAlertPercent: 40,
   awayStatuses: [],
+  blockersAreImportant: false,
 };
 
 /** Whether two teams' rules are the same, lists compared by what they hold. */
@@ -73,7 +76,8 @@ export type RulesInput = Omit<QuadrantRules, "importantFrom"> & { importantFrom:
 export function parseRules(
   input: RulesInput,
 ): { rules: QuadrantRules; problems?: never } | { rules?: never; problems: RuleProblem[] } {
-  const { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent } = input;
+  const { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent, blockersAreImportant } =
+    input;
   const awayStatuses = tidyAwayStatuses(input.awayStatuses);
   const problems: RuleProblem[] = [];
   if (!isImportantFrom(importantFrom)) {
@@ -112,7 +116,14 @@ export function parseRules(
   }
   if (problems.length === 0 && isImportantFrom(importantFrom)) {
     return {
-      rules: { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent, awayStatuses },
+      rules: {
+        importantFrom,
+        urgencyWindowDays,
+        noDueDate,
+        dropAlertPercent,
+        awayStatuses,
+        blockersAreImportant,
+      },
     };
   }
   return { problems };
@@ -142,6 +153,11 @@ function isImportantFrom(priority: number): priority is QuadrantRules["important
 export interface ClassifiableIssue {
   priority: LinearPriority;
   dueDate: CalendarDate | null;
+  /**
+   * Blocks another issue that's still open. Only read when the rules count blockers as important,
+   * and only looked up in Linear then, so left out it means "not asked", read as not blocking.
+   */
+  blocking?: boolean;
 }
 
 export interface Classification {
@@ -163,14 +179,17 @@ export function classify(
   rules: QuadrantRules,
   today: CalendarDate,
 ): Classification {
-  const important = issue.priority !== 0 && issue.priority <= rules.importantFrom;
+  const blocker = rules.blockersAreImportant && issue.blocking === true;
+  const important = (issue.priority !== 0 && issue.priority <= rules.importantFrom) || blocker;
   const urgent = isUrgent(issue.dueDate, rules, today);
   const due =
     issue.dueDate === null ? "no due date" : describeDue(daysBetween(today, issue.dueDate));
 
   return {
     quadrant: important ? (urgent ? "do" : "schedule") : urgent ? "delegate" : "drop",
-    reason: `${PRIORITY_LABEL[issue.priority]}, ${due}`,
+    reason: [PRIORITY_LABEL[issue.priority], ...(blocker ? ["blocks other issues"] : []), due].join(
+      ", ",
+    ),
   };
 }
 

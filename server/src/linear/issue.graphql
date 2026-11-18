@@ -5,6 +5,7 @@ query IssueById($id: ID!) {
   issues(first: 1, includeArchived: true, filter: { id: { eq: $id } }) {
     nodes {
       ...IssueCard
+      ...Blocking
       team {
         ...TeamSummary
       }

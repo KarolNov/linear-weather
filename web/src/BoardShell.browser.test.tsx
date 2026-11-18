@@ -128,7 +128,7 @@ describe("the board after a move", () => {
 
     await moveReactorToSchedule();
 
-    expect(fetch).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     await expect.poll(() => sky()?.dataset.weather).toBe("sun");
     await expect.poll(teamForecast).toContain(sunny.reason);
   });
@@ -139,11 +139,11 @@ describe("the board after a move", () => {
 
     await moveReactorToSchedule();
 
-    // The card is drawn again in Schedule, as hand-placed, and its button has the keyboard.
-    await expect.element(page.getByText("By hand", { exact: false })).toBeInTheDocument();
-    await expect
-      .poll(() => (document.activeElement as HTMLElement | null)?.dataset.moveTrigger)
-      .toBe("i-1");
+    // The card is drawn again in Schedule, as hand-placed, and its button there has the keyboard.
+    // Case-sensitive and anchored, so the badge matches and not its "Placed by hand" reason.
+    const schedule = page.getByRole("region", { name: "Tony Stark: Schedule" });
+    await expect.element(schedule.getByText(/^By hand/)).toBeVisible();
+    await expect.element(schedule.getByRole("button", { name: "Move AVG-1" })).toHaveFocus();
   });
 });
 
@@ -180,8 +180,11 @@ describe("the rain on the board's sky", () => {
     render(<BoardShell viewer={viewer} board={loaded(avengersBoard(storm))} />, root);
     expect(sky()?.dataset.weather).toBe("storm");
 
-    // Long enough for the drawing code to have loaded, had it been asked for.
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Once the sky's effects have run, load the drawing code ourselves: had the sky asked for it
+    // first, its load lands before ours, and it would have started by the next task.
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+    await import("../../ui/src/rain");
+    await new Promise((resolve) => setTimeout(resolve));
     expect(rain.startRain).not.toHaveBeenCalled();
   });
 });

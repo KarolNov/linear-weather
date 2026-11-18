@@ -12,8 +12,10 @@ beforeEach(() => {
   document.body.append(root);
   render(
     <>
-      <TeamPicker teams={[avengers, ops]} selected={avengers} />
+      {/* Above the picker: its menu drops over whatever is below it. */}
       <p>Somewhere else on the page</p>
+      <TeamPicker teams={[avengers, ops]} selected={avengers} />
+      <button type="button">Something else</button>
     </>,
     root,
   );
@@ -26,12 +28,15 @@ afterEach(() => {
 const menu = () => root.querySelector("details");
 const summary = () => root.querySelector("summary") as HTMLElement;
 
+/** A frame and a task: long enough for the toggle to render, or a late close to land. */
+const settle = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+
 /** Opens the menu, and waits for the picker to know it's open, as a PM's next move would. */
 async function open() {
   await userEvent.click(page.elementLocator(summary()));
   await expect.poll(() => menu()?.open).toBe(true);
   // The listeners that close it go on once the toggle has rendered.
-  await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+  await settle();
 }
 
 describe("the team picker", () => {
@@ -51,6 +56,17 @@ describe("the team picker", () => {
   it("stays open on a click inside it", async () => {
     await open();
     await userEvent.click(page.getByText("Switch team", { exact: true }));
+    await settle();
     expect(menu()?.open).toBe(true);
+  });
+
+  it("closes when the keyboard tabs out of it", async () => {
+    await open();
+    // Past both teams' links to the button after the picker.
+    await userEvent.tab();
+    await userEvent.tab();
+    await userEvent.tab();
+    await expect.element(page.getByRole("button", { name: "Something else" })).toHaveFocus();
+    await expect.poll(() => menu()?.open).toBe(false);
   });
 });

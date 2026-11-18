@@ -1,6 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { app } from "./index";
+import { TRUSTED_DOCUMENTS } from "./trusted-documents";
 
 describe("server worker", () => {
   it("reports health", async () => {
@@ -215,5 +216,87 @@ describe("POST /graphql", () => {
     expect(body.errors).toMatchObject([
       { path: ["teams"], extensions: { code: "RATE_LIMITED", resetAt } },
     ]);
+  });
+});
+
+describe("off localhost", () => {
+  const deployed = "https://linear-weather.example/graphql?demo=true";
+  const post = (body: unknown) =>
+    app.request(
+      deployed,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  const boardId = Object.entries(TRUSTED_DOCUMENTS).find(([, source]) =>
+    source.includes("query Board("),
+  )?.[0];
+
+  it("runs the board's operations by id", async () => {
+    const res = await post({ documentId: boardId, variables: { teamId: null } });
+    expect(res.status).toBe(200);
+    const { data, errors } = (await res.json()) as {
+      data: { viewer: { name: string } };
+      errors?: unknown;
+    };
+    expect(errors).toBeUndefined();
+    expect(data.viewer.name).toBe("Nick Fury");
+  });
+
+  it("refuses a query of its own", async () => {
+    const res = await post({ query: "{ hello }" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      errors: [{ extensions: { code: "PERSISTED_QUERY_ONLY" } }],
+    });
+  });
+
+  it("refuses an id it doesn't know", async () => {
+    const res = await post({ documentId: "sha256:0000" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      errors: [{ extensions: { code: "PERSISTED_QUERY_NOT_FOUND" } }],
+    });
+  });
+
+  it("refuses an id and a query together", async () => {
+    const res = await post({ documentId: boardId, query: "{ hello }" });
+    expect(res.status).toBe(400);
+  });
+
+  it("doesn't serve GraphiQL", async () => {
+    const res = await app.request(deployed, { headers: { accept: "text/html" } }, env);
+    expect(await res.text()).not.toContain("GraphiQL");
+  });
+});
+
+describe("on localhost", () => {
+  it("refuses a query past the limits", async () => {
+    const deep = `{ teams { people { matrix { do { assignee {
+      matrix { do { assignee { matrix { do { id } } } } }
+    } } } } } }`;
+    const res = await app.request(
+      "http://localhost/graphql?demo=true",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: deep }),
+      },
+      env,
+    );
+    const { errors } = (await res.json()) as { errors: { extensions: { code: string } }[] };
+    expect(errors.map((e) => e.extensions.code)).toEqual(["QUERY_TOO_DEEP", "QUERY_TOO_COSTLY"]);
+  });
+
+  it("serves GraphiQL", async () => {
+    const res = await app.request(
+      "http://localhost/graphql",
+      { headers: { accept: "text/html" } },
+      env,
+    );
+    expect(await res.text()).toContain("GraphiQL");
   });
 });

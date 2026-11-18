@@ -4,6 +4,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { BoardShell } from "./BoardShell";
 import type { Board, BoardIssue, Matrix, Suggestion, TeamBoardData, WeatherKind } from "./board";
 import { teamBoard } from "./board";
+import { trustedDocuments } from "./operations";
 
 // The rain's drawing code, stubbed so a test sees the sky start, change and stop it.
 const rain = vi.hoisted(() => {
@@ -100,14 +101,17 @@ interface HeldRequest {
 }
 
 /** A server that holds each request until the test answers it, so a test can act mid-request. */
-function serverHolding() {
+async function serverHolding() {
   const held: HeldRequest[] = [];
+  // The board sends each operation's id; look its text up, as the server does.
+  const documents = await trustedDocuments();
   vi.stubGlobal(
     "fetch",
     vi.fn(
       (_url: string, init: RequestInit) =>
         new Promise<Response>((resolve) => {
-          const { query, variables } = JSON.parse(String(init.body));
+          const { documentId, variables } = JSON.parse(String(init.body));
+          const query = documents[documentId] ?? "";
           held.push({ query, variables, answer: (data) => resolve(Response.json({ data })) });
         }),
     ),
@@ -299,7 +303,7 @@ describe("the rebalance panel", () => {
   const question = () => page.getByText(/^Make these \d+ moves in Linear\?$/);
 
   it("stays locked through today's moves when a single hand-over answers mid-run", async () => {
-    const server = serverHolding();
+    const server = await serverHolding();
     await openPanel(rebalancing([handOver(2), handOver(3)], [handOver(4, 2)]));
 
     // A move ahead of time first, then today's, which wait behind it.
@@ -325,7 +329,7 @@ describe("the rebalance panel", () => {
   });
 
   it("asks before making today's moves, and gives the keyboard back on Cancel", async () => {
-    serverHolding();
+    await serverHolding();
     await openPanel(rebalancing([handOver(2), handOver(3)]));
 
     await userEvent.click(makeAll());
@@ -337,7 +341,7 @@ describe("the rebalance panel", () => {
   });
 
   it("gives the keyboard to the panel once a hand-over's button is gone", async () => {
-    const server = serverHolding();
+    const server = await serverHolding();
     await openPanel(rebalancing([handOver(2), handOver(3)]));
 
     await userEvent.click(page.getByRole("button", { name: "Hand AVG-2 to Bruce Banner" }));
@@ -347,7 +351,7 @@ describe("the rebalance panel", () => {
   });
 
   it("takes the keyboard to the failure when one of today's moves fails", async () => {
-    const server = serverHolding();
+    const server = await serverHolding();
     const before = rebalancing([handOver(2), handOver(3)]);
     await openPanel(before);
 
@@ -370,7 +374,7 @@ describe("the rebalance panel", () => {
   });
 
   it("closes the question when a move made underneath it changes today's plan", async () => {
-    const server = serverHolding();
+    const server = await serverHolding();
     await openPanel(rebalancing([handOver(2), handOver(3)]));
 
     await userEvent.click(makeAll());

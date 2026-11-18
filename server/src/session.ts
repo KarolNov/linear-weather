@@ -49,7 +49,7 @@ export async function linearAuthorization(c: AppContext): Promise<LinearAuthoriz
   if (tokens) return `Bearer ${tokens.accessToken}`;
 
   // Dev shortcut: personal API keys go in the header as-is, without "Bearer".
-  if (c.env.LINEAR_API_KEY && isLocalhost(c)) return c.env.LINEAR_API_KEY;
+  if (c.env.LINEAR_API_KEY && isLocalhost(c.req.url)) return c.env.LINEAR_API_KEY;
   return null;
 }
 
@@ -115,8 +115,8 @@ export function isHttps(c: AppContext): boolean {
   return new URL(c.req.url).protocol === "https:";
 }
 
-// Cloudflare routes by hostname, so a deployed Worker never sees a localhost URL.
-function isLocalhost(c: AppContext): boolean {
-  const { hostname } = new URL(c.req.url);
+/** Whether `url` is on this machine. Cloudflare routes by hostname, so a deployed Worker never sees one. */
+export function isLocalhost(url: string): boolean {
+  const { hostname } = new URL(url);
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }

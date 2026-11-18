@@ -12,6 +12,7 @@ import {
   teamBoard,
   type Viewer,
 } from "./board";
+import { documentId } from "./document-id";
 import { skyFor } from "./weather";
 
 export interface Bindings {
@@ -101,7 +102,10 @@ async function fetchBoard(
       new Request(url, {
         method: "POST",
         headers: { "content-type": "application/json", cookie: c.req.header("cookie") ?? "" },
-        body: JSON.stringify({ query: BOARD_QUERY, variables: { teamId: teamId ?? null } }),
+        body: JSON.stringify({
+          documentId: await documentId(BOARD_QUERY),
+          variables: { teamId: teamId ?? null },
+        }),
       }),
     );
     if (!res.ok) throw new Error(`server responded ${res.status}`);

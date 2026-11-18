@@ -304,6 +304,16 @@ Measured against a real workspace (2 teams, 5 open issues) through Linear's `x-c
 
 Errors stay next to the field that failed: `teams` and `team` are nullable, so a rate-limited board still returns the `viewer`. Linear's rate limit comes back as `extensions: { code: "RATE_LIMITED", resetAt }` and a revoked token as `UNAUTHENTICATED`. Any other error is masked.
 
+### Hardening: trusted documents and query limits
+
+Our schema has cycles: an issue's assignee has a matrix of issues, whose assignees have matrices, and so on. Every level can mean another call to Linear, so a query only a few levels deeper than the board's could spend a user's whole Linear budget. Two layers stop that.
+
+**Trusted documents.** `pnpm --filter web codegen` hashes each operation in `web/src/*.graphql` and writes the list to `server/src/trusted-documents.ts`. The board sends `{ documentId: "sha256:…", variables }` instead of the query, as the [GraphQL over HTTP draft on persisted documents](https://github.com/graphql/graphql-over-http/blob/main/spec/Appendix%20A%20--%20Persisted%20Documents.md) spells it, and off localhost the server runs nothing else. An unknown id gets `PERSISTED_QUERY_NOT_FOUND`; a query sent as text gets `PERSISTED_QUERY_ONLY`. `pnpm codegen:check` fails if the list is stale. On localhost any query still runs, and GraphiQL is only served there.
+
+**Depth and cost limits.** Every operation, trusted or not, is measured while it's validated (`server/src/limits.ts`) and refused before anything runs if it nests more than 10 fields deep (`QUERY_TOO_DEEP`) or costs more than 10,000 points (`QUERY_TOO_COSTLY`). The board's own operations nest at most 7 deep and cost about 3,000; `server/src/limits.test.ts` checks each one.
+
+This mirrors how [Linear limits us](https://linear.app/developers/rate-limiting). The cost is Linear's own model: a scalar or enum field costs 0.1, an object 1, and a list multiplies what's inside it by its length. The 10,000-point cap per query is Linear's too. One difference: Linear reads a list's length from `first` (50 if left out), but our lists don't page, so each counts as 10 items, about a team's people or a quadrant's issues. We don't keep an hourly budget per user the way Linear does. Trusted documents bound what one request can cost, and Linear's own hourly limit, which the client already respects, still sits behind every request.
+
 ## Our own data
 
 Linear holds the issues. What only this app knows lives in a D1 database (binding `DB`), defined in `server/src/db/tables.ts`:

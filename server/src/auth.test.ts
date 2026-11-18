@@ -1,8 +1,12 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "./index";
+import { TRUSTED_DOCUMENTS } from "./trusted-documents";
 
 const ORIGIN = "http://localhost:5173";
+const boardDocumentId = Object.keys(TRUSTED_DOCUMENTS).find((id) =>
+  TRUSTED_DOCUMENTS[id]?.includes("query Board("),
+);
 const VIEWER = {
   id: "user-1",
   name: "Ada Lovelace",
@@ -289,11 +293,13 @@ describe("viewer", () => {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query: "{ viewer { name } }" }),
+        // Off localhost only the board's own operations run.
+        body: JSON.stringify({ documentId: boardDocumentId, variables: { teamId: null } }),
       },
       { ...env, LINEAR_API_KEY: "lin_api_dev" },
     );
-    expect(await res.json()).toEqual({ data: { viewer: null } });
+    const { data } = (await res.json()) as { data: { viewer: unknown } };
+    expect(data.viewer).toBeNull();
     expect(linear.calls).toHaveLength(0);
   });
 

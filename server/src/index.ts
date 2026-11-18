@@ -6,6 +6,7 @@ import { auth } from "./auth";
 import { DEMO_COOKIE, DEMO_COOKIE_MAX_AGE } from "./db/demo-cookie";
 import { DemoStore } from "./db/demo-store";
 import { Store } from "./db/store";
+import { useQueryLimits } from "./limits";
 import {
   LinearAuthError,
   LinearClient,
@@ -15,7 +16,14 @@ import {
 import { DemoLinear } from "./linear/demo";
 import { Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
-import { type AppContext, cookieOptions, discardSession, linearAuthorization } from "./session";
+import {
+  type AppContext,
+  cookieOptions,
+  discardSession,
+  isLocalhost,
+  linearAuthorization,
+} from "./session";
+import { useTrustedDocuments } from "./trusted-documents-plugin";
 import { Workspace } from "./workspace";
 
 const yoga = createYoga<GraphQLContext>({
@@ -26,6 +34,12 @@ const yoga = createYoga<GraphQLContext>({
   fetchAPI: globalThis,
   maskedErrors: { maskError: explainLinearErrors },
   logging: quietAboutLinear(createLogger()),
+  // Off localhost only the board's own operations run, so GraphiQL would have nothing to send.
+  graphiql: (request) => isLocalhost(request.url),
+  plugins: [
+    useTrustedDocuments({ allowAnyQuery: (request) => isLocalhost(request.url) }),
+    useQueryLimits(),
+  ],
 });
 
 export const app = new Hono<{ Bindings: Env }>()

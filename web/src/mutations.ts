@@ -12,6 +12,7 @@ import {
   type Suggestion,
   type TeamBoardData,
 } from "./board";
+import { documentId } from "./document-id";
 import {
   AddTimeOffDocument,
   ClearOverrideDocument,
@@ -112,7 +113,8 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query, variables }),
+      // The server runs only the board's own operations, by id (document-id.ts).
+      body: JSON.stringify({ documentId: await documentId(query), variables }),
     });
     if (!res.ok) throw new Error(`server responded ${res.status}`);
     return (await res.json()) as GraphQLResponse<TResult>;

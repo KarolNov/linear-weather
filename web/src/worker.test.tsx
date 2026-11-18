@@ -9,6 +9,7 @@ import {
   runningLate,
   type Suggestion,
 } from "./board";
+import { trustedDocuments } from "./operations";
 import { ConfirmMoves, RebalancePanel, stillPlanned } from "./RebalancePanel";
 import { app, type Bindings } from "./worker";
 
@@ -161,7 +162,13 @@ function serverReturning(
 
 /** What the web Worker asked the server's GraphQL endpoint. */
 async function sentQuery(request: Request | undefined) {
-  return (await request?.clone().json()) as { query: string; variables: { teamId: string | null } };
+  if (!request) throw new Error("nothing was sent");
+  const { documentId, variables, ...rest } = (await request.clone().json()) as {
+    documentId: string;
+    variables: { teamId: string | null };
+  };
+  // Looked up by id, as the server does.
+  return { query: (await trustedDocuments())[documentId] as string, variables, ...rest };
 }
 
 const fury = { name: "Nick Fury", avatarUrl: null, organization: { name: "S.H.I.E.L.D." } };

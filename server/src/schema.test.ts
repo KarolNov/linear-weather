@@ -809,7 +809,7 @@ describe("away statuses", () => {
     // Off Monday and Tuesday of the first week, there the rest of it; all of the second.
     const weeks = result.team?.people.find((p) => p.name === "Clint Barton")?.forecast;
     expect(weeks?.[0]?.weather.kind).not.toBe("AWAY");
-    expect(weeks?.[0]?.weather.reason).toContain("(2 days off)");
+    expect(weeks?.[0]?.weather.reason).toContain("(2 days off: Linear status 🌴 On vacation)");
     expect(weeks?.[1]?.weather.reason).not.toContain("days off");
 
     // Left out of the input, they stay.

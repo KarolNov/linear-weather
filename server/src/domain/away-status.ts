@@ -20,18 +20,81 @@ export const STATUS_TIME_OFF_ID = "linear-status";
 
 /**
  * Whether a status is one of a team's away statuses, ignoring case. An entry matches when its
- * words appear in the status's label, or when the status's emoji is among the entry's: "🌴",
- * "🌴🏖️✈️" and "🌴 🤒" all match 🌴. Linear shortcodes like ":palm_tree:" count as emojis too.
+ * words appear in the status's label as whole words ("off" doesn't match "Office hours"), or when
+ * the status's emoji is among the entry's: "🌴", "🌴🏖️✈️" and "🌴 🤒" all match 🌴. Linear
+ * shortcodes like ":palm_tree:" count as emojis too, and match the emoji they stand for when it's
+ * a common status one. Variation selectors are ignored: 🏖 matches 🏖️.
  */
 export function isAwayStatus(status: LinearStatus, awayStatuses: readonly string[]): boolean {
-  const emoji = status.statusEmoji?.trim().toLowerCase() ?? "";
+  const emoji = canonicalEmoji(status.statusEmoji?.trim() ?? "");
   const label = status.statusLabel?.toLowerCase() ?? "";
   return awayStatuses.some((entry) => {
     const wanted = entry.trim().toLowerCase();
     if (wanted === "") return false;
-    if (label.includes(wanted)) return true;
-    return emoji !== "" && (wanted === emoji || (emojisIn(wanted)?.includes(emoji) ?? false));
+    if (label !== "" && wholeWords(wanted).test(label)) return true;
+    if (emoji === "") return false;
+    if (canonicalEmoji(wanted) === emoji) return true;
+    return emojisIn(wanted)?.some((listed) => canonicalEmoji(listed) === emoji) ?? false;
   });
+}
+
+/** Matches `text` where it isn't part of a longer word. */
+function wholeWords(text: string): RegExp {
+  const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "u");
+}
+
+/**
+ * Linear's shortcodes for emojis people set as an away status, e.g. ":palm_tree:" for 🌴. Not every
+ * shortcode: one that isn't here still matches the same shortcode in an entry.
+ */
+const SHORTCODES: Record<string, string> = {
+  ":palm_tree:": "🌴",
+  ":beach_with_umbrella:": "🏖",
+  ":beach_umbrella:": "🏖",
+  ":desert_island:": "🏝",
+  ":island:": "🏝",
+  ":airplane:": "✈",
+  ":airplane_departure:": "🛫",
+  ":luggage:": "🧳",
+  ":face_with_thermometer:": "🤒",
+  ":thermometer_face:": "🤒",
+  ":mask:": "😷",
+  ":sneezing_face:": "🤧",
+  ":nauseated_face:": "🤢",
+  ":hospital:": "🏥",
+  ":pill:": "💊",
+  ":house:": "🏠",
+  ":house_with_garden:": "🏡",
+  ":baby:": "👶",
+  ":baby_bottle:": "🍼",
+  ":sleeping:": "😴",
+  ":zzz:": "💤",
+  ":sunny:": "☀",
+  ":sun_with_face:": "🌞",
+  ":calendar:": "📆",
+  ":date:": "📅",
+  ":spiral_calendar_pad:": "🗓",
+  ":spiral_calendar:": "🗓",
+  ":tent:": "⛺",
+  ":camping:": "🏕",
+  ":skier:": "⛷",
+  ":snowman:": "☃",
+  ":christmas_tree:": "🎄",
+  ":mountain_snow:": "🏔",
+  ":snow_capped_mountain:": "🏔",
+  ":car:": "🚗",
+  ":red_car:": "🚗",
+  ":train:": "🚆",
+  ":headphones:": "🎧",
+  ":no_entry:": "⛔",
+  ":no_entry_sign:": "🚫",
+};
+
+/** An emoji as compared: a known shortcode as its emoji, variation selectors dropped, lower case. */
+function canonicalEmoji(emoji: string): string {
+  const lower = emoji.toLowerCase();
+  return (SHORTCODES[lower] ?? lower).replace(/[︎️]/g, "");
 }
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -70,7 +133,8 @@ export function statusTimeOff(
   today: CalendarDate,
 ): TimeOff | null {
   if (!isAwayStatus(status, awayStatuses)) return null;
-  const what = [status.statusEmoji, status.statusLabel]
+  const emoji = status.statusEmoji?.trim();
+  const what = [emoji && (SHORTCODES[emoji.toLowerCase()] ?? emoji), status.statusLabel]
     .map((part) => part?.trim())
     .filter(Boolean)
     .join(" ");
@@ -100,18 +164,31 @@ export function lastDay(until: string, timezone?: string | null): CalendarDate |
   return dateIn(last, timezone) ?? dateIn(last, "UTC");
 }
 
-function dateIn(instant: Date, timeZone?: string | null): CalendarDate | null {
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: timeZone || "UTC",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(instant);
-    const part = (type: string) => parts.find((p) => p.type === type)?.value;
-    return `${part("year")}-${part("month")}-${part("day")}`;
-  } catch {
-    // Not a time zone Intl knows.
-    return null;
+/** A date formatter for each time zone asked for, null for one Intl doesn't know. */
+const formatters = new Map<string, Intl.DateTimeFormat | null>();
+
+function formatterIn(timeZone: string): Intl.DateTimeFormat | null {
+  let formatter = formatters.get(timeZone);
+  if (formatter === undefined) {
+    try {
+      formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+    } catch {
+      // Not a time zone Intl knows.
+      formatter = null;
+    }
+    formatters.set(timeZone, formatter);
   }
+  return formatter;
+}
+
+function dateIn(instant: Date, timeZone?: string | null): CalendarDate | null {
+  const parts = formatterIn(timeZone || "UTC")?.formatToParts(instant);
+  if (!parts) return null;
+  const part = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }

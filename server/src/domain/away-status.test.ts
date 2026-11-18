@@ -16,7 +16,26 @@ describe("isAwayStatus", () => {
   it("matches the emoji exactly, or text in the label, ignoring case", () => {
     expect(isAwayStatus(vacation, ["🌴"])).toBe(true);
     expect(isAwayStatus(vacation, ["VACATION"])).toBe(true);
-    expect(isAwayStatus(vacation, ["sick", "on vac"])).toBe(true);
+    expect(isAwayStatus(vacation, ["sick", "on vacation"])).toBe(true);
+  });
+
+  it("matches words in the label only whole", () => {
+    expect(isAwayStatus(vacation, ["vac"])).toBe(false);
+    expect(isAwayStatus({ statusLabel: "Office hours" }, ["off"])).toBe(false);
+    expect(isAwayStatus({ statusLabel: "Still on it" }, ["ill"])).toBe(false);
+    expect(isAwayStatus({ statusLabel: "Off today" }, ["off"])).toBe(true);
+    expect(isAwayStatus({ statusLabel: "Out (sick)" }, ["(sick)"])).toBe(true);
+  });
+
+  it("ignores variation selectors", () => {
+    expect(isAwayStatus({ statusEmoji: "🏖️" }, ["🏖"])).toBe(true);
+    expect(isAwayStatus({ statusEmoji: "✈" }, ["🌴✈️"])).toBe(true);
+  });
+
+  it("matches a common shortcode with its emoji, either way round", () => {
+    expect(isAwayStatus({ statusEmoji: ":palm_tree:" }, ["🌴"])).toBe(true);
+    expect(isAwayStatus({ statusEmoji: "🏖️" }, [":beach_with_umbrella:"])).toBe(true);
+    expect(isAwayStatus({ statusEmoji: ":palm_tree:" }, ["🏖️✈️"])).toBe(false);
   });
 
   it("doesn't match anything else", () => {

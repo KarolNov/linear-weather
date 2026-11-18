@@ -39,7 +39,7 @@ describe("the rules panel's away statuses", () => {
     await expect.element(awayField()).toHaveValue("🌴🏖️\nOn vacation, abroad");
   });
 
-  it("saves what's typed, a status a line, trimmed and without blank lines", async () => {
+  it("saves what's typed, a status a line, for the server to tidy", async () => {
     const { onSave, onClose } = panel(defaults);
 
     // Filled, not typed: typing sends an emoji's two UTF-16 halves as separate keys.
@@ -47,16 +47,18 @@ describe("the rules panel's away statuses", () => {
     await userEvent.click(page.getByRole("button", { name: "Save rules" }));
 
     await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-    expect(onSave).toHaveBeenCalledWith({ ...defaults, awayStatuses: ["🌴🏖️", "out sick"] });
+    expect(onSave).toHaveBeenCalledWith({ ...defaults, awayStatuses: ["🌴🏖️", "", "  out sick "] });
   });
 
-  it("saves an empty field as no statuses at all", async () => {
+  it("saves an empty field as one blank line, which the server drops", async () => {
     const { onSave } = panel({ ...defaults, awayStatuses: ["🌴"] });
 
     await userEvent.clear(awayField());
     await userEvent.click(page.getByRole("button", { name: "Save rules" }));
 
-    await vi.waitFor(() => expect(onSave).toHaveBeenCalledWith(defaults));
+    await vi.waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({ ...defaults, awayStatuses: [""] }),
+    );
   });
 
   it("marks the field with the server's problem, and stays open", async () => {

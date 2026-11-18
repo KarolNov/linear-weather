@@ -117,21 +117,23 @@ async function peopleMatrices(
     timeOff: readonly TimeOff[];
   }[]
 > {
-  const [{ people }, { awayStatuses }] = await Promise.all([
-    (await signedIn(context)).teamWork(teamId),
-    context.placements.rules(teamId),
-  ]);
-  return Promise.all(
-    people.map(async (person) => {
-      const [matrix, capacity, added] = await Promise.all([
-        teamMatrix(context, teamId, person.id),
-        context.placements.capacity(person.id),
-        context.placements.timeOff(person.id),
-      ]);
-      const status = statusTimeOff(person, awayStatuses, context.today);
-      return { person, matrix, capacity, timeOff: status ? [...added, status] : added };
-    }),
-  );
+  return once(context, `people:${teamId}`, async () => {
+    const [{ people }, { awayStatuses }] = await Promise.all([
+      signedIn(context).then((workspace) => workspace.teamWork(teamId)),
+      context.placements.rules(teamId),
+    ]);
+    return Promise.all(
+      people.map(async (person) => {
+        const [matrix, capacity, added] = await Promise.all([
+          teamMatrix(context, teamId, person.id),
+          context.placements.capacity(person.id),
+          context.placements.timeOff(person.id),
+        ]);
+        const status = statusTimeOff(person, awayStatuses, context.today);
+        return { person, matrix, capacity, timeOff: status ? [...added, status] : added };
+      }),
+    );
+  });
 }
 
 async function teamLoadMetric(context: GraphQLContext, teamId: string): Promise<LoadMetric> {
@@ -620,7 +622,7 @@ UserRef.implement({
     }),
     timeOff: t.field({
       type: [TimeOffRef],
-      description: `Time off not over yet, soonest first: at most ${MAX_TIME_OFF}. The same on every team. Away all of today, their weather is AWAY; the forecast counts the working days they miss each week.`,
+      description: `Time off added on the board, not over yet, soonest first: at most ${MAX_TIME_OFF}. The same on every team. Away all of today, their weather is AWAY; the forecast counts the working days they miss each week. A Linear status the team lists as away (QuadrantRules.awayStatuses) counts as time off too, but isn't listed here: it's changed in Linear, and the weather's reason names it.`,
       resolve: async (user, _args, context) =>
         upcoming(await context.placements.timeOff(user.id), context.today),
     }),

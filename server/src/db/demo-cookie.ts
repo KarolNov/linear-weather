@@ -15,7 +15,8 @@
 //   └ format version
 //
 // Away statuses can hold any character, separators included, so they go as base64url: letters,
-// digits, - and _ only.
+// digits, - and _ only. They take whatever room the rest leaves under MAX_COOKIE_VALUE_LENGTH, so a
+// team's list may be kept only in part, but the cookie always fits.
 //
 // Trailing sections are left off when empty, as cookies from before them have them. Time off
 // that's over is dropped as the cookie is read, so it can't pile up.
@@ -67,6 +68,12 @@ export const DEMO_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
 /** Browsers keep at most 4096 bytes a cookie, so anything longer was never ours. */
 export const MAX_COOKIE_LENGTH = 4096;
 
+/**
+ * The longest value the demo writes: what's left of MAX_COOKIE_LENGTH after the cookie's name and
+ * attributes (`; Max-Age=…; Path=/; HttpOnly; Secure; SameSite=Lax`), with room to spare.
+ */
+export const MAX_COOKIE_VALUE_LENGTH = MAX_COOKIE_LENGTH - 128;
+
 const VERSION = "1";
 const TEAM_PREFIX = "demo-team-";
 const ISSUE_PREFIX = "demo-issue-";
@@ -116,12 +123,6 @@ export function encodeDemo({
         `${shorten(userId, USER_PREFIX)}.${compact(startsOn)}.${daysBetween(startsOn, endsOn)}`,
     ),
   );
-  const statuses = [...rules]
-    .filter(([, { awayStatuses }]) => awayStatuses.length > 0)
-    .map(
-      ([teamId, { awayStatuses }]) =>
-        `${shorten(teamId, TEAM_PREFIX)}.${toBase64Url(JSON.stringify(awayStatuses))}`,
-    );
   const sections = [
     VERSION,
     teams.join("!"),
@@ -129,8 +130,23 @@ export function encodeDemo({
     handed.join("!"),
     parts.join("!"),
     away.join("!"),
-    statuses.join("!"),
   ];
+  // Away statuses go last and take what room is left, each team as many of its own as fit: the
+  // cookie must stay short enough for the browser to keep it, or nothing would be saved.
+  let room = MAX_COOKIE_VALUE_LENGTH - sections.join("~").length - 1;
+  const statuses: string[] = [];
+  for (const [teamId, { awayStatuses }] of rules) {
+    for (let kept = awayStatuses.length; kept > 0; kept--) {
+      const entry = `${shorten(teamId, TEAM_PREFIX)}.${toBase64Url(JSON.stringify(awayStatuses.slice(0, kept)))}`;
+      const cost = entry.length + (statuses.length > 0 ? 1 : 0);
+      if (cost <= room) {
+        statuses.push(entry);
+        room -= cost;
+        break;
+      }
+    }
+  }
+  sections.push(statuses.join("!"));
   while (sections.length > 3 && sections.at(-1) === "") sections.pop();
   return sections.join("~");
 }

@@ -47,10 +47,8 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
       urgencyWindowDays: Number(windowDays),
       noDueDate,
       dropAlertPercent: Number(dropAlert),
-      awayStatuses: awayStatuses
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line !== ""),
+      // As typed: the server trims them and drops blanks and repeats.
+      awayStatuses: awayStatuses.split("\n"),
     });
     setSaving(false);
     if (result.ok) onClose();

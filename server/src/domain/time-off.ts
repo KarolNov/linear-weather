@@ -32,6 +32,8 @@ export interface Staffing {
   away?: Away;
   /** Working days off in the period, when some but not all. */
   daysOff?: number;
+  /** What says they're off those days, when anything besides time off added on the board does. */
+  offSources?: string[];
 }
 
 /** The least capacity anyone has: a hundredth of full time, as parseCapacity rounds it. */
@@ -146,7 +148,10 @@ export function staffingFor(
   const present = (workdays.length - off.length) / WORK_WEEK;
   // To the hundredth, like any capacity, but never 0: they're there some of the week.
   const reduced = Math.max(MIN_CAPACITY, Math.round(capacity * present * 100) / 100);
-  return { capacity: reduced, daysOff: off.length };
+  const offSources = sourcesOf(timeOff, off[0] as CalendarDate, off.at(-1) as CalendarDate);
+  return offSources
+    ? { capacity: reduced, daysOff: off.length, offSources }
+    : { capacity: reduced, daysOff: off.length };
 }
 
 /**
@@ -154,12 +159,25 @@ export function staffingFor(
  * board does.
  */
 function awayFrom(timeOff: readonly TimeOff[], from: CalendarDate, until: CalendarDate): Away {
+  const sources = sourcesOf(timeOff, from, until);
+  return sources ? { until, sources } : { until };
+}
+
+/**
+ * What the time off from `from` to `until` comes from, board time off first, or undefined when
+ * it's all time off added on the board.
+ */
+function sourcesOf(
+  timeOff: readonly TimeOff[],
+  from: CalendarDate,
+  until: CalendarDate,
+): string[] | undefined {
   const covering = timeOff.filter(({ startsOn, endsOn }) => startsOn <= until && endsOn >= from);
-  if (covering.every(({ source }) => source === undefined)) return { until };
+  if (covering.every(({ source }) => source === undefined)) return undefined;
   const sources = [...new Set(covering.map(({ source }) => source ?? "time off"))];
   // Time off added on the board first, as the board lists it.
   sources.sort((a, b) => Number(a !== "time off") - Number(b !== "time off"));
-  return { until, sources };
+  return sources;
 }
 
 /** E.g. "Away until Nov 20", or "Away until Nov 20 (Linear status 🌴 On vacation)". */
@@ -168,10 +186,14 @@ export function describeAway({ until, sources }: Away): string {
   return `Away until ${shortDate(until)}${why}`;
 }
 
-/** E.g. " at 60% time (2 days off)", or "" for full time. */
-export function describeStaffing(capacity: number, daysOff = 0): string {
+/**
+ * E.g. " at 60% time (2 days off)", " at 60% time (2 days off: Linear status 🌴 On vacation)", or
+ * "" for full time.
+ */
+export function describeStaffing(capacity: number, daysOff = 0, offSources?: string[]): string {
   if (capacity === FULL_TIME && daysOff === 0) return "";
-  const off = daysOff === 0 ? "" : ` (${daysOff} ${daysOff === 1 ? "day" : "days"} off)`;
+  const why = offSources?.length ? `: ${offSources.join(" and ")}` : "";
+  const off = daysOff === 0 ? "" : ` (${daysOff} ${daysOff === 1 ? "day" : "days"} off${why})`;
   return ` at ${describeCapacity(capacity)}${off}`;
 }
 

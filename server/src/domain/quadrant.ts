@@ -38,6 +38,16 @@ export const DEFAULT_RULES: QuadrantRules = {
   awayStatuses: [],
 };
 
+/** Whether two teams' rules are the same, lists compared by what they hold. */
+export function sameRules(a: QuadrantRules, b: QuadrantRules): boolean {
+  return (Object.keys(DEFAULT_RULES) as (keyof QuadrantRules)[]).every((key) => {
+    const [x, y] = [a[key], b[key]];
+    return Array.isArray(x) && Array.isArray(y)
+      ? x.length === y.length && x.every((item, i) => item === y[i])
+      : x === y;
+  });
+}
+
 /** The most away statuses a team can list. */
 export const MAX_AWAY_STATUSES = 10;
 

@@ -1,6 +1,12 @@
 import { generateCookie } from "hono/cookie";
 import { describe, expect, it } from "vitest";
-import { addDays, DEFAULT_RULES, MAX_URGENCY_WINDOW_DAYS } from "../domain/quadrant";
+import {
+  addDays,
+  DEFAULT_RULES,
+  MAX_AWAY_STATUS_LENGTH,
+  MAX_AWAY_STATUSES,
+  MAX_URGENCY_WINDOW_DAYS,
+} from "../domain/quadrant";
 import { MAX_TIME_OFF, type TimeOff } from "../domain/time-off";
 import { DEMO_OPS_TEAM, DEMO_TEAM, demoIssues } from "../linear/demo";
 import {
@@ -168,7 +174,15 @@ describe("DemoStore", () => {
   it("fits the whole demo in one cookie: every issue placed and handed over, every team's rules changed", async () => {
     const store = DemoStore.fromCookie(undefined);
     for (const { id } of [DEMO_TEAM, DEMO_OPS_TEAM]) {
-      await store.setRules(id, { ...strict, urgencyWindowDays: MAX_URGENCY_WINDOW_DAYS });
+      await store.setRules(id, {
+        ...strict,
+        urgencyWindowDays: MAX_URGENCY_WINDOW_DAYS,
+        // As many away statuses as a team can list, each as long as can be, in 4-byte emojis.
+        awayStatuses: Array.from(
+          { length: MAX_AWAY_STATUSES },
+          (_, i) => `${i}${"🌴".repeat(MAX_AWAY_STATUS_LENGTH - 1)}`,
+        ),
+      });
       for (const issue of demoIssues("2026-10-18", id)) {
         await store.setOverride(issue.id, "drop");
         // The longest id that's a member of both teams.
@@ -194,6 +208,10 @@ describe("DemoStore", () => {
       maxAge: DEMO_COOKIE_MAX_AGE,
     });
     expect(cookie.length).toBeLessThanOrEqual(MAX_COOKIE_LENGTH);
+    // Away statuses take what room is left, so the rest is all kept.
+    const saved = decodeDemo(store.cookie());
+    expect(saved.rules.get(DEMO_TEAM.id)?.urgencyWindowDays).toBe(MAX_URGENCY_WINDOW_DAYS);
+    expect(saved.rules.get(DEMO_OPS_TEAM.id)?.urgencyWindowDays).toBe(MAX_URGENCY_WINDOW_DAYS);
     expect(decodeDemo(store.cookie()).overrides.size).toBe(
       demoIssues("2026-10-18", DEMO_TEAM.id).length +
         demoIssues("2026-10-18", DEMO_OPS_TEAM.id).length,

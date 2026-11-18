@@ -32,7 +32,7 @@ Everything deploys to Cloudflare Workers.
 | Storage | [D1](https://developers.cloudflare.com/d1/) (Cloudflare's SQLite) for team rules, hand-placed issues, and people's capacity and time off, through [Drizzle ORM](https://orm.drizzle.team). Linear tokens live in KV |
 | Web | [Preact](https://preactjs.com) server-rendered by a Hono Worker, hydrated in the browser; built with [Vite](https://vite.dev) and the [Cloudflare Vite plugin](https://developers.cloudflare.com/workers/vite-plugin/) |
 | Styling | [StyleX](https://stylexjs.com), compiled at build time by `@stylexjs/unplugin`. Theme tokens (sky gradients, weather colours) live in `ui/src/tokens.stylex.ts` |
-| Tests | [Vitest](https://vitest.dev); server tests run inside workerd via [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/) |
+| Tests | [Vitest](https://vitest.dev); server tests run inside workerd via [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/); the board's client behaviour (`*.browser.test.tsx`) runs in headless Chromium via [Vitest browser mode](https://vitest.dev/guide/browser/) |
 | Lint/format | [Biome](https://biomejs.dev) |
 
 ## Development
@@ -48,6 +48,8 @@ pnpm dev:web      # http://localhost:5173, runs the server Worker alongside
 `pnpm dev:server` runs the server alone on http://localhost:8787 (GraphiQL at `/graphql`).
 
 Both dev commands apply pending D1 migrations to the local database first.
+
+The browser tests need Playwright's Chromium, installed once with `pnpm --filter web exec playwright install chromium`.
 
 Checks (same as CI): `pnpm typecheck`, `pnpm codegen:check`, `pnpm lint`, `pnpm test`, `pnpm build`. `pnpm format` fixes formatting.
 

@@ -2,6 +2,6 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    projects: ["server", "ui", "web"],
+    projects: ["server", "ui", "web", "web/vitest.browser.config.ts"],
   },
 });

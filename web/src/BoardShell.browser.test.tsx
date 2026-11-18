@@ -57,6 +57,7 @@ function avengersBoard(
       dropAlertPercent: 40,
       awayStatuses: [],
       blockersAreImportant: false,
+      currentCycleIsUrgent: false,
     },
     weather,
     backlogRot: { rotting: false, reason: "0 of 1 open issues (0%) are in Drop" },

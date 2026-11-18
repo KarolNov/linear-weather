@@ -34,7 +34,7 @@ import {
   type Weather,
 } from "./domain/weather";
 import { LinearAuthError, LinearForbiddenError, LinearRateLimitError } from "./linear/client";
-import { type Assignee, blocksOpenWork } from "./linear/team-issues";
+import { type Assignee, blocksOpenWork, inActiveCycle } from "./linear/team-issues";
 import type { Placements } from "./placements";
 import type { SingleIssue, Team, TeamIssue, Viewer, Workspace } from "./workspace";
 
@@ -96,17 +96,18 @@ function teamMatrix(
 ): Promise<Matrix<TeamIssue>> {
   return once(context, `matrix:${teamId}:${assigneeId}`, async () => {
     const workspace = await signedIn(context);
-    // What blocks what goes alongside the team's issues, not after them.
-    const [{ byAssignee }, teamRules, blockers] = await Promise.all([
+    // What blocks what, and what's in the cycle, go alongside the team's issues, not after them.
+    const [{ byAssignee }, teamRules, blockers, cycle] = await Promise.all([
       workspace.teamWork(teamId),
       context.placements.rules(teamId),
       blockersOf(context, workspace, teamId),
+      currentCycleOf(context, workspace, teamId),
     ]);
     const issues = byAssignee.get(assigneeId) ?? [];
     // Read once all of it is in, so every matrix's overrides share one read.
     const overrides = await context.placements.overrides(issues);
     return buildMatrix(
-      issues.map((issue) => withBlocking(issue, blockers)),
+      issues.map((issue) => withLookups(issue, blockers, cycle)),
       teamRules,
       context.today,
       overrides,
@@ -116,48 +117,103 @@ function teamMatrix(
 
 /**
  * The ids of a team's open issues that block open work, when its rules count blockers as
- * important; else null. Asking Linear costs a query, so only teams that use it do, once a request.
- * Null too when Linear can't say, so the team is sorted by priority alone rather than its board
- * failing.
+ * important; else null.
  */
 function blockersOf(
   context: GraphQLContext,
   workspace: Workspace,
   teamId: string,
 ): Promise<ReadonlySet<string> | null> {
-  return once(context, `blockers:${teamId}`, async () => {
-    if (!(await context.placements.rules(teamId)).blockersAreImportant) return null;
+  return lookUp(context, teamId, {
+    key: "blockers",
+    wanted: (rules) => rules.blockersAreImportant,
+    load: () => workspace.blockerIds(teamId),
+    failure: "block others",
+  });
+}
+
+/**
+ * The ids of a team's open issues in its current cycle, when its rules count those as urgent;
+ * else null.
+ */
+function currentCycleOf(
+  context: GraphQLContext,
+  workspace: Workspace,
+  teamId: string,
+): Promise<ReadonlySet<string> | null> {
+  return lookUp(context, teamId, {
+    key: "cycle",
+    wanted: (rules) => rules.currentCycleIsUrgent,
+    load: () => workspace.currentCycleIds(teamId),
+    failure: "are in the current cycle",
+  });
+}
+
+/**
+ * Some of a team's issue ids that only an opted-in rule reads; else null. Asking Linear costs a
+ * query, so only teams that use the rule do, once a request. Null too when Linear can't say, so
+ * the team is sorted without that rule rather than its board failing.
+ */
+function lookUp(
+  context: GraphQLContext,
+  teamId: string,
+  {
+    key,
+    wanted,
+    load,
+    failure,
+  }: {
+    key: string;
+    wanted: (rules: QuadrantRules) => boolean;
+    load: () => Promise<ReadonlySet<string>>;
+    /** What couldn't be told about the issues, for the log: "Couldn't tell which … {failure}". */
+    failure: string;
+  },
+): Promise<ReadonlySet<string> | null> {
+  return once(context, `${key}:${teamId}`, async () => {
+    if (!wanted(await context.placements.rules(teamId))) return null;
     try {
-      return await workspace.blockerIds(teamId);
+      return await load();
     } catch (error) {
       // Signed out or rate limited fails the rest of the request too: let those say so.
       if (error instanceof LinearAuthError || error instanceof LinearRateLimitError) throw error;
-      console.warn(`Couldn't tell which of team ${teamId}'s issues block others`, error);
+      console.warn(`Couldn't tell which of team ${teamId}'s issues ${failure}`, error);
       return null;
     }
   });
 }
 
 /**
- * An issue as the rules classify it: with whether it blocks open work, from `blockersOf`. A single
- * issue placed by a mutation reads its own relations instead (`ownBlocking`), by the same test.
+ * An issue as the rules classify it: with whether it blocks open work (`blockersOf`) and whether
+ * it's in the current cycle (`currentCycleOf`), each only when looked up. A single issue placed by
+ * a mutation reads its own instead (`ownLookups`), by the same tests.
  */
-function withBlocking<I extends { id: string }>(
+function withLookups<I extends { id: string }>(
   issue: I,
   blockers: ReadonlySet<string> | null,
-): I & { blocking?: boolean } {
-  return blockers ? { ...issue, blocking: blockers.has(issue.id) } : issue;
+  cycle: ReadonlySet<string> | null,
+): I & { blocking?: boolean; inCurrentCycle?: boolean } {
+  return {
+    ...issue,
+    ...(blockers && { blocking: blockers.has(issue.id) }),
+    ...(cycle && { inCurrentCycle: cycle.has(issue.id) }),
+  };
 }
 
 /**
- * One issue with whether it blocks open work, from the relations it came with: no further request,
- * so a mutation that already changed something can't fail on it.
+ * One issue with whether it blocks open work and whether it's in the current cycle, from the
+ * relations and cycle it came with: no further request, so a mutation that already changed
+ * something can't fail on it.
  */
-function ownBlocking(
+function ownLookups(
   issue: SingleIssue,
   rules: QuadrantRules,
-): SingleIssue & { blocking?: boolean } {
-  return rules.blockersAreImportant ? { ...issue, blocking: blocksOpenWork(issue) } : issue;
+): SingleIssue & { blocking?: boolean; inCurrentCycle?: boolean } {
+  return {
+    ...issue,
+    ...(rules.blockersAreImportant && { blocking: blocksOpenWork(issue) }),
+    ...(rules.currentCycleIsUrgent && { inCurrentCycle: inActiveCycle(issue) }),
+  };
 }
 
 /**
@@ -474,6 +530,10 @@ const QuadrantRulesRef = builder.objectRef<QuadrantRules>("QuadrantRules").imple
       description:
         "An issue that blocks another, still open, counts as important whatever its priority. Off unless the team opts in.",
     }),
+    currentCycleIsUrgent: t.exposeBoolean("currentCycleIsUrgent", {
+      description:
+        "An issue in its team's current cycle counts as urgent whatever its due date. Off unless the team opts in.",
+    }),
   }),
 });
 
@@ -499,6 +559,10 @@ const QuadrantRulesInput = builder.inputType("QuadrantRulesInput", {
     blockersAreImportant: t.boolean({
       description:
         "Count an issue that blocks another, still open, as important whatever its priority. Left out, it stays as it was.",
+    }),
+    currentCycleIsUrgent: t.boolean({
+      description:
+        "Count an issue in its team's current cycle as urgent whatever its due date. Left out, it stays as it was.",
     }),
   }),
 });
@@ -1240,7 +1304,7 @@ async function placeByHand(
   forgetWork(context);
   return {
     __typename: "OverrideSuccess",
-    issue: place(ownBlocking(issue, rules), rules, context.today, quadrant ?? undefined),
+    issue: place(ownLookups(issue, rules), rules, context.today, quadrant ?? undefined),
     team: issue.team,
   };
 }
@@ -1372,7 +1436,7 @@ async function reassign(
   ]);
   return {
     __typename: "ReassignSuccess",
-    issue: place(ownBlocking(issue, rules), rules, context.today, overrides.get(issue.id)),
+    issue: place(ownLookups(issue, rules), rules, context.today, overrides.get(issue.id)),
     team: issue.team,
   };
 }
@@ -1396,6 +1460,7 @@ builder.mutationType({
               dropAlertPercent: input.dropAlertPercent ?? saved.dropAlertPercent,
               awayStatuses: input.awayStatuses ?? saved.awayStatuses,
               blockersAreImportant: input.blockersAreImportant ?? saved.blockersAreImportant,
+              currentCycleIsUrgent: input.currentCycleIsUrgent ?? saved.currentCycleIsUrgent,
             });
             if (problems) {
               return {

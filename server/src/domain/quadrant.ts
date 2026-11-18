@@ -30,6 +30,8 @@ export interface QuadrantRules {
   awayStatuses: readonly string[];
   /** An issue that blocks another, still open, counts as important whatever its priority. */
   blockersAreImportant: boolean;
+  /** An issue in its team's current cycle counts as urgent whatever its due date. */
+  currentCycleIsUrgent: boolean;
 }
 
 export const DEFAULT_RULES: QuadrantRules = {
@@ -39,6 +41,7 @@ export const DEFAULT_RULES: QuadrantRules = {
   dropAlertPercent: 40,
   awayStatuses: [],
   blockersAreImportant: false,
+  currentCycleIsUrgent: false,
 };
 
 /** Whether two teams' rules are the same, lists compared by what they hold. */
@@ -76,8 +79,14 @@ export type RulesInput = Omit<QuadrantRules, "importantFrom"> & { importantFrom:
 export function parseRules(
   input: RulesInput,
 ): { rules: QuadrantRules; problems?: never } | { rules?: never; problems: RuleProblem[] } {
-  const { importantFrom, urgencyWindowDays, noDueDate, dropAlertPercent, blockersAreImportant } =
-    input;
+  const {
+    importantFrom,
+    urgencyWindowDays,
+    noDueDate,
+    dropAlertPercent,
+    blockersAreImportant,
+    currentCycleIsUrgent,
+  } = input;
   const awayStatuses = tidyAwayStatuses(input.awayStatuses);
   const problems: RuleProblem[] = [];
   if (!isImportantFrom(importantFrom)) {
@@ -123,6 +132,7 @@ export function parseRules(
         dropAlertPercent,
         awayStatuses,
         blockersAreImportant,
+        currentCycleIsUrgent,
       },
     };
   }
@@ -158,6 +168,11 @@ export interface ClassifiableIssue {
    * and only looked up in Linear then, so left out it means "not asked", read as not blocking.
    */
   blocking?: boolean;
+  /**
+   * In its team's cycle that's running now. Only read when the rules count those as urgent, and
+   * only looked up in Linear then, so left out it means "not asked", read as not in it.
+   */
+  inCurrentCycle?: boolean;
 }
 
 export interface Classification {
@@ -181,15 +196,19 @@ export function classify(
 ): Classification {
   const blocker = rules.blockersAreImportant && issue.blocking === true;
   const important = (issue.priority !== 0 && issue.priority <= rules.importantFrom) || blocker;
-  const urgent = isUrgent(issue.dueDate, rules, today);
+  const cycle = inCycle(issue, rules);
+  const urgent = cycle || isUrgent(issue.dueDate, rules, today);
   const due =
     issue.dueDate === null ? "no due date" : describeDue(daysBetween(today, issue.dueDate));
 
   return {
     quadrant: important ? (urgent ? "do" : "schedule") : urgent ? "delegate" : "drop",
-    reason: [PRIORITY_LABEL[issue.priority], ...(blocker ? ["blocks other issues"] : []), due].join(
-      ", ",
-    ),
+    reason: [
+      PRIORITY_LABEL[issue.priority],
+      ...(blocker ? ["blocks other issues"] : []),
+      due,
+      ...(cycle ? ["in the current cycle"] : []),
+    ].join(", "),
   };
 }
 
@@ -201,20 +220,26 @@ export function classify(
  *   date: the Forecast looks forward, and "urgent since" isn't its question.
  * - No due date → `null` (fog), unless the rules make undated issues urgent,
  *   in which case it's urgent now → `today`.
+ * - In the current cycle, when the rules count that as urgent → `today`.
  */
 export function becomesUrgentOn(
-  issue: Pick<ClassifiableIssue, "dueDate">,
+  issue: Pick<ClassifiableIssue, "dueDate" | "inCurrentCycle">,
   rules: QuadrantRules,
   today: CalendarDate,
 ): CalendarDate | null {
   parseDate(today);
-  if (isUrgent(issue.dueDate, rules, today)) return today;
+  if (inCycle(issue, rules) || isUrgent(issue.dueDate, rules, today)) return today;
   // Not urgent now and never will be: no due date, or a NaN / -Infinity window.
   if (issue.dueDate === null || !Number.isFinite(rules.urgencyWindowDays)) return null;
   return addDays(issue.dueDate, -lastUrgentDaysOut(rules));
 }
 
-/** The one definition of "urgent", shared by `classify()` and `becomesUrgentOn()`. */
+/** Whether the issue is urgent for being in the current cycle, by these rules. */
+function inCycle(issue: Pick<ClassifiableIssue, "inCurrentCycle">, rules: QuadrantRules): boolean {
+  return rules.currentCycleIsUrgent && issue.inCurrentCycle === true;
+}
+
+/** The urgent-by-due-date part of "urgent", shared by `classify()` and `becomesUrgentOn()`. */
 function isUrgent(
   dueDate: CalendarDate | null,
   rules: QuadrantRules,

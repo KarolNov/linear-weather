@@ -441,6 +441,7 @@ describe("stored rules and overrides", () => {
       dropAlertPercent: 40,
       awayStatuses: [],
       blockersAreImportant: false,
+      currentCycleIsUrgent: false,
     });
     const board = await data<Board>(tony);
     expect(board.team.rules).toEqual({ urgencyWindowDays: 1 });
@@ -752,6 +753,7 @@ describe("mutations", () => {
     await new Store(env.DB).setRules(DEMO_TEAM.id, {
       ...DEFAULT_RULES,
       blockersAreImportant: true,
+      currentCycleIsUrgent: false,
     });
 
     expect(await Promise.all(blockers.map(quadrantOf))).toEqual(["do", "schedule", "delegate"]);
@@ -761,6 +763,40 @@ describe("mutations", () => {
     expect(overrideQuadrant.issue).toMatchObject({
       placementReason:
         "Placed by hand; the rules say Do (Low priority, blocks other issues, due in 3 days)",
+    });
+  });
+
+  it("counts the current cycle as urgent once the team does, on the board and placed alone", async () => {
+    const quadrantOf = async (issueId: string) => {
+      const { team } = await data(TEAM_QUERY, { teamId: DEMO_TEAM.id });
+      return placementOn(team ?? undefined, issueId)?.quadrant ?? null;
+    };
+    // Steve's training plan, Thor's Mjölnir, Clint's roof, and the Tesseract model, which isn't in it.
+    const issues = [
+      "demo-issue-avg-16",
+      "demo-issue-avg-34",
+      "demo-issue-avg-43",
+      "demo-issue-avg-31",
+    ];
+    expect(await Promise.all(issues.map(quadrantOf))).toEqual([
+      "schedule",
+      "schedule",
+      "drop",
+      "schedule",
+    ]);
+
+    await new Store(env.DB).setRules(DEMO_TEAM.id, {
+      ...DEFAULT_RULES,
+      currentCycleIsUrgent: true,
+    });
+
+    expect(await Promise.all(issues.map(quadrantOf))).toEqual(["do", "do", "delegate", "schedule"]);
+    const { overrideQuadrant } = await data<{ overrideQuadrant: PlacementResult }>(
+      `mutation { overrideQuadrant(issueId: "demo-issue-avg-43", quadrant: DROP) { ${placement} } }`,
+    );
+    expect(overrideQuadrant.issue).toMatchObject({
+      placementReason:
+        "Placed by hand; the rules say Delegate (Low priority, no due date, in the current cycle)",
     });
   });
 
@@ -1420,6 +1456,7 @@ describe("the web app's board query", () => {
       dropAlertPercent: 25,
       awayStatuses: ["🌴"],
       blockersAreImportant: false,
+      currentCycleIsUrgent: false,
     };
     const { updateQuadrantRules }: Answer = await data(UPDATE_RULES_MUTATION, {
       teamId: DEMO_TEAM.id,
@@ -1556,6 +1593,21 @@ describe("Linear requests per query", () => {
     await store.setRules(DEMO_OPS_TEAM.id, { ...DEFAULT_RULES, blockersAreImportant: true });
     expect(await linearRequests(everyTeam)).toEqual([
       "OpenBlockers",
+      "OpenIssues",
+      "Teams",
+      "TeamsMembers",
+    ]);
+  });
+
+  it("asks what's in the current cycle only for teams that count it, in one request for all", async () => {
+    const everyTeam = `{
+      teams { people { matrix { counts { do } } } unassigned { counts { do } } backlogRot { rotting } }
+    }`;
+    const store = new Store(env.DB);
+    await store.setRules(DEMO_TEAM.id, { ...DEFAULT_RULES, currentCycleIsUrgent: true });
+    await store.setRules(DEMO_OPS_TEAM.id, { ...DEFAULT_RULES, currentCycleIsUrgent: true });
+    expect(await linearRequests(everyTeam)).toEqual([
+      "CurrentCycleIssues",
       "OpenIssues",
       "Teams",
       "TeamsMembers",

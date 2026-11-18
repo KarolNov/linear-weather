@@ -32,6 +32,7 @@ export class Store {
         dropAlertPercent: quadrantRules.dropAlertPercent,
         awayStatuses: quadrantRules.awayStatuses,
         blockersAreImportant: quadrantRules.blockersAreImportant,
+        currentCycleIsUrgent: quadrantRules.currentCycleIsUrgent,
       })
       .from(quadrantRules)
       .where(inIds(quadrantRules.teamId, teamIds));

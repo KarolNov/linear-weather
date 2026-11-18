@@ -143,6 +143,29 @@ describe("classify with custom rules", () => {
       reason: "Low priority, due in 3 days",
     });
   });
+
+  it("counts an issue in the current cycle as urgent, whatever its due date", () => {
+    const rules: QuadrantRules = { ...DEFAULT_RULES, currentCycleIsUrgent: true };
+    expect(run({ priority: 2, dueDate: LATER, inCurrentCycle: true }, rules)).toEqual({
+      quadrant: "do",
+      reason: "High priority, due in 43 days, in the current cycle",
+    });
+    expect(run({ priority: 4, dueDate: null, inCurrentCycle: true }, rules)).toEqual({
+      quadrant: "delegate",
+      reason: "Low priority, no due date, in the current cycle",
+    });
+    expect(run({ priority: 2, dueDate: LATER, inCurrentCycle: false }, rules)).toEqual({
+      quadrant: "schedule",
+      reason: "High priority, due in 43 days",
+    });
+  });
+
+  it("ignores the cycle unless the team counts it as urgent", () => {
+    expect(run({ priority: 2, dueDate: LATER, inCurrentCycle: true })).toEqual({
+      quadrant: "schedule",
+      reason: "High priority, due in 43 days",
+    });
+  });
 });
 
 describe("becomesUrgentOn", () => {
@@ -151,6 +174,19 @@ describe("becomesUrgentOn", () => {
 
   it("is 13 days before the due date with the default 14-day window", () => {
     expect(on(LATER)).toBe("2026-11-17");
+  });
+
+  it("is today for an issue in the current cycle, when the team counts that as urgent", () => {
+    const cycleUrgent: QuadrantRules = { ...DEFAULT_RULES, currentCycleIsUrgent: true };
+    expect(becomesUrgentOn({ dueDate: LATER, inCurrentCycle: true }, cycleUrgent, TODAY)).toBe(
+      TODAY,
+    );
+    expect(becomesUrgentOn({ dueDate: null, inCurrentCycle: true }, cycleUrgent, TODAY)).toBe(
+      TODAY,
+    );
+    expect(becomesUrgentOn({ dueDate: LATER, inCurrentCycle: true }, DEFAULT_RULES, TODAY)).toBe(
+      "2026-11-17",
+    );
   });
 
   it("is the first day classify() calls the issue urgent", () => {
@@ -251,6 +287,7 @@ describe("parseRules", () => {
         dropAlertPercent: 1,
         awayStatuses: [],
         blockersAreImportant: true,
+        currentCycleIsUrgent: false,
       },
       {
         importantFrom: 4,
@@ -259,6 +296,7 @@ describe("parseRules", () => {
         dropAlertPercent: 99,
         awayStatuses: ["🌴", "x".repeat(40), ..."abcdefgh"],
         blockersAreImportant: false,
+        currentCycleIsUrgent: false,
       },
     ] satisfies QuadrantRules[]) {
       expect(parseRules(rules)).toEqual({ rules });

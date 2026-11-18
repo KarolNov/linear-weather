@@ -14,12 +14,23 @@ export type OpenBlockersQueryVariables = Exact<{
 
 export type OpenBlockersQuery = { issues: { nodes: Array<{ id: string, team: { id: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }>, pageInfo: { hasNextPage: boolean } } }>, pageInfo: { hasNextPage: boolean, endCursor: string | null } } };
 
+export type InCycleFragment = { cycle: { isActive: boolean } | null };
+
+export type CurrentCycleIssuesQueryVariables = Exact<{
+  teamIds: Array<string> | string;
+  first: number;
+  after?: string | null | undefined;
+}>;
+
+
+export type CurrentCycleIssuesQuery = { issues: { nodes: Array<{ id: string, team: { id: string } }>, pageInfo: { hasNextPage: boolean, endCursor: string | null } } };
+
 export type IssueByIdQueryVariables = Exact<{
   id: string;
 }>;
 
 
-export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }>, pageInfo: { hasNextPage: boolean } } }> } };
+export type IssueByIdQuery = { issues: { nodes: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }>, pageInfo: { hasNextPage: boolean } }, cycle: { isActive: boolean } | null }> } };
 
 export type ReassignIssueMutationVariables = Exact<{
   id: string;
@@ -27,7 +38,7 @@ export type ReassignIssueMutationVariables = Exact<{
 }>;
 
 
-export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }>, pageInfo: { hasNextPage: boolean } } } | null } };
+export type ReassignIssueMutation = { issueUpdate: { success: boolean, issue: { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, team: { id: string, name: string, key: string }, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string }, relations: { nodes: Array<{ type: string, relatedIssue: { state: { type: string } } }>, pageInfo: { hasNextPage: boolean } }, cycle: { isActive: boolean } | null } | null } };
 
 export type IssueCardFragment = { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, assignee: { id: string, name: string, avatarUrl: string | null, statusEmoji: string | null, statusLabel: string | null, statusUntilAt: string | null, timezone: string | null } | null, state: { name: string, type: string } };
 
@@ -97,6 +108,13 @@ export const BlockingFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
   }
 }
     `, {"fragmentName":"Blocking"}) as unknown as TypedDocumentString<BlockingFragment, unknown>;
+export const InCycleFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
+    fragment InCycle on Issue {
+  cycle {
+    isActive
+  }
+}
+    `, {"fragmentName":"InCycle"}) as unknown as TypedDocumentString<InCycleFragment, unknown>;
 export const PersonFragmentDoc = /*#__PURE__*/ new TypedDocumentString(`
     fragment Person on User {
   id
@@ -180,12 +198,37 @@ export const OpenBlockersDocument = /*#__PURE__*/ new TypedDocumentString(`
     }
   }
 }`) as unknown as TypedDocumentString<OpenBlockersQuery, OpenBlockersQueryVariables>;
+export const CurrentCycleIssuesDocument = /*#__PURE__*/ new TypedDocumentString(`
+    query CurrentCycleIssues($teamIds: [ID!]!, $first: Int!, $after: String) {
+  issues(
+    first: $first
+    after: $after
+    filter: {
+      team: { id: { in: $teamIds } }
+      state: { type: { nin: ["completed", "canceled"] } }
+      cycle: { isActive: { eq: true } }
+    }
+  ) {
+    nodes {
+      id
+      team {
+        id
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<CurrentCycleIssuesQuery, CurrentCycleIssuesQueryVariables>;
 export const IssueByIdDocument = /*#__PURE__*/ new TypedDocumentString(`
     query IssueById($id: ID!) {
   issues(first: 1, includeArchived: true, filter: { id: { eq: $id } }) {
     nodes {
       ...IssueCard
       ...Blocking
+      ...InCycle
       team {
         ...TeamSummary
       }
@@ -205,6 +248,11 @@ export const IssueByIdDocument = /*#__PURE__*/ new TypedDocumentString(`
     pageInfo {
       hasNextPage
     }
+  }
+}
+fragment InCycle on Issue {
+  cycle {
+    isActive
   }
 }
 fragment IssueCard on Issue {
@@ -244,6 +292,7 @@ export const ReassignIssueDocument = /*#__PURE__*/ new TypedDocumentString(`
     issue {
       ...IssueCard
       ...Blocking
+      ...InCycle
       team {
         ...TeamSummary
       }
@@ -263,6 +312,11 @@ export const ReassignIssueDocument = /*#__PURE__*/ new TypedDocumentString(`
     pageInfo {
       hasNextPage
     }
+  }
+}
+fragment InCycle on Issue {
+  cycle {
+    isActive
   }
 }
 fragment IssueCard on Issue {

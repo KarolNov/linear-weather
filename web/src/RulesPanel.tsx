@@ -31,6 +31,7 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
   // One a line: a label could hold a comma.
   const [awayStatuses, setAwayStatuses] = useState(rules.awayStatuses.join("\n"));
   const [blockers, setBlockers] = useState(rules.blockersAreImportant);
+  const [cycle, setCycle] = useState(rules.currentCycleIsUrgent);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<{ message: string; problems: RuleProblem[] } | null>(null);
   const problem = (field: keyof Rules) => failure?.problems.find((p) => p.field === field);
@@ -51,6 +52,7 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
       // As typed: the server trims them and drops blanks and repeats.
       awayStatuses: awayStatuses.split("\n"),
       blockersAreImportant: blockers,
+      currentCycleIsUrgent: cycle,
     });
     setSaving(false);
     if (result.ok) onClose();
@@ -154,6 +156,24 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
                 {label}
               </label>
             ))}
+          </fieldset>
+
+          <fieldset {...stylex.props(styles.field, styles.fieldset)}>
+            <legend {...stylex.props(styles.label, styles.legend)}>
+              Issues in the current cycle
+            </legend>
+            <label {...stylex.props(styles.radio)}>
+              <input
+                type="checkbox"
+                checked={cycle}
+                onChange={(event) => setCycle(event.currentTarget.checked)}
+                aria-describedby="rules-cycle-hint"
+              />
+              Are always urgent
+            </label>
+            <span id="rules-cycle-hint" {...stylex.props(styles.hint)}>
+              Whatever their due date, until the cycle ends.
+            </span>
           </fieldset>
 
           <label {...stylex.props(styles.field)}>

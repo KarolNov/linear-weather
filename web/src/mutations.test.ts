@@ -18,6 +18,7 @@ const rules = {
   dropAlertPercent: 30,
   awayStatuses: [] as string[],
   blockersAreImportant: true,
+  currentCycleIsUrgent: false,
 } as const;
 
 /** A fetch whose answers the test hands out, one call at a time. */

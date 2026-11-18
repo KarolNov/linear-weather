@@ -1,0 +1,32 @@
+# Whether an issue is in its team's cycle that's running now: Linear works out `isActive` from the
+# cycle's start and end. A nested object and a field, so about 1.1 points an issue.
+fragment InCycle on Issue {
+  cycle {
+    isActive
+  }
+}
+
+# The open issues in these teams that are in their team's current cycle. Only asked when a team
+# counts those as urgent. Just ids and teams, about 1.2 points an issue, so pages of 250.
+query CurrentCycleIssues($teamIds: [ID!]!, $first: Int!, $after: String) {
+  issues(
+    first: $first
+    after: $after
+    filter: {
+      team: { id: { in: $teamIds } }
+      state: { type: { nin: ["completed", "canceled"] } }
+      cycle: { isActive: { eq: true } }
+    }
+  ) {
+    nodes {
+      id
+      team {
+        id
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

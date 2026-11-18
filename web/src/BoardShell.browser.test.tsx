@@ -2,7 +2,7 @@ import { render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { BoardShell } from "./BoardShell";
-import type { Board, BoardIssue, Matrix, TeamBoardData, WeatherKind } from "./board";
+import type { Board, BoardIssue, Matrix, Suggestion, TeamBoardData, WeatherKind } from "./board";
 import { teamBoard } from "./board";
 
 // The rain's drawing code, stubbed so a test sees the sky start, change and stop it.
@@ -15,6 +15,7 @@ vi.mock("../../ui/src/rain", () => ({ startRain: rain.startRain }));
 const avengers = { id: "t-avg", name: "Avengers", key: "AVG" };
 const ops = { id: "t-ops", name: "S.H.I.E.L.D. Ops", key: "OPS" };
 const tony = { id: "u-tony", name: "Tony Stark", avatarUrl: null };
+const bruce = { id: "u-bruce", name: "Bruce Banner", avatarUrl: null };
 const viewer = { name: "Nick Fury", avatarUrl: null, organization: { name: "S.H.I.E.L.D." } };
 
 const reactor: BoardIssue = {
@@ -88,6 +89,64 @@ function serverAnswering(team: TeamBoardData) {
   );
   vi.stubGlobal("fetch", fetch);
   return fetch;
+}
+
+/** A request the server hasn't answered yet. */
+interface HeldRequest {
+  query: string;
+  variables: Record<string, unknown>;
+  answer: (data: unknown) => void;
+}
+
+/** A server that holds each request until the test answers it, so a test can act mid-request. */
+function serverHolding() {
+  const held: HeldRequest[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((resolve) => {
+          const { query, variables } = JSON.parse(String(init.body));
+          held.push({ query, variables, answer: (data) => resolve(Response.json({ data })) });
+        }),
+    ),
+  );
+  return {
+    /** The next request to arrive, once it has. */
+    async next() {
+      await vi.waitFor(() => expect(held.length).toBeGreaterThan(0));
+      return held.shift() as HeldRequest;
+    },
+  };
+}
+
+/** The server's answer to a hand-over: the team's board after it. */
+const handedOver = (team: TeamBoardData) => ({
+  reassignIssue: { __typename: "ReassignSuccess", team },
+});
+
+/** Tony handing AVG-`n` to Bruce: today with no `week`, else ahead of a storm that week. */
+function handOver(n: number, week: number | null = null): Suggestion {
+  return {
+    issue: {
+      id: `i-${n}`,
+      identifier: `AVG-${n}`,
+      title: `Job ${n}`,
+      url: `https://linear.app/shield/issue/AVG-${n}`,
+      quadrant: week === null ? "DO" : "SCHEDULE",
+      becomesUrgentOn: week === null ? "2026-10-18" : "2026-10-25",
+    },
+    from: tony,
+    to: bruce,
+    week,
+    toWeather: "SUNNY",
+    reason: "Tony Stark goes from 2× to 1× the team average",
+  };
+}
+
+/** The Avengers' board in a storm, with these moves to make today and ahead of time. */
+function rebalancing(now: Suggestion[], forecast: Suggestion[] = []): TeamBoardData {
+  return { ...avengersBoard(storm), rebalanceNow: now, rebalanceForecast: forecast };
 }
 
 let root: HTMLElement;
@@ -186,5 +245,100 @@ describe("the rain on the board's sky", () => {
     await import("../../ui/src/rain");
     await new Promise((resolve) => setTimeout(resolve));
     expect(rain.startRain).not.toHaveBeenCalled();
+  });
+});
+
+describe("the rebalance panel", () => {
+  /** Renders `team`'s board and opens its rebalance panel. */
+  async function openPanel(team: TeamBoardData) {
+    render(<BoardShell viewer={viewer} board={loaded(team)} />, root);
+    await userEvent.click(page.getByRole("button", { name: /^Rebalance/ }));
+  }
+  const makeAll = () => page.getByRole("button", { name: "Make all of today's moves" });
+  const making = () => page.getByRole("button", { name: "Making today's moves…" });
+  const question = () => page.getByText(/^Make these \d+ moves in Linear\?$/);
+
+  it("stays locked through today's moves when a single hand-over answers mid-run", async () => {
+    const server = serverHolding();
+    await openPanel(rebalancing([handOver(2), handOver(3)], [handOver(4, 2)]));
+
+    // A move ahead of time first, then today's, which wait behind it.
+    await userEvent.click(page.getByRole("button", { name: "Hand AVG-4 to Bruce Banner" }));
+    const ahead = await server.next();
+    await userEvent.click(makeAll());
+    await userEvent.click(page.getByRole("button", { name: "Make them" }));
+    await expect.element(making()).toBeDisabled();
+
+    // The single move answers while today's run is still going.
+    ahead.answer(handedOver(rebalancing([handOver(2), handOver(3)])));
+    const first = await server.next();
+    expect(first.variables).toEqual({ issueId: "i-2", userId: "u-bruce" });
+    await expect
+      .element(page.getByRole("button", { name: "Hand AVG-4 to Bruce Banner" }))
+      .not.toBeInTheDocument();
+    await expect.element(making()).toBeDisabled();
+
+    first.answer(handedOver(rebalancing([handOver(3)])));
+    (await server.next()).answer(handedOver(rebalancing([])));
+    await expect.element(making()).not.toBeInTheDocument();
+    await expect.element(page.getByText(/^Nothing to move: nobody/)).toBeInTheDocument();
+  });
+
+  it("asks before making today's moves, and gives the keyboard back on Cancel", async () => {
+    serverHolding();
+    await openPanel(rebalancing([handOver(2), handOver(3)]));
+
+    await userEvent.click(makeAll());
+    await expect.element(question()).toHaveFocus();
+
+    await userEvent.click(page.getByRole("button", { name: "Cancel" }));
+    await expect.element(question()).not.toBeInTheDocument();
+    await expect.element(makeAll()).toHaveFocus();
+  });
+
+  it("gives the keyboard to the panel once a hand-over's button is gone", async () => {
+    const server = serverHolding();
+    await openPanel(rebalancing([handOver(2), handOver(3)]));
+
+    await userEvent.click(page.getByRole("button", { name: "Hand AVG-2 to Bruce Banner" }));
+    (await server.next()).answer(handedOver(rebalancing([handOver(3)])));
+
+    await expect.element(page.getByRole("heading", { name: "Rebalancing Avengers" })).toHaveFocus();
+  });
+
+  it("takes the keyboard to the failure when one of today's moves fails", async () => {
+    const server = serverHolding();
+    const before = rebalancing([handOver(2), handOver(3)]);
+    await openPanel(before);
+
+    await userEvent.click(makeAll());
+    await userEvent.click(page.getByRole("button", { name: "Make them" }));
+    (await server.next()).answer({
+      reassignIssue: { __typename: "LinearError", message: "Linear said no." },
+    });
+    // The board is read again, to plan from wherever things stand.
+    const reread = await server.next();
+    expect(reread.query).toContain("query Team");
+    reread.answer({ team: before });
+
+    // Beside its Dismiss button, so matched as part of the alert's text.
+    const failure = page.getByText(
+      /Couldn't hand AVG-2 to Bruce Banner, so the rest weren't made\. Linear said no\./,
+    );
+    await expect.element(failure).toBeInTheDocument();
+    await expect.poll(() => document.activeElement?.id).toBe("board-failure");
+  });
+
+  it("closes the question when a move made underneath it changes today's plan", async () => {
+    const server = serverHolding();
+    await openPanel(rebalancing([handOver(2), handOver(3)]));
+
+    await userEvent.click(makeAll());
+    await expect.element(question()).toBeInTheDocument();
+    await userEvent.click(page.getByRole("button", { name: "Hand AVG-2 to Bruce Banner" }));
+    (await server.next()).answer(handedOver(rebalancing([handOver(3)])));
+
+    await expect.element(question()).not.toBeInTheDocument();
+    await expect.element(makeAll()).toBeEnabled();
   });
 });

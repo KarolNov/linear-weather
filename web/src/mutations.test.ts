@@ -9,6 +9,7 @@ import {
   REMOVE_TIME_OFF_MUTATION,
   SET_CAPACITY_MUTATION,
 } from "./mutations";
+import { documentText } from "./operations";
 
 const team = { id: "t-avg", name: "Avengers", key: "AVG" };
 const rules = {
@@ -30,11 +31,13 @@ function controlledFetch() {
   return { fetch, answer };
 }
 
-const sent = (call: unknown[] | undefined) =>
-  JSON.parse(String((call?.[1] as RequestInit | undefined)?.body)) as {
-    query: string;
-    variables: Record<string, unknown>;
-  };
+/** What a call sent, with its document looked up by id as the server does. */
+const sent = (call: unknown[] | undefined) => {
+  const { documentId, variables, ...rest } = JSON.parse(
+    String((call?.[1] as RequestInit | undefined)?.body),
+  ) as { documentId: string; variables: Record<string, unknown> };
+  return { query: documentText(documentId), variables, ...rest };
+};
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -53,6 +56,17 @@ function teamFields(query: string) {
 }
 
 describe("board client", () => {
+  it("sends a trusted document's id, never the query", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json({ data: { updateQuadrantRules: { __typename: "UpdateRulesSuccess", team } } }),
+    );
+    await boardClient(false, fetch).updateRules("t-avg", rules);
+    const init = (fetch.mock.calls[0] as unknown[])[1] as RequestInit;
+    const body = JSON.parse(String(init.body)) as Record<string, string>;
+    expect(Object.keys(body).sort()).toEqual(["documentId", "variables"]);
+    expect(documentText(body.documentId as string)).toContain("updateQuadrantRules");
+  });
+
   it("sends the demo's mutations to /graphql?demo=true", async () => {
     const fetch = vi.fn(async () =>
       Response.json({ data: { updateQuadrantRules: { __typename: "UpdateRulesSuccess", team } } }),

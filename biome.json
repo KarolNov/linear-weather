@@ -7,7 +7,9 @@
       "!**/worker-configuration.d.ts",
       "!server/src/linear/generated.ts",
       "!server/schema.graphql",
-      "!web/src/generated.ts"
+      "!web/src/generated.ts",
+      "!server/src/trusted-documents.ts",
+      "!web/src/document-ids.ts"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },

@@ -4,6 +4,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { BoardShell } from "./BoardShell";
 import type { Board, BoardIssue, Matrix, Suggestion, TeamBoardData, WeatherKind } from "./board";
 import { teamBoard } from "./board";
+import { documentText } from "./operations";
 
 // The rain's drawing code, stubbed so a test sees the sky start, change and stop it.
 const rain = vi.hoisted(() => {
@@ -107,7 +108,9 @@ function serverHolding() {
     vi.fn(
       (_url: string, init: RequestInit) =>
         new Promise<Response>((resolve) => {
-          const { query, variables } = JSON.parse(String(init.body));
+          const { documentId, variables } = JSON.parse(String(init.body));
+          // The board sends each operation's id; look its text up, as the server does.
+          const query = documentText(documentId);
           held.push({ query, variables, answer: (data) => resolve(Response.json({ data })) });
         }),
     ),

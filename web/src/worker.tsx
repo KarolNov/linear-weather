@@ -103,7 +103,7 @@ async function fetchBoard(
         method: "POST",
         headers: { "content-type": "application/json", cookie: c.req.header("cookie") ?? "" },
         body: JSON.stringify({
-          documentId: await documentId(BOARD_QUERY),
+          documentId: documentId(BOARD_QUERY),
           variables: { teamId: teamId ?? null },
         }),
       }),

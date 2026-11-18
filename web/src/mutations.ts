@@ -114,7 +114,7 @@ export function boardClient(demo: boolean, fetch: typeof globalThis.fetch = glob
       method: "POST",
       headers: { "content-type": "application/json" },
       // The server runs only the board's own operations, by id (document-id.ts).
-      body: JSON.stringify({ documentId: await documentId(query), variables }),
+      body: JSON.stringify({ documentId: documentId(query), variables }),
     });
     if (!res.ok) throw new Error(`server responded ${res.status}`);
     return (await res.json()) as GraphQLResponse<TResult>;

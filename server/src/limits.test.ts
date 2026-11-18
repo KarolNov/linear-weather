@@ -26,7 +26,8 @@ describe("query limits", () => {
     const { depth, cost } = size(parse(source));
     expect(depth).toBeLessThanOrEqual(MAX_DEPTH);
     expect(cost).toBeLessThanOrEqual(MAX_COST);
-    expect(errorsFor(source)).toEqual([]);
+    // Only the limits: an old id's document may ask for fields the schema has since dropped.
+    expect(validate(schema, parse(source), [limitQueries()])).toEqual([]);
   });
 
   it("count scalars as 0.1, objects as 1 and lists as LIST_LENGTH items", () => {
@@ -61,6 +62,17 @@ describe("query limits", () => {
       matrix { do { assignee { matrix { do { id } } } } }
     } } } } } }`);
     expect(errors.map((e) => e.extensions.code)).toEqual(["QUERY_TOO_DEEP", "QUERY_TOO_COSTLY"]);
+  });
+
+  it("measure a fragment spread many times only once", () => {
+    // 20 levels of fragments, each spreading the next 4 times: 4^20 spreads if walked naively.
+    const levels = Array.from({ length: 20 }, (_, i) =>
+      i === 19
+        ? `fragment F${i} on Query { today }`
+        : `fragment F${i} on Query { ...F${i + 1} ...F${i + 1} ...F${i + 1} ...F${i + 1} }`,
+    );
+    const errors = errorsFor(`{ ...F0 } ${levels.join(" ")}`);
+    expect(errors.map((e) => e.extensions.code)).toEqual(["QUERY_TOO_COSTLY"]);
   });
 
   it("don't count introspection, which only GraphiQL sends", () => {

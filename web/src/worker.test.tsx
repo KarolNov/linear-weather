@@ -9,7 +9,7 @@ import {
   runningLate,
   type Suggestion,
 } from "./board";
-import { trustedDocuments } from "./operations";
+import { documentText } from "./operations";
 import { ConfirmMoves, RebalancePanel, stillPlanned } from "./RebalancePanel";
 import { app, type Bindings } from "./worker";
 
@@ -168,7 +168,7 @@ async function sentQuery(request: Request | undefined) {
     variables: { teamId: string | null };
   };
   // Looked up by id, as the server does.
-  return { query: (await trustedDocuments())[documentId] as string, variables, ...rest };
+  return { query: documentText(documentId), variables, ...rest };
 }
 
 const fury = { name: "Nick Fury", avatarUrl: null, organization: { name: "S.H.I.E.L.D." } };

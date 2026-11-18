@@ -8,7 +8,7 @@
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
     "cf-typegen": "wrangler types",
-    "typecheck": "tsc -p .",
+    "typecheck": "tsc -p . && tsc -p scripts",
     "codegen": "graphql-codegen && tsx scripts/trusted-documents.ts",
     "codegen:check": "graphql-codegen --check && tsx scripts/trusted-documents.ts --check"
   },
@@ -27,6 +27,7 @@
     "@graphql-typed-document-node/core": "^3.2.0",
     "@preact/preset-vite": "^2.10.6",
     "@stylexjs/unplugin": "^0.19.1",
+    "@types/node": "26.6.5",
     "@vitest/browser-playwright": "^5.0.5",
     "graphql": "^17.0.2",
     "playwright": "^1.65.1",

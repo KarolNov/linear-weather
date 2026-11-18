@@ -9,7 +9,7 @@ import {
   REMOVE_TIME_OFF_MUTATION,
   SET_CAPACITY_MUTATION,
 } from "./mutations";
-import { trustedDocuments } from "./operations";
+import { documentText } from "./operations";
 
 const team = { id: "t-avg", name: "Avengers", key: "AVG" };
 const rules = {
@@ -31,14 +31,12 @@ function controlledFetch() {
   return { fetch, answer };
 }
 
-const documents = await trustedDocuments();
-
 /** What a call sent, with its document looked up by id as the server does. */
 const sent = (call: unknown[] | undefined) => {
   const { documentId, variables, ...rest } = JSON.parse(
     String((call?.[1] as RequestInit | undefined)?.body),
   ) as { documentId: string; variables: Record<string, unknown> };
-  return { query: documents[documentId] as string, variables, ...rest };
+  return { query: documentText(documentId), variables, ...rest };
 };
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -66,7 +64,7 @@ describe("board client", () => {
     const init = (fetch.mock.calls[0] as unknown[])[1] as RequestInit;
     const body = JSON.parse(String(init.body)) as Record<string, string>;
     expect(Object.keys(body).sort()).toEqual(["documentId", "variables"]);
-    expect(documents[body.documentId as string]).toContain("updateQuadrantRules");
+    expect(documentText(body.documentId as string)).toContain("updateQuadrantRules");
   });
 
   it("sends the demo's mutations to /graphql?demo=true", async () => {

@@ -84,13 +84,19 @@ export function limitQueries({
   });
 }
 
+/** A selection's depth and cost in tenths of a point. */
+interface Measured {
+  depth: number;
+  tenths: number;
+}
+
 /** How deep a selection on `type` nests and what it costs. */
 export function sizeOf(
   context: Pick<ValidationContext, "getSchema" | "getFragment">,
   selectionSet: SelectionSetNode,
   type: GraphQLCompositeType,
 ): Size {
-  const { depth, tenths } = measure(context, selectionSet, type, new Set());
+  const { depth, tenths } = measure(context, selectionSet, type, new Set(), new Map());
   return { depth, cost: tenths / 10 };
 }
 
@@ -100,10 +106,13 @@ function measure(
   type: GraphQLCompositeType,
   // Fragments being measured, so a cycle (which validation reports anyway) can't recurse forever.
   spreading: Set<string>,
-): { depth: number; tenths: number } {
+  // Fragments already measured: a fragment spread many times, by fragments spread many times,
+  // would otherwise be walked exponentially often.
+  measured: Map<string, Measured>,
+): Measured {
   let depth = 0;
   let tenths = 0;
-  const add = (inner: { depth: number; tenths: number }) => {
+  const add = (inner: Measured) => {
     depth = Math.max(depth, inner.depth);
     tenths += inner.tenths;
   };
@@ -125,7 +134,7 @@ function measure(
         const inner = getNamedType(field.type);
         const nested =
           selection.selectionSet && isCompositeType(inner)
-            ? measure(context, selection.selectionSet, inner, spreading)
+            ? measure(context, selection.selectionSet, inner, spreading, measured)
             : { depth: 0, tenths: 0 };
         const each = isCompositeType(inner) ? OBJECT + nested.tenths : SCALAR;
         add({ depth: 1 + nested.depth, tenths: each * lengthOf(field.type) });
@@ -135,18 +144,27 @@ function measure(
         const on = selection.typeCondition
           ? context.getSchema().getType(selection.typeCondition.name.value)
           : type;
-        if (isCompositeType(on)) add(measure(context, selection.selectionSet, on, spreading));
+        if (isCompositeType(on)) {
+          add(measure(context, selection.selectionSet, on, spreading, measured));
+        }
         break;
       }
       case Kind.FRAGMENT_SPREAD: {
         const name = selection.name.value;
         const fragment: FragmentDefinitionNode | null | undefined = context.getFragment(name);
+        const known = measured.get(name);
+        if (known) {
+          add(known);
+          break;
+        }
         if (!fragment || spreading.has(name)) break;
         const on = context.getSchema().getType(fragment.typeCondition.name.value);
         if (!isCompositeType(on)) break;
         spreading.add(name);
-        add(measure(context, fragment.selectionSet, on, spreading));
+        const size = measure(context, fragment.selectionSet, on, spreading, measured);
         spreading.delete(name);
+        measured.set(name, size);
+        add(size);
         break;
       }
     }

@@ -1,7 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { app } from "./index";
-import { TRUSTED_DOCUMENTS } from "./trusted-documents";
+import { CURRENT_DOCUMENT_IDS } from "./trusted-documents";
 
 describe("server worker", () => {
   it("reports health", async () => {
@@ -231,9 +231,7 @@ describe("off localhost", () => {
       },
       env,
     );
-  const boardId = Object.entries(TRUSTED_DOCUMENTS).find(([, source]) =>
-    source.includes("query Board("),
-  )?.[0];
+  const boardId = CURRENT_DOCUMENT_IDS.Board;
 
   it("runs the board's operations by id", async () => {
     const res = await post({ documentId: boardId, variables: { teamId: null } });

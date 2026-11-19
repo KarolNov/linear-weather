@@ -58,15 +58,7 @@ Checks (same as CI): `pnpm typecheck`, `pnpm codegen:check`, `pnpm lint`, `pnpm 
 
 After changing a `wrangler.jsonc`, run `pnpm --filter server cf-typegen` to regenerate `worker-configuration.d.ts`.
 
-### Webhooks locally
-
-Linear can only deliver webhooks to a public URL. To receive them in `pnpm dev:web`, open a Cloudflare quick tunnel to it:
-
-```bash
-cloudflared tunnel --url http://localhost:5173
-```
-
-Point a Linear webhook (Issues and Cycles) at `https://<tunnel>.trycloudflare.com/webhooks/linear`, and put its signing secret in `LINEAR_WEBHOOK_SECRET` in `server/.env`. The tunnel exposes the whole dev server to anyone who has its URL, so close it when you're done.
+To receive Linear's webhooks locally, see [Live updates](#live-updates).
 
 ## Querying Linear
 
@@ -358,10 +350,11 @@ sequenceDiagram
 
 - **Webhooks** (`server/src/webhooks.ts`) take Linear's `Issue` and `Cycle` events: created, updated (reassigned, due date changed, …) or removed. Each must carry a `Linear-Signature` that's the HMAC-SHA256 of its body under `LINEAR_WEBHOOK_SECRET`, and a `webhookTimestamp` under a minute old, so a captured delivery can't be replayed. The issue's team hears it changed, and so does the team it left, if it moved.
 - **One channel per team** (`server/src/team-channel.ts`). A webhook and a board's stream land in whichever Worker isolate Cloudflare picks, and isolates share no memory, so they meet in a Durable Object named by the team's id. Each subscription holds a WebSocket to it; it hibernates while the team is quiet, so an idle board costs nothing there. The message says only "changed": each board reads the team again with its own viewer's Linear session, so nobody sees what Linear wouldn't show them.
-- **The board's own changes** (rules, hand placements, capacity, time off, a hand-over) tell the team's other open boards too. Rules and the rest live in D1, so no webhook would.
+- **The board's own changes** (rules, hand placements, capacity, time off) tell the team's other open boards too: they live in D1, so no webhook would. Capacity and time off count on every team someone is on, so they tell every team the viewer sees. A hand-over is a change in Linear, so its webhook tells the boards; telling them here as well would have each read the team twice.
 - **Changes close together answer once** (`server/src/live.ts`). One edit in Linear can send several webhooks, and every update costs each open board a read of Linear, so a change waits a second for more, and changes that arrive while the last update is being read make one more update, not several.
 - **The daily tick.** Each subscription also answers a second past midnight (UTC, as `today` counts), with no edits at all: due dates come a day closer and the forecast's weeks move along. Each update renews the request's context, so it reads Linear and D1 afresh, against the new `today`.
-- **The board** (`web/src/live.ts`) listens with an `EventSource` and redraws from each update as it does from a mutation's answer. The browser reconnects by itself after a network blip; when the server ends the stream (a deploy, a channel restart), the board connects again, waiting longer each time it fails, and reads the team once it's back for whatever it missed. It gives up when the subscription is refused (signed out, or a team they can't see). The demo doesn't listen: it has no webhooks, and its changes live in the visitor's cookie, which a long-lived stream would read only once.
+- **Catching up, and ending.** A second after it starts listening, each subscription answers once, for whatever changed since the board was read or while it was reconnecting. It ends after the first update that finds the viewer can no longer see the team (signed out, say), rather than answering errors at every change.
+- **The board** (`web/src/live.ts`) listens with an `EventSource` and redraws from each update as it does from a mutation's answer. The browser reconnects by itself after a network blip; when the server ends the stream (a deploy, a channel restart), the board connects again, waiting longer each time it fails; the catch-up update covers whatever it missed. It gives up when the subscription is refused (signed out, or a team they can't see). The demo doesn't listen: it has no webhooks, and its changes live in the visitor's cookie, which a long-lived stream would read only once.
 
 #### Webhooks from Linear
 
@@ -373,7 +366,7 @@ To try it locally, Linear needs a public URL for your dev server. A [Cloudflare 
 cloudflared tunnel --url http://localhost:5173
 ```
 
-In a workspace you admin, add a webhook under **Settings → API → Webhooks** pointing at `https://<random>.trycloudflare.com/webhooks/linear` for Issues and Cycles, and put its signing secret in `server/.env` as `LINEAR_WEBHOOK_SECRET`. Restart `pnpm dev:web`, sign in at http://localhost:5173, and change an issue in Linear: the board redraws about a second later. `web/vite.config.ts` lets `*.trycloudflare.com` through Vite's host check. The tunnel's requests keep that host, so the server doesn't take them for localhost: no GraphiQL, no `LINEAR_API_KEY`. A new quick tunnel gets a new URL each time, so update the webhook when you restart it.
+In a workspace you admin, add a webhook under **Settings → API → Webhooks** pointing at `https://<random>.trycloudflare.com/webhooks/linear` for Issues and Cycles, and put its signing secret in `server/.env` as `LINEAR_WEBHOOK_SECRET`. Restart `pnpm dev:web`, sign in at http://localhost:5173, and change an issue in Linear: the board redraws about a second later. `web/vite.config.ts` lets `*.trycloudflare.com` through Vite's host check. The tunnel's requests keep that host, so the server doesn't take them for localhost: no GraphiQL, no `LINEAR_API_KEY`. The tunnel still puts the whole dev server online for anyone with its URL, so Vite refuses `.env`, `.dev.vars` and `.wrangler` (the local session store) through it; close the tunnel when you're done. A new quick tunnel gets a new URL each time, so update the webhook when you restart it.
 
 ## Our own data
 

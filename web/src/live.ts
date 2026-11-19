@@ -14,12 +14,11 @@ export interface TeamUpdate {
 }
 
 export interface UpdateHandlers {
-  update(update: TeamUpdate): void;
   /**
-   * The connection came back after a break, during which updates may have been missed: read
-   * the board again.
+   * The board as it reads now. The first comes a moment after each (re)connection, for whatever
+   * changed while the board wasn't listening, so nothing is missed across a break.
    */
-  resumed(): void;
+  update(update: TeamUpdate): void;
 }
 
 /** The part of the browser's EventSource listening uses, so tests can stand in for it. */
@@ -52,7 +51,6 @@ export function listenForUpdates(
   let source: EventSourceLike | null = null;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let retryMs = FIRST_RETRY_MS;
-  let connectedBefore = false;
   let stopped = false;
 
   const stop = () => {
@@ -71,8 +69,6 @@ export function listenForUpdates(
     source = current;
     current.addEventListener("open", () => {
       retryMs = FIRST_RETRY_MS;
-      if (connectedBefore) handlers.resumed();
-      connectedBefore = true;
     });
     current.addEventListener("next", (event) => {
       const { data, errors = [] } = JSON.parse(

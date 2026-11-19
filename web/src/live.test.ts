@@ -32,13 +32,12 @@ const team = (id: string) => ({ id, name: "Avengers" }) as TeamBoardData;
 function listen(teamId = "team-1") {
   const sources: FakeSource[] = [];
   const updates: TeamUpdate[] = [];
-  const resumed = vi.fn();
-  const stop = listenForUpdates(teamId, { update: (u) => updates.push(u), resumed }, (url) => {
+  const stop = listenForUpdates(teamId, { update: (u) => updates.push(u) }, (url) => {
     const source = new FakeSource(url);
     sources.push(source);
     return source;
   });
-  return { sources, latest: () => sources.at(-1) as FakeSource, updates, resumed, stop };
+  return { sources, latest: () => sources.at(-1) as FakeSource, updates, stop };
 }
 
 describe("listenForUpdates", () => {
@@ -84,16 +83,6 @@ describe("listenForUpdates", () => {
     expect(sources).toHaveLength(2);
     vi.advanceTimersByTime(FIRST_RETRY_MS);
     expect(sources).toHaveLength(3);
-  });
-
-  it("reads the board again once it's back, for what it missed meanwhile", () => {
-    const { latest, resumed } = listen();
-    latest().emit("open");
-    expect(resumed).not.toHaveBeenCalled();
-    latest().emit("complete");
-    vi.advanceTimersByTime(FIRST_RETRY_MS);
-    latest().emit("open");
-    expect(resumed).toHaveBeenCalledOnce();
   });
 
   it.each([

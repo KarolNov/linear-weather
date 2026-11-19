@@ -156,11 +156,8 @@ function TeamBoard({
     if (demo || !teamId) return;
     return listenForUpdates(teamId, {
       update: ({ today, team }) => showUpdate.current({ today, ...teamBoard(team) }),
-      resumed: () => {
-        client.readTeam(teamId).then((read) => read && showUpdate.current(teamBoard(read)));
-      },
     });
-  }, [demo, teamId, client]);
+  }, [demo, teamId]);
   const [editingRules, setEditingRules] = useState(false);
   const [rebalancing, setRebalancing] = useState(false);
   // Issues whose move hasn't answered yet.

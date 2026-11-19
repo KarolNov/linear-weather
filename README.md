@@ -6,7 +6,7 @@ Each developer's assigned issues are sorted into an **Eisenhower matrix** (Do / 
 
 ![The demo board: storms now and in the weeks ahead, today's moves made at once, then each move ahead of the storm, and the forecast clears](docs/demo.gif)
 
-_The [demo workspace](#the-demo-workspace): Tony and Bruce are in storms now and over the next weeks. **Rebalance** hands today's urgent work over in one go, then the work that would turn urgent in weeks 1 to 3, and their forecasts clear. Natasha and Tony stay stormy because of overdue work, which never moves. Recorded with `pnpm --filter web demo-gif` while `pnpm dev:web` runs._
+_The [demo workspace](#the-demo-workspace): Tony and Bruce are in storms now and over the next weeks. **Rebalance** hands today's urgent work over in one go, then the work that would turn urgent in weeks 1 to 3, and their forecasts clear. Natasha and Tony stay stormy because of overdue work, which never moves._
 
 ## The idea
 

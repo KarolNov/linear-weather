@@ -40,6 +40,28 @@ export default defineConfig({
       persistState: { path: ".wrangler/state" },
     }),
   ],
+  server: {
+    // Linear's webhooks reach the dev server through a Cloudflare quick tunnel (see the README).
+    // Vite refuses hosts it doesn't know, which guards against DNS rebinding; this lets the
+    // tunnel's through without telling the server it's on localhost.
+    allowedHosts: [".trycloudflare.com"],
+    // The tunnel puts the whole dev server online, /@fs/ included. Vite's own list (the first
+    // six, which this replaces) misses the local Workers' secrets and state: .dev.vars, and
+    // .wrangler, whose session store holds Linear tokens.
+    fs: {
+      deny: [
+        ".env",
+        ".env.*",
+        "*.{crt,pem,key,p12,pfx,cer,der}",
+        ".npmrc",
+        ".yarnrc.yml",
+        "**/.git/**",
+        ".dev.vars",
+        ".dev.vars.*",
+        "**/.wrangler/**",
+      ],
+    },
+  },
   environments: {
     client: {
       build: {

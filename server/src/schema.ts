@@ -49,6 +49,18 @@ export interface GraphQLContext {
   placements: Placements;
   /** The day issues are placed against. UTC, so near midnight a PM elsewhere may be a day off. */
   today: CalendarDate;
+  /**
+   * Yields each time a team's board may read differently: it changed in Linear or on another
+   * board, or a new day began. Absent where nothing can listen for changes.
+   */
+  teamUpdates?: (teamId: string) => AsyncIterable<unknown>;
+  /** Tells the team's other open boards it was changed here. */
+  teamChanged?: (teamId: string) => void;
+  /**
+   * Starts over, for a subscription's next update: Linear and the store read afresh, and today
+   * as it is now.
+   */
+  renew?: () => void;
 }
 
 // Fields are non-null unless marked `nullable`; Pothos 4 defaults the other way. An error in a
@@ -991,6 +1003,101 @@ builder.queryType({
   }),
 });
 
+/** A team's board to read again, by its id: whatever made it change, it's read whole. */
+interface TeamUpdate {
+  teamId: string;
+}
+
+const TeamUpdateRef = builder.objectRef<TeamUpdate>("TeamWeatherUpdate").implement({
+  description: "A team's board as it reads now, after a change or as a new day begins.",
+  fields: (t) => ({
+    today: t.field({
+      type: "Date",
+      description: "The day issues are placed against now (UTC), which moves on at midnight.",
+      resolve: (_update, _args, context) => context.today,
+    }),
+    team: t.field({
+      type: TeamRef,
+      nullable: true,
+      description: "The team; null if you can no longer see it.",
+      resolve: async ({ teamId }, _args, context) =>
+        (await (await signedIn(context)).teams()).find(({ id }) => id === teamId) ?? null,
+    }),
+  }),
+});
+
+builder.subscriptionType({
+  fields: (t) => ({
+    teamWeatherUpdated: t.field({
+      type: TeamUpdateRef,
+      description:
+        "The team's board each time it may read differently: an issue changed in Linear (as its webhooks tell us), someone changed the board here, or a new day began, which moves due dates and the forecast along. Changes close together answer once. The first comes a moment after subscribing, for whatever changed since the board was read. Once you can no longer see the team (signed out, say), that update is the last.",
+      args: { teamId: t.arg.id({ required: true }) },
+      subscribe: async (_root, args, context) => {
+        const teamId = String(args.teamId);
+        const teams = await (await signedIn(context)).teams();
+        if (!teams.some(({ id }) => id === teamId)) {
+          throw new GraphQLError("There's no such team, or you can't see it.", {
+            extensions: { code: "TEAM_NOT_FOUND" },
+          });
+        }
+        if (!context.teamUpdates) {
+          throw new GraphQLError("Live updates aren't available here.", {
+            extensions: { code: "UNAVAILABLE" },
+          });
+        }
+        return whileSeen(context, teamId, context.teamUpdates(teamId));
+      },
+      resolve: (_change, args): TeamUpdate => ({ teamId: String(args.teamId) }),
+    }),
+  }),
+});
+
+/**
+ * A subscription's updates, each read afresh: the connection outlives what the last update read,
+ * and possibly the day it read it on. Ends after the first update that finds the viewer can no
+ * longer see the team, so a signed-out board stops instead of answering errors at every change.
+ */
+function whileSeen(
+  context: GraphQLContext,
+  teamId: string,
+  updates: AsyncIterable<unknown>,
+): AsyncIterableIterator<true> {
+  const source = updates[Symbol.asyncIterator]();
+  const done: IteratorReturnResult<undefined> = { done: true, value: undefined };
+  let last = false;
+  const stillSeen = async () => {
+    try {
+      const workspace = await context.workspace();
+      return workspace !== null && (await workspace.teams()).some(({ id }) => id === teamId);
+    } catch (error) {
+      // A rejected token is signed out; anything else may pass, so the update reports it.
+      return !(error instanceof LinearAuthError);
+    }
+  };
+  const end = async () => {
+    await source.return?.();
+    return done;
+  };
+  // Not an async generator: one waiting on the next update can't be returned until it comes,
+  // which would hold the team's channel open long after the board has gone.
+  return {
+    async next() {
+      if (last) return end();
+      const step = await source.next();
+      if (step.done) return done;
+      context.renew?.();
+      forgetWork(context);
+      last = !(await stillSeen());
+      return { done: false, value: true };
+    },
+    return: end,
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
+}
+
 // Mutations answer with a union: what they did, or one of the ways it can fail that a client is
 // expected to handle. Each failure implements Error, so `... on Error { message }` covers any
 // the client doesn't single out. Top-level `errors` are left for the unexpected.
@@ -1289,6 +1396,22 @@ async function attempt<T>(
   }
 }
 
+/**
+ * Tells the open boards of teams changed here, since no Linear webhook will: rules, placements,
+ * capacity and time off live in this app's store. Changes made in Linear are left to its webhooks.
+ */
+function announce(context: GraphQLContext, teamIds: Iterable<string>): void {
+  for (const teamId of new Set(teamIds)) context.teamChanged?.(teamId);
+}
+
+/**
+ * Capacity and time off count on every team someone is on or holds issues in. Telling every team
+ * the viewer sees covers those without asking Linear which they are; such changes are rare.
+ */
+async function everyTeam(workspace: Workspace): Promise<string[]> {
+  return (await workspace.teams()).map(({ id }) => id);
+}
+
 function issueNotFound(issueId: string): IssueNotFound {
   return {
     __typename: "IssueNotFound",
@@ -1312,6 +1435,7 @@ async function placeByHand(
     context.placements.rules(issue.team.id),
   ]);
   forgetWork(context);
+  announce(context, [issue.team.id]);
   return {
     __typename: "OverrideSuccess",
     issue: place(ownLookups(issue, rules), rules, context.today, quadrant ?? undefined),
@@ -1334,6 +1458,7 @@ async function setCapacity(
   const { team, person } = found;
   await context.placements.setCapacity(person.id, parsed.factor);
   forgetWork(context);
+  announce(context, await everyTeam(workspace));
   return { __typename: "SetCapacitySuccess", user: { ...person, teamId: team.id }, team };
 }
 
@@ -1393,6 +1518,7 @@ async function addTimeOff(
     };
   }
   forgetWork(context);
+  announce(context, await everyTeam(workspace));
   return { __typename: "TimeOffSuccess", user: { ...person, teamId: team.id }, team };
 }
 
@@ -1415,6 +1541,7 @@ async function removeTimeOff(
     };
   }
   forgetWork(context);
+  announce(context, await everyTeam(workspace));
   return { __typename: "TimeOffSuccess", user: { ...person, teamId: team.id }, team };
 }
 
@@ -1440,6 +1567,8 @@ async function reassign(
   const issue = await workspace.reassign(issueId, userId);
   if (!issue) return issueNotFound(issueId);
   forgetWork(context);
+  // Nothing to announce: Linear's webhook for the change tells the team's boards, and telling
+  // them here too would have each read the board twice.
   const [rules, overrides] = await Promise.all([
     context.placements.rules(issue.team.id),
     context.placements.overrides([issue]),
@@ -1489,6 +1618,7 @@ builder.mutationType({
             }
             await context.placements.setRules(team.id, rules);
             forgetWork(context);
+            announce(context, [team.id]);
             return { __typename: "UpdateRulesSuccess", team };
           },
         ),

@@ -5,7 +5,7 @@
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
   // The browser only talks to this Worker. /auth/* and /graphql are passed through to the
-  // server Worker, so the session cookie stays first-party.
+  // server Worker, so the session cookie stays first-party, and so are Linear's webhooks.
   "services": [{ "binding": "SERVER", "service": "linear-weather-server" }],
   // Worker Previews don't inherit bindings. A Preview's service binding reaches the server's
   // production deployment, not the server Preview of the same branch.

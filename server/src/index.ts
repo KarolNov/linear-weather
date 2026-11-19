@@ -6,6 +6,7 @@ import { auth } from "./auth";
 import { DEMO_COOKIE, DEMO_COOKIE_MAX_AGE } from "./db/demo-cookie";
 import { DemoStore } from "./db/demo-store";
 import { Store } from "./db/store";
+import type { CalendarDate } from "./domain/quadrant";
 import { useQueryLimits } from "./limits";
 import {
   LinearAuthError,
@@ -14,6 +15,7 @@ import {
   type LinearSource,
 } from "./linear/client";
 import { DemoLinear } from "./linear/demo";
+import { teamUpdates } from "./live";
 import { Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
 import {
@@ -23,8 +25,12 @@ import {
   isLocalhost,
   linearAuthorization,
 } from "./session";
+import { teamChannels } from "./team-channel";
 import { useTrustedDocuments } from "./trusted-documents-plugin";
+import { webhooks } from "./webhooks";
 import { Workspace } from "./workspace";
+
+export { TeamChannel } from "./team-channel";
 
 const yoga = createYoga<GraphQLContext>({
   schema,
@@ -45,6 +51,7 @@ const yoga = createYoga<GraphQLContext>({
 export const app = new Hono<{ Bindings: Env }>()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/auth", auth)
+  .route("/webhooks", webhooks)
   .on(["GET", "POST"], "/graphql", async (c) => {
     // A cross-site form can POST urlencoded or multipart bodies without a CORS preflight, which
     // Yoga would run as a mutation. The session cookie is SameSite, but a dev API key needs no
@@ -52,22 +59,60 @@ export const app = new Hono<{ Bindings: Env }>()
     if (c.req.method === "POST" && !isGraphQLBody(c.req.header("content-type"))) {
       return c.text("Send GraphQL as application/json", 415);
     }
-    // Resolved on first use, so queries that don't touch Linear skip the session lookup.
-    let workspace: Promise<Workspace | null> | undefined;
-    const today = new Date().toISOString().slice(0, 10);
     // The demo never touches D1: each visitor's changes live in their own cookie.
+    const today = utcToday();
     const demo = isDemo(c) ? DemoStore.fromCookie(getCookie(c, DEMO_COOKIE), today) : null;
-    const response = await yoga.fetch(c.req.raw, {
-      workspace: () =>
-        (workspace ??= linearSource(c, demo).then((linear) => linear && new Workspace(linear))),
-      placements: new Placements(demo ?? new Store(c.env.DB)),
-      today,
-    });
+    const response = await yoga.fetch(c.req.raw, requestContext(c, demo, today));
     if (!demo?.changed) return response;
     const headers = new Headers(response.headers);
     headers.append("set-cookie", demoCookie(c, demo));
     return new Response(response.body, { status: response.status, headers });
   });
+
+/** What a request's resolvers share. A subscription renews it for each update. */
+function requestContext(
+  c: AppContext,
+  demo: DemoStore | null,
+  today: CalendarDate,
+): GraphQLContext {
+  // Resolved on first use, so queries that don't touch Linear skip the session lookup.
+  let workspace: Promise<Workspace | null> | undefined;
+  const placements = () => new Placements(demo ?? new Store(c.env.DB));
+  // The demo has no webhooks, and its changes stay in the visitor's browser: it only hears days.
+  const channels = demo ? undefined : teamChannels(c.env.TEAM_CHANNELS);
+  const context: GraphQLContext = {
+    workspace: () =>
+      (workspace ??= linearSource(c, demo).then((linear) => linear && new Workspace(linear))),
+    placements: placements(),
+    today,
+    teamUpdates: (teamId) => teamUpdates(teamId, channels),
+    teamChanged: (teamId) => {
+      if (!channels) return;
+      // Other boards hear after the answer is sent. One that misses it hears the next change.
+      const told = channels.publish(teamId).catch((error: unknown) => {
+        console.error(`Couldn't tell team ${teamId}'s boards it changed: ${error}`);
+      });
+      try {
+        c.executionCtx.waitUntil(told);
+      } catch {
+        // No ExecutionContext (Hono's app.request in tests): it finishes on its own.
+      }
+    },
+    renew: () => {
+      context.today = utcToday();
+      // The demo's store judges time off by the day it was read on. A subscription changes
+      // nothing, so the visitor's cookie still holds everything.
+      if (demo) demo = DemoStore.fromCookie(getCookie(c, DEMO_COOKIE), context.today);
+      workspace = undefined;
+      context.placements = placements();
+    },
+  };
+  return context;
+}
+
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 /** Keeps the visitor's demo changes in their browser. */
 function demoCookie(c: AppContext, demo: DemoStore): string {

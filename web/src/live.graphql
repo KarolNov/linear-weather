@@ -1,0 +1,10 @@
+# The team's board each time it may read differently: an issue changed in Linear, someone changed
+# the board, or a new day began.
+subscription TeamWeather($teamId: ID!) {
+  teamWeatherUpdated(teamId: $teamId) {
+    today
+    team {
+      ...TeamBoard
+    }
+  }
+}

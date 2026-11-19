@@ -10,5 +10,6 @@ export const DOCUMENT_IDS = {
   "RemoveTimeOff": "sha256:8a403fdb0c5bf981efe6403cb9acca774d4ff6bfa2911b9df753d19261480fee",
   "SetCapacity": "sha256:7d4cfeb97d23ee49f422c255916d684b1e8f11632209c8e2f7b698fa37d64d27",
   "Team": "sha256:f7e269f8e0c0ea21e9c5560dadeaa7a92c4fed741c752615439b2216343c9794",
+  "TeamWeather": "sha256:cab8e53a53e6e415cef81f0cabddd6216744fc9a8b909786b3145912334a131a",
   "UpdateRules": "sha256:d2f971b93fed204ca81d6c0fd186e729474df728268eb74e66f61a3ff498cc66"
 } as const;

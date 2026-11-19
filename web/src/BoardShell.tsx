@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
   Alert,
   Avatar,
@@ -35,6 +35,7 @@ import {
   total,
   type Viewer,
 } from "./board";
+import { listenForUpdates } from "./live";
 import { entrance } from "./motion";
 import { applyMoves, boardClient, describeMoves } from "./mutations";
 import { PersonMatrix } from "./PersonMatrix";
@@ -57,7 +58,10 @@ export interface BoardShellProps {
 export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps) {
   // The team and its people as the last change left them. Each change answers with the whole
   // team's board, so it's replaced rather than patched. Kept here because the sky follows it.
-  const [shown, setShown] = useState(() => board && { team: board.team, people: board.people });
+  const [shown, setShown] = useState<Shown | null>(
+    () => board && { team: board.team, people: board.people, today: board.today },
+  );
+  const show = (answer: Answer) => setShown((current) => current && { ...current, ...answer });
   return (
     <Sky time="dawn" weather={shown?.team ? skyFor(shown.team.weather.kind) : undefined}>
       <header {...stylex.props(styles.header)}>
@@ -86,7 +90,7 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
 
       <main {...stylex.props(styles.main)}>
         {board && shown ? (
-          <TeamBoard board={board} shown={shown} onAnswer={setShown} demo={demo} />
+          <TeamBoard board={board} shown={shown} onAnswer={show} demo={demo} />
         ) : (
           <BoardUnavailable error={boardError} />
         )}
@@ -124,21 +128,36 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
   );
 }
 
-type Shown = Pick<Board, "team" | "people">;
+/** The board as it reads now: after the last change, or the last live update. */
+type Shown = Pick<Board, "team" | "people" | "today">;
+/** A change's answer, or a live update, which also says what day it is now. */
+type Answer = Pick<Board, "team" | "people"> & { today?: Board["today"] };
 
 function TeamBoard({
-  board: { teams, today },
-  shown: { team, people },
+  board: { teams },
+  shown: { team, people, today },
   onAnswer,
   demo,
 }: {
   board: Board;
   shown: Shown;
-  /** Shows a saved change's answer: the team's whole board. */
-  onAnswer: (answer: Shown) => void;
+  /** Shows a saved change's answer, or a live update: the team's whole board. */
+  onAnswer: (answer: Answer) => void;
   demo?: boolean;
 }) {
   const client = useMemo(() => boardClient(Boolean(demo)), [demo]);
+  // The board follows changes made in Linear or on other boards, and moves on as days pass. The
+  // demo has no webhooks, and its changes live in this browser's cookie, which a long-lived
+  // stream would read only once, so it stays as its own changes leave it.
+  const showUpdate = useRef(onAnswer);
+  showUpdate.current = onAnswer;
+  const teamId = team?.id;
+  useEffect(() => {
+    if (demo || !teamId) return;
+    return listenForUpdates(teamId, {
+      update: ({ today, team }) => showUpdate.current({ today, ...teamBoard(team) }),
+    });
+  }, [demo, teamId]);
   const [editingRules, setEditingRules] = useState(false);
   const [rebalancing, setRebalancing] = useState(false);
   // Issues whose move hasn't answered yet.

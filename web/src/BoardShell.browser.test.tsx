@@ -155,10 +155,33 @@ function rebalancing(now: Suggestion[], forecast: Suggestion[] = []): TeamBoardD
   return { ...avengersBoard(storm), rebalanceNow: now, rebalanceForecast: forecast };
 }
 
+/** The board's live updates, as the server would send them: `emit` sends an event. */
+class FakeEventSource {
+  static opened: FakeEventSource[] = [];
+  readyState = 0;
+  private readonly listeners = new Map<string, ((event: MessageEvent<string>) => void)[]>();
+  constructor(readonly url: string) {
+    FakeEventSource.opened.push(this);
+  }
+  addEventListener(type: string, listener: (event: MessageEvent<string>) => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+  close() {
+    this.readyState = 2;
+  }
+  emit(type: string, data = "") {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener({ data } as MessageEvent<string>);
+    }
+  }
+}
+
 let root: HTMLElement;
 beforeEach(() => {
   root = document.createElement("div");
   document.body.append(root);
+  FakeEventSource.opened = [];
+  vi.stubGlobal("EventSource", FakeEventSource);
 });
 afterEach(async () => {
   render(null, root);
@@ -209,6 +232,34 @@ describe("the board after a move", () => {
     const schedule = page.getByRole("region", { name: "Tony Stark: Schedule" });
     await expect.element(schedule.getByText(/^By hand/)).toBeVisible();
     await expect.element(schedule.getByRole("button", { name: "Move AVG-1" })).toHaveFocus();
+  });
+});
+
+describe("live updates", () => {
+  it("redraws the board from a change made elsewhere, on the day it was read", async () => {
+    render(<BoardShell viewer={viewer} board={loaded(avengersBoard(storm))} />, root);
+    await vi.waitFor(() => expect(FakeEventSource.opened).toHaveLength(1));
+    const [source] = FakeEventSource.opened;
+    expect(source?.url).toContain("documentId=sha256");
+    source?.emit("open");
+
+    source?.emit(
+      "next",
+      JSON.stringify({
+        data: {
+          teamWeatherUpdated: { today: "2026-10-20", team: avengersBoard(sunny, "schedule") },
+        },
+      }),
+    );
+
+    await expect.poll(() => sky()?.dataset.weather).toBe("sun");
+    await expect.poll(teamForecast).toContain(sunny.reason);
+  });
+
+  it("doesn't listen in the demo, whose changes live in this browser", async () => {
+    render(<BoardShell viewer={viewer} board={loaded(avengersBoard(storm))} demo />, root);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(FakeEventSource.opened).toHaveLength(0);
   });
 });
 

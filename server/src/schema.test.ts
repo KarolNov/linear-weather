@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
-import { graphql } from "graphql";
+import { type ExecutionResult, graphql, parse, subscribe } from "graphql";
+import { Repeater } from "graphql-yoga";
 import { describe, expect, it, vi } from "vitest";
 // The web app's operations, typed by codegen against schema.graphql; running them here checks
 // they also load what the board expects.
@@ -10,7 +11,11 @@ import {
   MAX_TIME_OFF as WEB_MAX_TIME_OFF,
   MAX_URGENCY_WINDOW_DAYS as WEB_MAX_URGENCY_WINDOW_DAYS,
 } from "../../web/src/board";
-import type { QuadrantRulesInput, TypedDocumentString } from "../../web/src/generated";
+import {
+  type QuadrantRulesInput,
+  TeamWeatherDocument,
+  type TypedDocumentString,
+} from "../../web/src/generated";
 import {
   ADD_TIME_OFF_MUTATION,
   CLEAR_OVERRIDE_MUTATION,
@@ -1661,5 +1666,177 @@ describe("Linear requests per query", () => {
       "Teams",
       "TeamsMembers",
     ]);
+  });
+});
+
+describe("teamWeatherUpdated", () => {
+  type Update = { teamWeatherUpdated: { today: string; team: TeamBoardData | null } };
+
+  /** Subscribes as someone signed in to the demo; `update()` is the team changing. */
+  async function subscribeTo(teamId: string, { signedIn = true } = {}) {
+    let update: (() => void) | undefined;
+    let listening = true;
+    const updates = new Repeater<true>(async (push, stop) => {
+      update = () => void push(true);
+      await stop;
+      listening = false;
+    });
+    const days = ["2026-10-19", "2026-10-20"];
+    let session = signedIn;
+    const newWorkspace = () => (session ? new Workspace(new DemoLinear({ today })) : null);
+    let workspace = newWorkspace();
+    const contextValue: GraphQLContext = {
+      workspace: async () => workspace,
+      placements: new Placements(new Store(env.DB)),
+      today,
+      teamUpdates: () => updates,
+      renew: () => {
+        workspace = newWorkspace();
+        contextValue.placements = new Placements(new Store(env.DB));
+        contextValue.today = days.shift() ?? contextValue.today;
+      },
+    };
+    const result = await subscribe({
+      schema,
+      document: parse(TeamWeatherDocument.toString()),
+      variableValues: { teamId },
+      contextValue,
+    });
+    return {
+      result,
+      update: () => update?.(),
+      signOut: () => {
+        session = false;
+      },
+      listening: () => listening,
+    };
+  }
+
+  /** The next update, once the team changes. Nothing listens until the update is asked for. */
+  async function updated(result: AsyncIterator<ExecutionResult>, update: () => void) {
+    const next = result.next();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    update();
+    return next;
+  }
+
+  it("answers each update with the team's board as it reads then", async () => {
+    const { result, update } = await subscribeTo(DEMO_TEAM.id);
+    if (!(Symbol.asyncIterator in result)) throw new Error("expected a subscription");
+
+    // Saved elsewhere since the board loaded: another PM, say.
+    await new Store(env.DB).setRules(DEMO_TEAM.id, { ...DEFAULT_RULES, dropAlertPercent: 15 });
+    const first: ExecutionResult = (await updated(result, update)).value;
+    const { teamWeatherUpdated } = first.data as Update;
+    expect(first.errors).toBeUndefined();
+    expect(teamWeatherUpdated.today).toBe("2026-10-19");
+    expect(teamWeatherUpdated.team?.id).toBe(DEMO_TEAM.id);
+    expect(teamWeatherUpdated.team?.rules.dropAlertPercent).toBe(15);
+    expect(teamWeatherUpdated.team?.people.length).toBeGreaterThan(0);
+
+    await new Store(env.DB).setRules(DEMO_TEAM.id, { ...DEFAULT_RULES, dropAlertPercent: 25 });
+    const second = (await updated(result, update)).value?.data as Update;
+    expect(second.teamWeatherUpdated.today).toBe("2026-10-20");
+    expect(second.teamWeatherUpdated.team?.rules.dropAlertPercent).toBe(25);
+    await result.return?.();
+  });
+
+  it("ends after the first update that finds the viewer signed out", async () => {
+    const { result, update, signOut } = await subscribeTo(DEMO_TEAM.id);
+    if (!(Symbol.asyncIterator in result)) throw new Error("expected a subscription");
+    signOut();
+    const last: ExecutionResult = (await updated(result, update)).value;
+    expect((last.data as Update).teamWeatherUpdated.team).toBeNull();
+    expect(last.errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
+    expect(await result.next()).toEqual({ done: true, value: undefined });
+  });
+
+  it("stops listening when returned while waiting for an update", async () => {
+    const { result, listening } = await subscribeTo(DEMO_TEAM.id);
+    if (!(Symbol.asyncIterator in result)) throw new Error("expected a subscription");
+    const waiting = result.next();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await result.return?.();
+    expect(await waiting).toEqual({ done: true, value: undefined });
+    expect(listening()).toBe(false);
+  });
+
+  it("refuses a team the viewer can't see", async () => {
+    const { result } = await subscribeTo("not-a-team");
+    expect(Symbol.asyncIterator in result).toBe(false);
+    expect((result as ExecutionResult).errors?.[0]?.extensions?.code).toBe("TEAM_NOT_FOUND");
+  });
+
+  it("refuses someone signed out", async () => {
+    const { result } = await subscribeTo(DEMO_TEAM.id, { signedIn: false });
+    expect((result as ExecutionResult).errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
+  });
+});
+
+describe("changes made on the board", () => {
+  /** Runs a mutation as someone signed in to the demo, noting which teams it says changed. */
+  async function change(operation: Operation, variables: Record<string, unknown>) {
+    const changed: string[] = [];
+    const contextValue: GraphQLContext = {
+      workspace: async () => new Workspace(new DemoLinear({ today })),
+      placements: new Placements(new Store(env.DB)),
+      today,
+      teamChanged: (teamId) => changed.push(teamId),
+    };
+    const result = await graphql({
+      schema,
+      source: operation.toString(),
+      variableValues: variables,
+      contextValue,
+    });
+    expect(result.errors).toBeUndefined();
+    return changed;
+  }
+
+  it("tell the team's other boards", async () => {
+    expect(
+      await change(UPDATE_RULES_MUTATION, {
+        teamId: DEMO_OPS_TEAM.id,
+        input: { importantFrom: 3, urgencyWindowDays: 7, noDueDate: "NOT_URGENT" },
+      }),
+    ).toEqual([DEMO_OPS_TEAM.id]);
+    expect(
+      await change(OVERRIDE_MUTATION, { issueId: "demo-issue-avg-1", quadrant: "DROP" }),
+    ).toEqual([DEMO_TEAM.id]);
+  });
+
+  it("tell every team when someone's capacity or time off changes, since it counts on each", async () => {
+    const everyTeam = [DEMO_TEAM.id, DEMO_OPS_TEAM.id].sort();
+    expect(
+      (
+        await change(SET_CAPACITY_MUTATION, {
+          teamId: DEMO_TEAM.id,
+          userId: "demo-user-tony",
+          factor: 0.5,
+        })
+      ).sort(),
+    ).toEqual(everyTeam);
+    expect(
+      (
+        await change(ADD_TIME_OFF_MUTATION, {
+          teamId: DEMO_TEAM.id,
+          userId: "demo-user-tony",
+          startsOn: "2026-10-18",
+          endsOn: "2026-10-23",
+        })
+      ).sort(),
+    ).toEqual(everyTeam);
+  });
+
+  it("leave changes made in Linear to its webhooks", async () => {
+    expect(
+      await change(REASSIGN_MUTATION, { issueId: "demo-issue-avg-10", userId: "demo-user-wanda" }),
+    ).toEqual([]);
+  });
+
+  it("don't when nothing changed", async () => {
+    expect(await change(OVERRIDE_MUTATION, { issueId: "not-an-issue", quadrant: "DROP" })).toEqual(
+      [],
+    );
   });
 });

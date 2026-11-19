@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { colors, fonts, media, motion, radii, shadows, space } from "ui/tokens.stylex";
+import { colors, media, motion, radii, shadows, space } from "ui/tokens.stylex";
 import type { Team } from "./board";
 import { useDismiss } from "./dismiss";
 import { entrance } from "./motion";
@@ -112,16 +112,16 @@ function teamHref(team: Team, demo?: boolean): string {
 }
 
 const styles = stylex.create({
-  picker: { position: "relative" },
+  picker: { position: "relative", minWidth: 0, maxWidth: "100%" },
   trigger: {
     display: "flex",
     alignItems: "center",
     gap: space.xs,
-    // The same frosted control as the board's buttons, and as tall, so they line up.
-    height: { default: "36px", [media.touch]: "44px" },
-    paddingInlineStart: "5px",
-    paddingInlineEnd: space.sm,
-    borderRadius: radii.pill,
+    // The same control as the board's buttons, and as tall, so they line up.
+    height: { default: "30px", [media.touch]: "44px" },
+    paddingInlineStart: "4px",
+    paddingInlineEnd: space.xs,
+    borderRadius: radii.sm,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: colors.controlBorder,
@@ -133,10 +133,9 @@ const styles = stylex.create({
       default: shadows.control,
       [media.hover]: { default: shadows.control, ":hover": shadows.controlHover },
     },
-    backdropFilter: "blur(12px) saturate(1.4)",
     color: colors.ink,
-    fontWeight: 600,
-    fontSize: "0.875rem",
+    fontWeight: 500,
+    fontSize: "0.8125rem",
     cursor: "pointer",
     userSelect: "none",
     listStyle: "none",
@@ -144,10 +143,10 @@ const styles = stylex.create({
     transitionProperty: "transform, background-color, box-shadow",
     transitionDuration: `${motion.press}, ${motion.hover}, ${motion.hover}`,
     transitionTimingFunction: `${motion.easeOut}, ease, ease`,
-    transform: { default: null, ":active": "scale(0.97)" },
-    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
-    outlineOffset: "2px",
-    maxWidth: "min(320px, 80vw)",
+    transform: { default: null, ":active": "scale(0.98)" },
+    outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
+    outlineOffset: "1px",
+    maxWidth: "min(320px, 100%)",
   },
   triggerName: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   chevron: {
@@ -160,19 +159,18 @@ const styles = stylex.create({
   chevronOpen: { transform: "rotate(180deg)" },
   key: {
     flexShrink: 0,
-    paddingBlock: "3px",
-    paddingInline: "7px",
-    borderRadius: radii.pill,
-    backgroundColor: "rgba(29, 26, 51, 0.07)",
+    paddingBlock: "2px",
+    paddingInline: "5px",
+    borderRadius: "4px",
+    backgroundColor: colors.hover,
     color: colors.inkMuted,
-    fontFamily: fonts.body,
     fontSize: "0.6875rem",
-    fontWeight: 700,
-    letterSpacing: "0.04em",
+    fontWeight: 500,
   },
   menu: {
     position: "absolute",
-    insetInlineEnd: 0,
+    // The picker leads its row, flush with the left gutter on phones: open rightwards from it.
+    insetInlineStart: 0,
     top: "calc(100% + 8px)",
     zIndex: 2,
     minWidth: "240px",

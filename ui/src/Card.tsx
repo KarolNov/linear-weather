@@ -19,7 +19,7 @@ const styles = stylex.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderStyle: "solid",
-    padding: { default: space.md, "@media (min-width: 640px)": space.lg },
+    padding: space.md,
   },
   glass: {
     color: colors.inkOnSky,
@@ -28,11 +28,12 @@ const styles = stylex.create({
     backdropFilter: "blur(20px) saturate(1.3)",
     boxShadow: shadows.floating,
   },
+  // Near-opaque white with a hairline: content reads the same on every sky.
   solid: {
     color: colors.ink,
     backgroundColor: colors.surface,
-    borderColor: "rgba(255, 255, 255, 0.7)",
-    backdropFilter: "blur(16px) saturate(1.3)",
+    borderColor: colors.border,
+    backdropFilter: "blur(12px)",
     boxShadow: shadows.card,
   },
 });

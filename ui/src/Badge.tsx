@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren } from "preact";
-import { colors, radii, space, weatherTones } from "./tokens.stylex";
+import { colors, space, weatherTones } from "./tokens.stylex";
 
 export type BadgeTone = "neutral" | "sun" | "rain" | "storm" | "fog" | "onSky";
 
@@ -18,15 +18,15 @@ const styles = stylex.create({
     display: "inline-flex",
     alignItems: "center",
     gap: space.xxs,
-    paddingBlock: "2px",
-    paddingInline: space.xs,
-    borderRadius: radii.pill,
-    fontSize: "0.75rem",
-    fontWeight: 600,
+    paddingBlock: "1px",
+    paddingInline: "6px",
+    borderRadius: "4px",
+    fontSize: "0.6875rem",
+    fontWeight: 500,
     lineHeight: 1.5,
     whiteSpace: "nowrap",
   },
-  neutral: { color: colors.inkMuted, backgroundColor: "rgba(29, 26, 51, 0.07)" },
+  neutral: { color: colors.inkMuted, backgroundColor: colors.hover },
   sun: { color: weatherTones.sunInk, backgroundColor: weatherTones.sunFill },
   rain: { color: weatherTones.rainInk, backgroundColor: weatherTones.rainFill },
   storm: { color: weatherTones.stormInk, backgroundColor: weatherTones.stormFill },

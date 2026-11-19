@@ -13,7 +13,7 @@ export interface AlertProps {
 export function Alert({ weather = "storm", onSky, children }: AlertProps) {
   return (
     <div role="alert" {...stylex.props(styles.alert, onSky && styles.onSky)}>
-      <WeatherIcon weather={weather} size={28} label="" />
+      <WeatherIcon weather={weather} size={20} label="" />
       <div {...stylex.props(styles.body)}>{children}</div>
     </div>
   );
@@ -23,17 +23,19 @@ const styles = stylex.create({
   alert: {
     display: "flex",
     alignItems: "center",
-    gap: space.sm,
-    paddingBlock: space.sm,
-    paddingInline: space.md,
+    gap: space.xs,
+    paddingBlock: space.xs,
+    paddingInline: space.sm,
     borderRadius: radii.md,
     color: colors.ink,
-    backgroundColor: colors.dangerSoft,
+    // White with a red hairline: reads as a problem on every sky, without a tinted slab.
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: `color-mix(in srgb, ${colors.danger} 25%, transparent)`,
-    fontSize: "0.9375rem",
-    lineHeight: 1.4,
+    borderColor: `color-mix(in srgb, ${colors.danger} 35%, transparent)`,
+    boxShadow: "0 1px 2px rgba(15, 17, 23, 0.06)",
+    fontSize: "0.8125rem",
+    lineHeight: 1.45,
   },
   onSky: {
     color: colors.inkOnSky,

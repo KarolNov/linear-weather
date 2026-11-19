@@ -15,7 +15,7 @@ import {
   WeatherIcon,
   weatherLabels,
 } from "ui";
-import { boardSky, colors, fonts, media, radii, space } from "ui/tokens.stylex";
+import { boardSky, colors, media, radii, space } from "ui/tokens.stylex";
 import {
   type Board,
   type BoardError,
@@ -41,7 +41,7 @@ import { listenForUpdates } from "./live";
 import { entrance } from "./motion";
 import { applyMoves, boardClient, describeMoves } from "./mutations";
 import { PersonMatrix } from "./PersonMatrix";
-import { quadrantFill, quadrantInfo } from "./quadrants";
+import { dot, quadrantDot, quadrantInfo } from "./quadrants";
 import { RebalancePanel } from "./RebalancePanel";
 import { RulesPanel } from "./RulesPanel";
 import { TeamPicker } from "./TeamPicker";
@@ -94,7 +94,7 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
           aria-label={`Signed in as ${viewer.name}`}
           {...stylex.props(styles.account)}
         >
-          <Avatar name={viewer.name} src={viewer.avatarUrl} size={30} />
+          <Avatar name={viewer.name} src={viewer.avatarUrl} size={24} />
           <span {...stylex.props(styles.viewerName)}>{viewer.name}</span>
           <Button type="submit">{demo ? "Exit demo" : "Sign out"}</Button>
         </form>
@@ -112,8 +112,11 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
             <h2 {...stylex.props(styles.heading)}>How we sort issues</h2>
             <div {...stylex.props(styles.matrix)}>
               {QUADRANTS.map((q) => (
-                <div key={q} {...stylex.props(styles.quadrant, quadrantFill[q])}>
-                  <span {...stylex.props(styles.quadrantName)}>{quadrantInfo[q].name}</span>
+                <div key={q} {...stylex.props(styles.quadrant)}>
+                  <span {...stylex.props(styles.quadrantName)}>
+                    <span aria-hidden="true" {...stylex.props(dot.dot, quadrantDot[q])} />
+                    {quadrantInfo[q].name}
+                  </span>
                   <span {...stylex.props(styles.quadrantRule)}>{quadrantInfo[q].rule}</span>
                 </div>
               ))}
@@ -125,7 +128,7 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
             <ul {...stylex.props(styles.weatherList)}>
               {weatherLegend.map(([weather, meaning]) => (
                 <li key={weather} {...stylex.props(styles.weatherItem)}>
-                  <WeatherIcon weather={weather} size={30} label="" />
+                  <WeatherIcon weather={weather} size={20} label="" />
                   <span>
                     <strong>{weatherLabels[weather]}</strong>
                     <span {...stylex.props(styles.muted)}> · {meaning}</span>
@@ -183,7 +186,7 @@ function TeamBoard({
       }
       return next;
     });
-  // Today's moves are being made, one after another.
+  // A batch of moves (today's, or a week's) is being made, one after another.
   const [applying, setApplying] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   // Read out by screen readers; the board redrawing is the visible answer.
@@ -230,7 +233,7 @@ function TeamBoard({
     markPending([issue.id], false);
     setRefocus(issue.id);
     if (!result.ok) {
-      setFailure(`Couldn't move ${issue.identifier}. ${result.message}`);
+      changeFailed(`Couldn't move ${issue.identifier}. ${result.message}`);
       return;
     }
     if (!showAnswer(result.team)) return;
@@ -240,18 +243,20 @@ function TeamBoard({
         : `${issue.identifier} is back with the rules.`,
     );
   };
-  // A failed move's message sits below the panel, out of sight: take the keyboard, and the
-  // view, there. An earlier move's word in the status would contradict it.
+  // A failed change's message sits above the board, often out of sight of the card or panel it
+  // came from: take the keyboard, and the view, there. An earlier change's word in the status
+  // would contradict it. Not when the change came from a form that stays open for a retry: the
+  // keyboard stays there, and the alert is still read out.
   const [failureFocus, setFailureFocus] = useState(false);
   useEffect(() => {
     if (!failureFocus) return;
     setFailureFocus(false);
     document.getElementById("board-failure")?.focus();
   }, [failureFocus]);
-  const moveFailed = (message: string) => {
+  const changeFailed = (message: string, takeFocus = true) => {
     setStatus("");
     setFailure(message);
-    setFailureFocus(true);
+    if (takeFocus) setFailureFocus(true);
   };
   // A suggestion's button goes once its move is made, so give the keyboard to the panel once the
   // board has redrawn, unless the PM went on to something else.
@@ -263,11 +268,12 @@ function TeamBoard({
     document.getElementById("rebalance-heading")?.focus();
   }, [panelFocus]);
   const refocusPanel = () => setPanelFocus(true);
-  /** Makes moves in Linear, one at a time; `all` when they're today's, made after a yes. */
+  /** Makes moves in Linear, one at a time; `all` when they're a batch (today's, or a week's),
+   * made after a yes. */
   const makeMoves = async (moves: Suggestion[], all: boolean) => {
     if (!team) return;
     const ids = moves.map(({ issue }) => issue.id);
-    // Only today's moves lock the panel; a single move answering mustn't unlock it mid-run.
+    // Only a batch locks the panel; a single move answering mustn't unlock it mid-run.
     if (all) setApplying(true);
     markPending(ids, true);
     setFailure(null);
@@ -279,7 +285,7 @@ function TeamBoard({
       // The board as read again after the failure, else the newest one an answer carried; with
       // neither, the one shown stays.
       if (applied.team) showAnswer(applied.team);
-      moveFailed(said.failure);
+      changeFailed(said.failure);
       return;
     }
     if (showAnswer(applied.team)) setStatus(said.status);
@@ -293,7 +299,7 @@ function TeamBoard({
     const result = await client.setCapacity(team.id, person.id, factor);
     markPending([person.id], false);
     if (!result.ok) {
-      setFailure(`Couldn't change ${person.name}'s capacity. ${result.message}`);
+      changeFailed(`Couldn't change ${person.name}'s capacity. ${result.message}`);
       return;
     }
     if (showAnswer(result.team)) {
@@ -308,7 +314,8 @@ function TeamBoard({
     const result = await client.addTimeOff(team.id, person.id, startsOn, endsOn);
     markPending([person.id], false);
     if (!result.ok) {
-      setFailure(`Couldn't add ${person.name}'s time off. ${result.message}`);
+      // The form stays open with the dates in it, for another try.
+      changeFailed(`Couldn't add ${person.name}'s time off. ${result.message}`, false);
       return false;
     }
     if (showAnswer(result.team)) {
@@ -323,7 +330,7 @@ function TeamBoard({
     const result = await client.removeTimeOff(team.id, person.id, timeOff.id);
     markPending([person.id], false);
     if (!result.ok) {
-      setFailure(`Couldn't take back ${person.name}'s time off. ${result.message}`);
+      changeFailed(`Couldn't take back ${person.name}'s time off. ${result.message}`);
       return;
     }
     if (showAnswer(result.team)) {
@@ -367,14 +374,14 @@ function TeamBoard({
           <TeamForecast weather={team.weather} />
           {team.backlogRot.rotting && <BacklogRotFlag reason={team.backlogRot.reason} />}
         </div>
+        {/* One toolbar row: which team first, since it sets everything else, then the main action,
+            then the secondary ones. On phones those keep only their icons, side by side at the
+            end, so the row doesn't wrap. */}
         <div {...stylex.props(styles.controls)}>
-          {withIssues.length > 0 && (
-            <Button
-              icon={allExpanded ? "collapse" : "expand"}
-              onClick={() => setExpanded(new Set(allExpanded ? [] : withIssues))}
-            >
-              {allExpanded ? "Collapse all" : "Expand all"}
-            </Button>
+          {teams.length > 1 && (
+            <div {...stylex.props(styles.pickerSlot)}>
+              <TeamPicker teams={teams} selected={team} demo={demo} />
+            </div>
           )}
           <Button
             icon="balance"
@@ -391,16 +398,29 @@ function TeamBoard({
               </>
             )}
           </Button>
+          {withIssues.length > 0 && (
+            <Button
+              icon={allExpanded ? "collapse" : "expand"}
+              title={allExpanded ? "Collapse all" : "Expand all"}
+              onClick={() => setExpanded(new Set(allExpanded ? [] : withIssues))}
+              xstyle={styles.iconOnPhone}
+            >
+              <span {...stylex.props(styles.labelOnPhone)}>
+                {allExpanded ? "Collapse all" : "Expand all"}
+              </span>
+            </Button>
+          )}
           <Button
             icon="sliders"
+            title="Sorting rules"
             selected={editingRules}
             aria-expanded={editingRules}
             aria-controls={editingRules ? "rules-panel" : undefined}
             onClick={() => setEditingRules(!editingRules)}
+            xstyle={styles.iconOnPhone}
           >
-            Sorting rules
+            <span {...stylex.props(styles.labelOnPhone)}>Sorting rules</span>
           </Button>
-          {teams.length > 1 && <TeamPicker teams={teams} selected={team} demo={demo} />}
         </div>
       </div>
       {editingRules && (
@@ -536,10 +556,15 @@ const weatherLegend: [Glyph, string][] = [
 ];
 
 const DOCKED = media.docked;
+const PHONE = media.phone;
 const PANEL_WIDTH = "clamp(380px, 32vw, 460px)";
 
 const styles = stylex.create({
-  failureFocus: { outline: "none" },
+  // Clear of the sticky header when focus scrolls it into view.
+  failureFocus: {
+    outline: "none",
+    scrollMarginTop: "calc(var(--header-height, 52px) + 12px)",
+  },
   header: {
     position: "sticky",
     top: 0,
@@ -548,19 +573,20 @@ const styles = stylex.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: space.sm,
-    paddingBlock: space.sm,
-    paddingInline: { default: space.md, "@media (min-width: 768px)": space.xl },
-    backgroundColor: "rgba(255, 255, 255, 0.55)",
-    backdropFilter: "blur(16px) saturate(1.4)",
+    height: "52px",
+    paddingInline: { default: space.md, "@media (min-width: 768px)": space.lg },
+    color: colors.ink,
+    backgroundColor: "rgba(255, 255, 255, 0.82)",
+    backdropFilter: "blur(16px)",
     borderBottom: `1px solid ${colors.border}`,
   },
   brand: { display: "flex", alignItems: "center", gap: space.sm, minWidth: 0 },
-  workspace: { display: { default: "none", "@media (min-width: 640px)": "inline-flex" } },
-  account: { display: "flex", alignItems: "center", gap: space.sm, margin: 0 },
+  workspace: { display: { default: "none", [media.abovePhone]: "inline-flex" } },
+  account: { display: "flex", alignItems: "center", gap: space.xs, margin: 0 },
   viewerName: {
-    fontWeight: 600,
-    fontSize: "0.9375rem",
-    display: { default: "none", "@media (min-width: 640px)": "inline" },
+    fontWeight: 500,
+    fontSize: "0.8125rem",
+    display: { default: "none", [media.abovePhone]: "inline" },
   },
   main: {
     display: "flex",
@@ -568,8 +594,8 @@ const styles = stylex.create({
     gap: space.lg,
     maxWidth: "1440px",
     marginInline: "auto",
-    paddingBlock: space.xl,
-    paddingInline: { default: space.md, "@media (min-width: 768px)": space.xl },
+    paddingBlock: space.lg,
+    paddingInline: { default: space.md, "@media (min-width: 768px)": space.lg },
   },
   notice: {
     display: "flex",
@@ -579,20 +605,19 @@ const styles = stylex.create({
     padding: { default: space.lg, "@media (min-width: 768px)": space.xl },
   },
   title: {
-    fontFamily: fonts.display,
-    fontSize: "clamp(1.5rem, 3.5vw, 2.25rem)",
-    fontWeight: 800,
-    letterSpacing: "-0.02em",
-    lineHeight: 1.1,
+    fontSize: "1.375rem",
+    fontWeight: 600,
+    letterSpacing: "-0.015em",
+    lineHeight: 1.2,
   },
-  lead: { maxWidth: "40rem", fontSize: "1.0625rem", lineHeight: 1.55, color: colors.inkMuted },
+  lead: { maxWidth: "40rem", fontSize: "0.875rem", lineHeight: 1.55, color: colors.inkMuted },
   // Straight on the sky, so its colour follows the sky's, easing with it.
   onSky: { color: boardSky.text, transitionProperty: "color", transitionDuration: "1.6s" },
   // Muted by fading whatever colour the sky gives text.
-  subtitle: { opacity: 0.8 },
+  subtitle: { opacity: 0.75, fontSize: "0.8125rem", marginTop: "2px" },
   chip: { marginTop: space.sm, marginInlineEnd: space.xs },
-  chipLead: { fontWeight: 650 },
-  board: { display: "flex", flexDirection: "column", gap: space.lg },
+  chipLead: { fontWeight: 500 },
+  board: { display: "flex", flexDirection: "column", gap: space.md },
   boardHeader: {
     display: "flex",
     flexWrap: "wrap",
@@ -600,7 +625,7 @@ const styles = stylex.create({
     justifyContent: "space-between",
     gap: space.md,
   },
-  boardArea: { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: space.md },
+  boardArea: { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: space.sm },
   docked: {
     gridTemplateColumns: { default: "minmax(0, 1fr)", [DOCKED]: `minmax(0, 1fr) ${PANEL_WIDTH}` },
     alignItems: "start",
@@ -611,10 +636,10 @@ const styles = stylex.create({
     gridColumn: { default: null, [DOCKED]: "2" },
     gridRow: { default: null, [DOCKED]: "1" },
     position: { default: null, [DOCKED]: "sticky" },
-    top: { default: null, [DOCKED]: "calc(var(--header-height, 60px) + 16px)" },
+    top: { default: null, [DOCKED]: "calc(var(--header-height, 52px) + 12px)" },
     display: { default: null, [DOCKED]: "flex" },
     flexDirection: "column",
-    maxHeight: { default: null, [DOCKED]: "calc(100dvh - var(--header-height, 60px) - 32px)" },
+    maxHeight: { default: null, [DOCKED]: "calc(100dvh - var(--header-height, 52px) - 28px)" },
     minWidth: 0,
   },
   peopleDocked: {
@@ -626,9 +651,37 @@ const styles = stylex.create({
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))",
     alignItems: "start",
-    gap: space.md,
+    gap: space.sm,
   },
-  controls: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: space.xs },
+  controls: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    width: { default: null, [PHONE]: "100%" },
+    minWidth: 0,
+  },
+  // The picker shrinks first, and on phones takes the row's spare width, pushing the actions
+  // to the right edge.
+  pickerSlot: {
+    display: "flex",
+    minWidth: 0,
+    flexShrink: 1,
+    marginInlineEnd: { default: "6px", [PHONE]: "auto" },
+  },
+  // A square icon button on phones; its label stays for screen readers and in the title.
+  iconOnPhone: {
+    flexShrink: 0,
+    aspectRatio: { default: null, [PHONE]: "1" },
+    paddingInline: { default: null, [PHONE]: 0 },
+  },
+  labelOnPhone: {
+    position: { default: null, [PHONE]: "absolute" },
+    width: { default: null, [PHONE]: "1px" },
+    height: { default: null, [PHONE]: "1px" },
+    overflow: { default: null, [PHONE]: "hidden" },
+    clipPath: { default: null, [PHONE]: "inset(50%)" },
+    whiteSpace: "nowrap",
+  },
   failure: {
     display: "flex",
     flexWrap: "wrap",
@@ -639,33 +692,36 @@ const styles = stylex.create({
   legends: {
     display: "grid",
     gridTemplateColumns: { default: "1fr", "@media (min-width: 860px)": "1fr 1fr" },
-    gap: space.lg,
+    gap: space.sm,
   },
-  heading: {
-    fontFamily: fonts.display,
-    fontSize: "1.125rem",
-    fontWeight: 700,
-    marginBottom: space.md,
-  },
-  matrix: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: space.xs },
+  heading: { fontSize: "0.8125rem", fontWeight: 600, marginBottom: space.sm },
+  matrix: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px" },
   quadrant: {
     display: "flex",
     flexDirection: "column",
-    gap: space.xxs,
-    padding: space.md,
-    borderRadius: radii.md,
-    minHeight: "92px",
+    gap: "2px",
+    paddingBlock: space.xs,
+    paddingInline: "10px",
+    borderRadius: radii.sm,
+    backgroundColor: colors.subtle,
+    boxShadow: `inset 0 0 0 1px ${colors.border}`,
   },
-  quadrantName: { fontFamily: fonts.display, fontWeight: 800, fontSize: "1.0625rem" },
-  quadrantRule: { fontSize: "0.8125rem", lineHeight: 1.4, opacity: 0.85 },
+  quadrantName: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    fontWeight: 500,
+    fontSize: "0.8125rem",
+  },
+  quadrantRule: { fontSize: "0.75rem", lineHeight: 1.4, color: colors.inkMuted },
   weatherList: {
     listStyle: "none",
     margin: 0,
     padding: 0,
     display: "flex",
     flexDirection: "column",
-    gap: space.sm,
+    gap: space.xs,
   },
-  weatherItem: { display: "flex", alignItems: "center", gap: space.sm, fontSize: "0.9375rem" },
+  weatherItem: { display: "flex", alignItems: "center", gap: space.xs, fontSize: "0.8125rem" },
   muted: { color: colors.inkMuted },
 });

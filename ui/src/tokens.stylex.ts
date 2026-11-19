@@ -6,20 +6,26 @@ import * as stylex from "@stylexjs/stylex";
 // warning, Drop is fog.
 
 export const colors = stylex.defineVars({
-  ink: "#1d1a33",
-  inkMuted: "#5b5675",
+  // Quiet, near-neutral ink: the sky carries the colour, the UI on it stays out of the way.
+  ink: "#1f2023",
+  inkMuted: "#6b6f76",
+  inkFaint: "#8a8f98",
   inkOnSky: "#fffaf3",
   inkOnSkyMuted: "rgba(255, 250, 243, 0.78)",
 
-  surface: "rgba(255, 255, 255, 0.72)",
-  surfaceStrong: "rgba(255, 255, 255, 0.92)",
+  surface: "rgba(255, 255, 255, 0.97)",
+  surfaceStrong: "#ffffff",
+  /** A well inside a surface: tiles, wells, a quiet section. */
+  subtle: "#f6f7f8",
   surfaceOnSky: "rgba(255, 255, 255, 0.14)",
   borderOnSky: "rgba(255, 255, 255, 0.28)",
-  border: "rgba(29, 26, 51, 0.1)",
+  border: "rgba(15, 17, 23, 0.08)",
+  borderStrong: "rgba(15, 17, 23, 0.14)",
 
-  accent: "#ff7a45",
-  accentStrong: "#e85d2a",
-  focus: "#ffd36e",
+  accent: "#5e6ad2",
+  accentStrong: "#4c57c2",
+  accentSoft: "rgba(94, 106, 210, 0.1)",
+  focus: "rgba(94, 106, 210, 0.55)",
 
   sun: "#ffc145",
   cloud: "#eef1f8",
@@ -32,12 +38,12 @@ export const colors = stylex.defineVars({
 
   // Controls: frosted cloud surfaces that read on every sky, and the night ink a picked toggle
   // turns.
-  control: "rgba(255, 255, 255, 0.82)",
-  controlHover: "rgba(255, 255, 255, 0.96)",
-  controlBorder: "rgba(29, 26, 51, 0.12)",
-  hover: "rgba(29, 26, 51, 0.06)",
-  selected: "#1d1a33",
-  onSelected: "#fffaf3",
+  control: "#ffffff",
+  controlHover: "#f7f8f9",
+  controlBorder: "rgba(15, 17, 23, 0.12)",
+  hover: "rgba(15, 17, 23, 0.05)",
+  selected: "#eef0fb",
+  onSelected: "#3d48a8",
 });
 
 /**
@@ -45,18 +51,18 @@ export const colors = stylex.defineVars({
  * chips, tags and the forecast's weeks.
  */
 export const weatherTones = stylex.defineVars({
-  sunFill: "rgba(255, 193, 69, 0.24)",
-  sunInk: "#7a4d00",
-  partlyFill: "rgba(160, 178, 222, 0.24)",
-  partlyInk: "#36456b",
-  rainFill: "rgba(79, 134, 232, 0.16)",
-  rainInk: "#1d4797",
-  stormFill: "rgba(123, 79, 214, 0.16)",
-  stormInk: "#4a2096",
-  fogFill: "rgba(154, 160, 180, 0.22)",
-  fogInk: "#474d61",
-  awayFill: "rgba(143, 138, 184, 0.2)",
-  awayInk: "#3f3a6b",
+  sunFill: "#fdf6e3",
+  sunInk: "#7a5200",
+  partlyFill: "#f1f4f9",
+  partlyInk: "#3d4a66",
+  rainFill: "#eef3fd",
+  rainInk: "#1f4a99",
+  stormFill: "#f3effc",
+  stormInk: "#4b2a96",
+  fogFill: "#f2f3f5",
+  fogInk: "#4b505c",
+  awayFill: "#f2f1f8",
+  awayInk: "#45406b",
 });
 
 export const gradients = stylex.defineVars({
@@ -69,11 +75,12 @@ export const gradients = stylex.defineVars({
 
 // Text straight on the board's sky: ink, which the storm sky turns light (see Sky). Cards and
 // controls set their own colour, so only text meant to sit on the sky uses this.
-export const boardSky = stylex.defineVars({ text: "#1d1a33" });
+export const boardSky = stylex.defineVars({ text: "#1f2023" });
 
 export const fonts = stylex.defineVars({
-  body: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
-  display: 'ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif',
+  body: '"Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  // One family throughout, as in Linear: hierarchy from size and weight, not a second face.
+  display: '"Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
 });
 
 export const space = stylex.defineVars({
@@ -87,23 +94,22 @@ export const space = stylex.defineVars({
 });
 
 export const radii = stylex.defineVars({
-  sm: "8px",
-  md: "14px",
-  lg: "24px",
+  sm: "6px",
+  md: "8px",
+  lg: "12px",
   pill: "999px",
 });
 
 export const shadows = stylex.defineVars({
   // A lit top edge, as on a cloud: the inner highlight is what makes a frosted surface read as
   // one rather than as a flat tint.
-  card: "inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 1px 2px rgba(29, 26, 51, 0.06), 0 12px 32px -12px rgba(29, 26, 51, 0.25)",
-  control: "inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(29, 26, 51, 0.08)",
-  controlHover: "inset 0 1px 0 rgba(255, 255, 255, 1), 0 2px 6px -1px rgba(29, 26, 51, 0.14)",
-  floating: "0 24px 60px -20px rgba(20, 10, 50, 0.55)",
-  button:
-    "inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(150, 40, 10, 0.25), 0 6px 16px -6px rgba(232, 93, 42, 0.7)",
-  buttonHover:
-    "inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -1px 0 rgba(150, 40, 10, 0.25), 0 10px 22px -8px rgba(232, 93, 42, 0.85)",
+  // Barely there: a hairline border does the separating, the shadow only lifts it off the sky.
+  card: "0 1px 2px rgba(15, 17, 23, 0.04), 0 4px 16px -8px rgba(15, 17, 23, 0.16)",
+  control: "0 1px 1px rgba(15, 17, 23, 0.04)",
+  controlHover: "0 1px 2px rgba(15, 17, 23, 0.08)",
+  floating: "0 16px 40px -16px rgba(15, 17, 23, 0.4)",
+  button: "inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(15, 17, 23, 0.16)",
+  buttonHover: "inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 3px rgba(15, 17, 23, 0.22)",
 });
 
 export const motion = stylex.defineVars({
@@ -112,9 +118,9 @@ export const motion = stylex.defineVars({
   // For something moving across the screen, which should start and land gently.
   easeInOut: "cubic-bezier(0.77, 0, 0.175, 1)",
   /** A press answering. */
-  press: "140ms",
-  /** A colour or tint changing under the pointer. */
-  hover: "180ms",
+  press: "120ms",
+  /** A colour or tint changing under the pointer: quick, so hover feels instant. */
+  hover: "120ms",
 });
 
 export const media = stylex.defineConsts({
@@ -124,6 +130,10 @@ export const media = stylex.defineConsts({
   dockedMotion: "@media (min-width: 1080px) and (prefers-reduced-motion: no-preference)",
   /** Touch screens fire :hover on tap and leave it stuck, so hover styles apply only with a mouse. */
   hover: "@media (hover: hover) and (pointer: fine)",
+  /** A phone's width: controls drop to icons, secondary text hides. */
+  phone: "@media (max-width: 639px)",
+  /** Wider than a phone; the complement of `phone`. */
+  abovePhone: "@media (min-width: 640px)",
   /** A finger, which needs bigger targets. */
   touch: "@media (pointer: coarse)",
 });

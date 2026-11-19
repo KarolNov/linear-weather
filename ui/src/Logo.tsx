@@ -41,10 +41,10 @@ const styles = stylex.create({
     alignItems: "center",
     gap: space.xs,
     fontFamily: fonts.display,
-    fontSize: "1.125rem",
+    fontSize: "0.9375rem",
   },
   large: { fontSize: "1.625rem", gap: space.sm },
-  word: { color: colors.ink, fontWeight: 700, letterSpacing: "-0.01em", whiteSpace: "nowrap" },
+  word: { color: colors.ink, fontWeight: 600, letterSpacing: "-0.01em", whiteSpace: "nowrap" },
   onSky: { color: colors.inkOnSky },
   light: { fontWeight: 400 },
   // Visually hidden, not display:none, so the name is still read out.

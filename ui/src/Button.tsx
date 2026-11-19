@@ -1,11 +1,11 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren, JSX } from "preact";
 import { Icon, type IconName } from "./Icon";
-import { colors, fonts, gradients, media, motion, radii, shadows, space } from "./tokens.stylex";
+import { colors, fonts, media, motion, radii, shadows, space } from "./tokens.stylex";
 
 /**
- * - primary: the sunrise, for the one thing a view is for.
- * - secondary: a frosted cloud, for everything else; reads on every sky.
+ * - primary: solid accent, for the one thing a view is for.
+ * - secondary: white with a hairline, for everything else; reads on every sky.
  * - ghost: no surface until hovered, for actions next to content (dismiss, cancel).
  * - glass: see-through, for sitting on the dark sign-in sky.
  */
@@ -19,7 +19,7 @@ interface StyleProps {
   icon?: IconName;
   /** A glyph after the label, e.g. a chevron for something that opens. */
   iconEnd?: IconName;
-  /** A toggle that's on, such as the button of a panel that's open: it turns night ink. */
+  /** A toggle that's on, such as the button of a panel that's open: it takes an accent tint. */
   selected?: boolean;
   children: ComponentChildren;
   xstyle?: stylex.StyleXStyles;
@@ -109,41 +109,36 @@ const styles = stylex.create({
     alignItems: "center",
     justifyContent: "center",
     gap: space.xs,
-    borderRadius: radii.pill,
+    borderRadius: radii.sm,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: "transparent",
     fontFamily: fonts.body,
-    fontWeight: 600,
+    fontWeight: 500,
     lineHeight: 1,
-    letterSpacing: "-0.005em",
     textDecoration: "none",
     whiteSpace: "nowrap",
     cursor: "pointer",
     userSelect: "none",
     WebkitTapHighlightColor: "transparent",
     // The press answers at once with a strong ease-out; colours ease under the pointer.
-    transitionProperty: "transform, box-shadow, background-color, color, border-color, filter",
-    transitionDuration: `${motion.press}, ${motion.hover}, ${motion.hover}, ${motion.hover}, ${motion.hover}, ${motion.hover}`,
-    transitionTimingFunction: `${motion.easeOut}, ease, ease, ease, ease, ease`,
-    transform: { default: null, ":active": "scale(0.97)" },
-    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
-    outlineOffset: "2px",
+    transitionProperty: "transform, box-shadow, background-color, color, border-color",
+    transitionDuration: `${motion.press}, ${motion.hover}, ${motion.hover}, ${motion.hover}, ${motion.hover}`,
+    transitionTimingFunction: `${motion.easeOut}, ease, ease, ease, ease`,
+    transform: { default: null, ":active": "scale(0.98)" },
+    outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
+    outlineOffset: "1px",
   },
   primary: {
     color: "#fff",
-    backgroundImage: gradients.sunrise,
-    // Paint the gradient under the transparent border too; by default it starts inside the
-    // border and repeats beneath it, leaving a sliver of the start colour on the far edge.
-    backgroundOrigin: "border-box",
-    textShadow: "0 1px 0 rgba(150, 40, 10, 0.25)",
+    backgroundColor: {
+      default: colors.accent,
+      [media.hover]: { default: colors.accent, ":hover": colors.accentStrong },
+    },
+    borderColor: colors.accentStrong,
     boxShadow: {
       default: shadows.button,
       [media.hover]: { default: shadows.button, ":hover": shadows.buttonHover },
-    },
-    filter: {
-      default: null,
-      [media.hover]: { default: null, ":hover": "saturate(1.08) brightness(1.04)" },
     },
   },
   secondary: {
@@ -153,7 +148,6 @@ const styles = stylex.create({
       [media.hover]: { default: colors.control, ":hover": colors.controlHover },
     },
     borderColor: colors.controlBorder,
-    backdropFilter: "blur(12px) saturate(1.4)",
     boxShadow: {
       default: shadows.control,
       [media.hover]: { default: shadows.control, ":hover": shadows.controlHover },
@@ -176,20 +170,19 @@ const styles = stylex.create({
     backdropFilter: "blur(12px)",
     boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.18)",
   },
-  // Night ink with a faint top light, like the storm sky: unmistakably on, on any sky.
+  // An accent tint and border: on, without shouting.
   selected: {
     color: colors.onSelected,
     backgroundColor: {
       default: colors.selected,
-      [media.hover]: { default: colors.selected, ":hover": "#2c2850" },
+      [media.hover]: { default: colors.selected, ":hover": "#e4e7f8" },
     },
-    borderColor: colors.selected,
-    // StyleX merges whole properties, so these replace the variant's hover shadows too.
-    boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 4px 12px -4px rgba(29, 26, 51, 0.45)",
-    filter: null,
+    borderColor: "rgba(94, 106, 210, 0.35)",
+    // StyleX merges whole properties, so this replaces the variant's hover shadows too.
+    boxShadow: shadows.control,
   },
   disabled: { cursor: "not-allowed", opacity: 0.55, transform: null },
-  glyph: { opacity: 0.85 },
+  glyph: { opacity: 0.7 },
   count: {
     display: "inline-flex",
     alignItems: "center",
@@ -198,10 +191,10 @@ const styles = stylex.create({
     height: "1.5em",
     paddingInline: "0.4em",
     marginInlineEnd: "-0.35em",
-    borderRadius: radii.pill,
-    backgroundColor: "color-mix(in srgb, currentColor 14%, transparent)",
-    fontSize: "0.75rem",
-    fontWeight: 700,
+    borderRadius: "4px",
+    backgroundColor: "color-mix(in srgb, currentColor 10%, transparent)",
+    fontSize: "0.6875rem",
+    fontWeight: 600,
     fontVariantNumeric: "tabular-nums",
     lineHeight: 1,
   },
@@ -211,22 +204,23 @@ const styles = stylex.create({
 // screens each is at least a thumb tall.
 const sizes = stylex.create({
   sm: {
-    height: { default: "30px", [media.touch]: "40px" },
-    paddingInline: space.sm,
+    height: { default: "26px", [media.touch]: "40px" },
+    paddingInline: space.xs,
+    gap: "6px",
+    fontSize: "0.75rem",
+  },
+  md: {
+    height: { default: "30px", [media.touch]: "44px" },
+    paddingInline: "10px",
     gap: "6px",
     fontSize: "0.8125rem",
   },
-  md: {
-    height: { default: "36px", [media.touch]: "44px" },
-    paddingInline: "14px",
-    fontSize: "0.875rem",
-  },
-  lg: { height: "50px", paddingInline: space.lg, fontSize: "1.0625rem" },
+  lg: { height: "40px", paddingInline: space.md, fontSize: "0.875rem" },
 });
 
 // Same values as each variant's resting state, without the hover condition.
 const disabledStyles = stylex.create({
-  primary: { boxShadow: shadows.button, filter: null },
+  primary: { backgroundColor: colors.accent, boxShadow: shadows.button },
   secondary: { backgroundColor: colors.control, boxShadow: shadows.control },
   ghost: { backgroundColor: "transparent" },
   glass: { backgroundColor: colors.surfaceOnSky },

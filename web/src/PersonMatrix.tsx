@@ -1,7 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Avatar, Card, VisuallyHidden, WeatherIcon, weatherLabels } from "ui";
-import { colors, fonts, media, motion, radii, space, weatherTones } from "ui/tokens.stylex";
+import { colors, media, motion, radii, space, weatherTones } from "ui/tokens.stylex";
 import {
   type BoardIssue,
   CAPACITIES,
@@ -18,7 +18,7 @@ import {
 } from "./board";
 import { IssueCard } from "./IssueCard";
 import { entrance, useChanged } from "./motion";
-import { quadrantFill, quadrantInfo } from "./quadrants";
+import { dot, quadrantDot, quadrantInfo } from "./quadrants";
 import { TimeOffList } from "./TimeOff";
 import { weatherIcon } from "./weather";
 
@@ -131,7 +131,7 @@ export function PersonMatrix({
     <Card as="article" xstyle={[styles.card, xstyle]}>
       <header {...stylex.props(styles.header)}>
         {assignee ? (
-          <Avatar name={name} src={assignee.avatarUrl} size={36} />
+          <Avatar name={name} src={assignee.avatarUrl} size={28} />
         ) : (
           <span aria-hidden="true" {...stylex.props(styles.nobody)}>
             ?
@@ -181,7 +181,7 @@ export function PersonMatrix({
           >
             <WeatherIcon
               weather={weatherIcon[weather.kind]}
-              size={36}
+              size={28}
               label={`${weatherLabels[weatherIcon[weather.kind]]}: ${weather.reason}`}
             />
           </span>
@@ -218,13 +218,15 @@ export function PersonMatrix({
               }
               {...stylex.props(
                 styles.cell,
-                quadrantFill[q],
                 count === 0 && styles.empty,
                 expanded && only !== null && only !== q && styles.dimmed,
                 expanded && only === q && styles.picked,
               )}
             >
-              <span {...stylex.props(styles.cellName)}>{quadrantInfo[q].name}</span>
+              <span {...stylex.props(styles.cellName)}>
+                <span aria-hidden="true" {...stylex.props(dot.dot, quadrantDot[q])} />
+                {quadrantInfo[q].name}
+              </span>
               <ChangedCount count={count} />
             </button>
           );
@@ -280,6 +282,7 @@ export function PersonMatrix({
               {shown.map((q) => (
                 <section key={q} aria-label={`${name}: ${quadrantInfo[q].name}`}>
                   <h3 {...stylex.props(styles.groupHeading)}>
+                    <span aria-hidden="true" {...stylex.props(dot.dot, quadrantDot[q])} />
                     {quadrantInfo[q].name}
                     <span {...stylex.props(styles.groupCount)}>{matrix.counts[q]}</span>
                   </h3>
@@ -356,7 +359,7 @@ function Forecast({ name, weeks }: { name: string; weeks: ForecastWeek[] }) {
                   week.endsOn === picked && styles.weekPicked,
                 )}
               >
-                <WeatherIcon weather={icon} size={30} label="" />
+                <WeatherIcon weather={icon} size={22} label="" />
                 {/* The tile is labelled in full; the date alone is enough to see. */}
                 <span {...stylex.props(styles.weekLabel)}>{describeDay(week.endsOn)}</span>
               </button>
@@ -386,25 +389,26 @@ const styles = stylex.create({
   card: {
     display: "flex",
     flexDirection: "column",
-    gap: space.md,
+    gap: space.sm,
     minWidth: 0,
     // An issue's open menu holds the focus, and lifts the card above its neighbours so they
     // don't cover the menu.
     position: "relative",
     zIndex: { default: null, ":focus-within": 1 },
   },
-  header: { display: "flex", alignItems: "center", gap: space.sm },
+  header: { display: "flex", alignItems: "center", gap: "10px" },
   nobody: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 36,
-    height: 36,
+    width: 28,
+    height: 28,
     flexShrink: 0,
     borderRadius: "50%",
-    border: `1.5px dashed ${colors.fog}`,
+    border: `1px dashed ${colors.borderStrong}`,
     color: colors.inkMuted,
-    fontWeight: 700,
+    fontSize: "0.75rem",
+    fontWeight: 600,
   },
   who: { display: "flex", flexDirection: "column", minWidth: 0 },
   weather: { display: "inline-flex", flexShrink: 0, marginInlineStart: "auto" },
@@ -412,7 +416,7 @@ const styles = stylex.create({
     display: "grid",
     gridAutoColumns: "minmax(0, 1fr)",
     gridAutoFlow: "column",
-    gap: space.xs,
+    gap: "4px",
     margin: 0,
     padding: 0,
     listStyle: "none",
@@ -423,35 +427,35 @@ const styles = stylex.create({
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "3px",
+    gap: "2px",
     width: "100%",
-    paddingTop: "6px",
-    paddingBottom: "5px",
+    paddingTop: "5px",
+    paddingBottom: "4px",
     paddingInline: "2px",
     borderWidth: 0,
     borderRadius: radii.sm,
     font: "inherit",
     cursor: "pointer",
-    boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.5)",
+    boxShadow: `inset 0 0 0 1px ${colors.border}`,
     transitionProperty: "transform, box-shadow",
     transitionDuration: `${motion.press}, ${motion.hover}`,
     transitionTimingFunction: `${motion.easeOut}, ease`,
-    transform: { default: null, ":active": "scale(0.96)" },
-    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+    transform: { default: null, ":active": "scale(0.97)" },
+    outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
   },
-  weekPicked: { boxShadow: `inset 0 0 0 1.5px ${colors.ink}` },
-  weekLabel: { fontSize: "0.6875rem", fontWeight: 600, whiteSpace: "nowrap" },
-  weekNews: { marginTop: space.xs, marginBottom: 0, fontSize: "0.8125rem", color: colors.inkMuted },
+  weekPicked: { boxShadow: `inset 0 0 0 1px ${colors.accent}` },
+  weekLabel: { fontSize: "0.6875rem", fontWeight: 500, whiteSpace: "nowrap" },
+  weekNews: { marginTop: space.xs, marginBottom: 0, fontSize: "0.75rem", color: colors.inkMuted },
   weekNewsEmpty: { display: "none" },
   name: {
-    fontFamily: fonts.display,
-    fontSize: "1.0625rem",
-    fontWeight: 700,
+    fontSize: "0.875rem",
+    fontWeight: 600,
+    lineHeight: 1.3,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  total: { fontSize: "0.8125rem", color: colors.inkMuted },
+  total: { fontSize: "0.75rem", color: colors.inkMuted },
   capacity: {
     font: "inherit",
     color: "inherit",
@@ -462,48 +466,54 @@ const styles = stylex.create({
     cursor: { default: "pointer", ":disabled": "progress" },
     textDecorationLine: "underline",
     textDecorationStyle: "dotted",
+    textDecorationColor: colors.inkFaint,
     textUnderlineOffset: "3px",
-    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+    outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
   },
-  grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" },
+  grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px" },
+  // A neutral tile: the quadrant's dot carries its colour, the count carries the news.
   cell: {
     display: "flex",
-    alignItems: "baseline",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: space.xs,
-    paddingBlock: space.xs,
-    paddingInline: space.sm,
+    paddingBlock: "7px",
+    paddingInline: "10px",
     borderRadius: radii.sm,
     borderWidth: 0,
     font: "inherit",
     textAlign: "start",
+    color: colors.ink,
+    backgroundColor: {
+      default: colors.subtle,
+      [media.hover]: { default: colors.subtle, ":hover:not(:disabled)": "#eff0f2" },
+    },
+    boxShadow: `inset 0 0 0 1px ${colors.border}`,
     cursor: { default: "pointer", ":disabled": "default" },
-    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
-    outlineOffset: "2px",
-    transitionProperty: "opacity, transform, box-shadow",
-    transitionDuration: "160ms",
-    transitionTimingFunction: motion.easeOut,
-    transform: { default: null, ":active": "scale(0.97)" },
-    opacity: { default: 1, [media.hover]: { default: 1, ":hover": 0.92 } },
+    outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
+    outlineOffset: "1px",
+    transitionProperty: "opacity, transform, background-color, box-shadow",
+    transitionDuration: `${motion.press}, ${motion.press}, ${motion.hover}, ${motion.hover}`,
+    transitionTimingFunction: `${motion.easeOut}, ${motion.easeOut}, ease, ease`,
+    transform: { default: null, ":active": "scale(0.98)" },
   },
-  // Kept in place but drained of colour, so every person's grid reads the same at a glance.
-  // Muted ink on a pale well rather than faded colour, which fell below AA contrast.
-  empty: {
-    color: colors.inkMuted,
-    backgroundImage: "none",
-    backgroundColor: "rgba(29, 26, 51, 0.05)",
-    boxShadow: "inset 0 0 0 1px rgba(29, 26, 51, 0.06)",
+  // Kept in place, quieter: no fill, and a faint count, still above AA for its size.
+  empty: { color: colors.inkMuted, backgroundColor: "transparent" },
+  dimmed: { opacity: 0.45 },
+  picked: { backgroundColor: colors.selected, boxShadow: `inset 0 0 0 1px ${colors.accent}` },
+  cellName: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "0.75rem",
+    fontWeight: 500,
   },
-  dimmed: { opacity: 0.4 },
-  picked: { boxShadow: `0 0 0 2px ${colors.surfaceStrong}, 0 0 0 4px ${colors.ink}` },
-  cellName: { fontSize: "0.8125rem", fontWeight: 700 },
   count: {
     // A box, so the change tick can move it.
     display: "inline-block",
-    fontFamily: fonts.display,
-    fontSize: "1.375rem",
-    fontWeight: 800,
-    lineHeight: 1.1,
+    fontSize: "0.9375rem",
+    fontWeight: 600,
+    lineHeight: 1.2,
     fontVariantNumeric: "tabular-nums",
   },
   toggle: {
@@ -516,9 +526,9 @@ const styles = stylex.create({
     paddingBlock: "4px",
     paddingInline: "8px",
     marginInlineStart: "-8px",
-    borderRadius: radii.pill,
-    fontSize: "0.8125rem",
-    fontWeight: 600,
+    borderRadius: radii.sm,
+    fontSize: "0.75rem",
+    fontWeight: 500,
     color: colors.inkMuted,
     cursor: "pointer",
     userSelect: "none",
@@ -526,9 +536,9 @@ const styles = stylex.create({
     "::-webkit-details-marker": { display: "none" },
     backgroundColor: {
       default: "transparent",
-      [media.hover]: { default: "transparent", ":hover": "rgba(29, 26, 51, 0.06)" },
+      [media.hover]: { default: "transparent", ":hover": colors.hover },
     },
-    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+    outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
     transitionProperty: "transform, background-color",
     transitionDuration: "160ms, 200ms",
     transitionTimingFunction: `${motion.easeOut}, ease`,
@@ -553,22 +563,20 @@ const styles = stylex.create({
   groupHeading: {
     display: "flex",
     alignItems: "center",
-    gap: space.xs,
-    marginBottom: space.xs,
+    gap: "6px",
+    marginBottom: "6px",
     fontSize: "0.75rem",
-    fontWeight: 700,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-    color: colors.inkMuted,
+    fontWeight: 500,
+    color: colors.ink,
   },
-  groupCount: { fontVariantNumeric: "tabular-nums", opacity: 0.7 },
+  groupCount: { fontVariantNumeric: "tabular-nums", color: colors.inkFaint },
   list: {
     listStyle: "none",
     margin: 0,
     padding: 0,
     display: "flex",
     flexDirection: "column",
-    gap: space.xs,
+    gap: "4px",
   },
 });
 

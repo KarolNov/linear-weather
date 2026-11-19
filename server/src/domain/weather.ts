@@ -182,10 +182,10 @@ export function teamWeather(
     capacities,
   );
 
-  const weathers = loads.map((load, i) => {
+  const read = loads.map((load, i) => {
     const { away, daysOff, offSources } = people[i] as Staffed;
     return away
-      ? awayWeather(load, away, teamAverage, metric)
+      ? { weather: awayWeather(load, away, teamAverage, metric), byLoad: null }
       : weatherOf(
           load,
           teamAverage,
@@ -195,10 +195,19 @@ export function teamWeather(
           thresholds,
         );
   });
+  const weathers = read.map(({ weather }) => weather);
 
   return {
     people: weathers,
-    team: spread(people, loads, weathers, capacities, metric, teamAverage),
+    team: spread(
+      people,
+      loads,
+      weathers,
+      read.map(({ byLoad }) => byLoad),
+      capacities,
+      metric,
+      teamAverage,
+    ),
   };
 }
 
@@ -229,15 +238,20 @@ function weatherOf(
   off: { daysOff: number; offSources?: string[] },
   metric: LoadMetric,
   thresholds: WeatherThresholds,
-): Weather {
+): { weather: Weather; byLoad: WeatherKind } {
   const { load, overdue } = measured;
+  // The weather by load alone, without overdue work: whether rebalancing could clear a storm.
+  const byLoad = weatherFor(load, shareOf(teamAverage, capacity), false, thresholds);
   return {
-    kind: weatherFor(load, shareOf(teamAverage, capacity), overdue > 0, thresholds),
-    metric,
-    load,
-    teamAverage,
-    overdue,
-    reason: describeLoad(measured, teamAverage, capacity, off, metric),
+    weather: {
+      kind: overdue > 0 ? "storm" : byLoad,
+      metric,
+      load,
+      teamAverage,
+      overdue,
+      reason: describeLoad(measured, teamAverage, capacity, off, metric),
+    },
+    byLoad,
   };
 }
 
@@ -264,6 +278,8 @@ function spread(
   people: readonly Staffed[],
   loads: readonly Load[],
   weathers: Weather[],
+  /** Each person's weather by load alone, without overdue work; null for someone away. */
+  byLoad: readonly (WeatherKind | null)[],
   capacities: readonly number[],
   metric: LoadMetric,
   teamAverage: number | null,
@@ -286,21 +302,47 @@ function spread(
     const urgent = loads[i]?.urgent ?? 0;
     return away && urgent > 0 ? [`${name} is away with ${plural(urgent, "urgent issue")}`] : [];
   });
-  const stormy = names("storm");
-  if (stuck.length > 0) {
-    const others =
-      stormy.length === 0
-        ? ""
-        : `; ${list(stormy)} ${stormy.length === 1 ? "is" : "are"} in a storm`;
-    return { ...base, kind: "storm", reason: `${stuck.join("; ")}${others}` };
-  }
-  for (const kind of ["storm", "rain"] as const) {
-    const who = names(kind);
-    if (who.length > 0) {
-      const verb = kind === "storm" ? "in a storm" : "under rain";
-      return { ...base, kind, reason: `${list(who)} ${who.length === 1 ? "is" : "are"} ${verb}` };
+  // A storm from load is one rebalancing can clear; one from overdue work only finishing it can.
+  const overloaded: string[] = [];
+  const late: string[] = [];
+  // Late, but their load alone is rain, or can't be measured.
+  const lateAndRainy: string[] = [];
+  let lateUnmeasured = false;
+  for (const [i, { name }] of people.entries()) {
+    if (weathers[i]?.kind !== "storm") continue;
+    const kind = byLoad[i];
+    if (kind === "storm" || weathers[i]?.overdue === 0) overloaded.push(name);
+    else {
+      late.push(name);
+      if (kind === "rain") lateAndRainy.push(name);
+      if (kind === "fog") lateUnmeasured = true;
     }
   }
+  const rainy = names("rain");
+  const are = (who: string[], what: string) =>
+    `${list(who)} ${who.length === 1 ? "is" : "are"} ${what}`;
+  const have = (who: string[]) => `${list(who)} ${who.length === 1 ? "has" : "have"} overdue work`;
+  const storms = [
+    ...(overloaded.length > 0 ? [are(overloaded, "in a storm")] : []),
+    ...(late.length > 0 ? [have(late)] : []),
+  ];
+  if (stuck.length > 0) {
+    return { ...base, kind: "storm", reason: [...stuck, ...storms].join("; ") };
+  }
+  if (overloaded.length > 0) return { ...base, kind: "storm", reason: storms.join("; ") };
+  if (late.length > 0) {
+    // Nobody is overloaded: say so, so a board where every move is made doesn't read as if
+    // rebalancing failed. Unless someone's load can't be measured: then nobody knows.
+    const underRain = [...lateAndRainy, ...rainy];
+    const rest =
+      underRain.length > 0
+        ? [are(underRain, "under rain")]
+        : lateUnmeasured
+          ? []
+          : ["nobody is overloaded"];
+    return { ...base, kind: "storm", reason: [have(late), ...rest].join("; ") };
+  }
+  if (rainy.length > 0) return { ...base, kind: "rain", reason: are(rainy, "under rain") };
   if (busiest === 0) {
     return { ...base, kind: "sunny", reason: "Nothing urgent on anyone's plate" };
   }

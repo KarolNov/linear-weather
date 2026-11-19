@@ -1,7 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { useState } from "preact/hooks";
 import { Button, VisuallyHidden } from "ui";
-import { colors, radii, space } from "ui/tokens.stylex";
+import { colors, media, radii, space } from "ui/tokens.stylex";
 import { type CalendarDate, describeTimeOff, MAX_TIME_OFF, type TimeOff } from "./board";
 
 export interface TimeOffListProps {
@@ -124,7 +124,7 @@ const styles = stylex.create({
     flexWrap: "wrap",
     alignItems: "center",
     gap: space.xs,
-    fontSize: "0.8125rem",
+    fontSize: "0.75rem",
     color: colors.inkMuted,
   },
   list: { display: "contents", listStyle: "none", margin: 0, padding: 0 },
@@ -132,10 +132,11 @@ const styles = stylex.create({
     display: "inline-flex",
     alignItems: "center",
     gap: "4px",
-    paddingBlock: "2px",
-    paddingInline: "8px",
-    borderRadius: radii.pill,
-    backgroundColor: `color-mix(in srgb, ${colors.fog} 22%, transparent)`,
+    paddingBlock: "1px",
+    paddingInline: "6px",
+    borderRadius: "4px",
+    backgroundColor: colors.subtle,
+    boxShadow: `inset 0 0 0 1px ${colors.border}`,
     color: colors.ink,
   },
   remove: {
@@ -152,16 +153,19 @@ const styles = stylex.create({
   },
   add: {
     font: "inherit",
-    color: "inherit",
     backgroundColor: "transparent",
     borderWidth: 0,
     borderRadius: radii.sm,
-    padding: 0,
+    // Quiet until wanted: muted text that darkens under the pointer, as Linear's secondary actions.
+    paddingBlock: "2px",
+    paddingInline: "4px",
+    marginInlineStart: "-4px",
     cursor: { default: "pointer", ":disabled": "not-allowed" },
-    textDecorationLine: "underline",
-    textDecorationStyle: "dotted",
-    textUnderlineOffset: "3px",
-    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+    color: {
+      default: colors.inkFaint,
+      [media.hover]: { default: colors.inkFaint, ":hover": colors.ink },
+    },
+    outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
   },
   // A row for each day, then the buttons: fits the narrowest card.
   form: {

@@ -2,7 +2,7 @@ import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Avatar, Button, Card, Icon, VisuallyHidden, WeatherIcon, weatherLabels } from "ui";
-import { colors, fonts, media, radii, space, weatherTones } from "ui/tokens.stylex";
+import { colors, media, radii, space } from "ui/tokens.stylex";
 import {
   describeDay,
   listOf,
@@ -13,7 +13,7 @@ import {
   type WeatherKind,
 } from "./board";
 import { entrance } from "./motion";
-import { quadrantFill, quadrantInfo } from "./quadrants";
+import { dot, quadrantDot, quadrantInfo } from "./quadrants";
 import { weatherIcon } from "./weather";
 
 export interface RebalancePanelProps extends Rebalance {
@@ -22,7 +22,7 @@ export interface RebalancePanelProps extends Rebalance {
   runningLate?: RunningLate[];
   /** Issues whose move hasn't answered yet. */
   pending: ReadonlySet<string>;
-  /** Today's moves are being made, one after another. */
+  /** A batch of moves (today's, or a week's) is being made, one after another. */
   applying: boolean;
   onReassign: (move: Suggestion) => void;
   /** Makes these moves, in order, once the PM has said yes. */
@@ -43,7 +43,7 @@ export function stillPlanned(asked: Suggestion[], planned: Suggestion[]): boolea
   );
 }
 
-/** Today's moves, as the PM is asked to make them: who gets what, in the order they'll be made. */
+/** A batch of moves, as the PM is asked to make them: who gets what, in the order they'll be made. */
 export function ConfirmMoves({
   moves,
   onConfirm,
@@ -92,8 +92,8 @@ export function ConfirmMoves({
 /**
  * Who could hand which issue to whom: for today's storms, and for the ones the forecast sees
  * coming. Each move is made in Linear in one click; today's can be made all at once, after a yes.
- * The ones ahead stay one at a time: they hand over work that isn't urgent yet, and assume
- * today's moves were made.
+ * The forecast plans each week as if today's moves and the weeks before it were made, so a
+ * week's moves can be made all at once only when it's the first left and today's are done.
  *
  * On a wide screen the board docks it beside the people, so it's built narrow: each move is a
  * compact card reading giver → taker, with each one's load before → after.
@@ -109,10 +109,27 @@ export function RebalancePanel({
   onApplyNow,
   onClose,
 }: RebalancePanelProps) {
-  // Today's moves as they stood when the PM asked to make them all, while they're asked to confirm.
-  const [confirming, setConfirming] = useState<Suggestion[] | null>(null);
-  // Only while they're still the plan: a move made meanwhile closes the question.
-  const asked = confirming && stillPlanned(confirming, rebalanceNow) ? confirming : null;
+  // The batch as it stood when the PM asked to make it all (today's, or the first week's), while
+  // they're asked to confirm.
+  const [confirming, setConfirming] = useState<Batch | null>(null);
+  // The first week ahead can go in one batch only once today's moves are made: it assumes them.
+  const [nextWeek, nextWeekMoves = []] =
+    rebalanceNow.length === 0 ? (weeksOf(rebalanceForecast)[0] ?? []) : [];
+  const planned = (batch: Batch) => (batch.week === null ? rebalanceNow : nextWeekMoves);
+  // Only while it's still the plan: a move made meanwhile closes the question.
+  const asked =
+    confirming &&
+    (confirming.week === null || confirming.week === nextWeek) &&
+    stillPlanned(confirming.moves, planned(confirming))
+      ? confirming
+      : null;
+  // Which batch is being made, for its button to say so.
+  const [making, setMaking] = useState<Batch | null>(null);
+  // A week's batch being made keeps its button, busy, until it's done, even once the forecast,
+  // planned again after each move, has fewer than two of its moves left, or none.
+  const running = applying && making !== null && making.week !== null ? making : null;
+  const runningWeekLeft =
+    running !== null && rebalanceForecast.some((m) => m.week === running.week);
   // Cancelling gives the keyboard back to the button that asked.
   const [cancelled, setCancelled] = useState(false);
   useEffect(() => {
@@ -122,6 +139,38 @@ export function RebalancePanel({
   }, [cancelled]);
   const [explained, setExplained] = useState(false);
   const busy = (move: Suggestion) => applying || pending.has(move.issue.id);
+  /** The button that makes a batch, or the question that confirms it once pressed. */
+  const batchAction = (batch: Batch) =>
+    asked && asked.week === batch.week ? (
+      <ConfirmMoves
+        moves={asked.moves}
+        onConfirm={() => {
+          setMaking(asked);
+          onApplyNow(asked.moves);
+          setConfirming(null);
+        }}
+        onCancel={() => {
+          setConfirming(null);
+          setCancelled(true);
+        }}
+      />
+    ) : (
+      <Button
+        variant={batch.week === null ? "primary" : "secondary"}
+        icon={batch.week === null ? undefined : "check"}
+        data-apply-now
+        disabled={applying || batch.moves.some(busy)}
+        aria-busy={(applying && making?.week === batch.week) || undefined}
+        onClick={() => setConfirming(batch)}
+        xstyle={styles.applyAll}
+      >
+        {applying && making?.week === batch.week
+          ? `Making ${batchName(batch.week)} moves…`
+          : batch.week === null
+            ? "Make all of today's moves"
+            : `Make all ${batch.moves.length} of ${batchName(batch.week)} moves`}
+      </Button>
+    );
   const moves = rebalanceNow.length + rebalanceForecast.length > 0;
   const late = listOf(
     runningLate.map(({ person, overdue }) => `${person.name} (${overdue} overdue)`),
@@ -130,7 +179,7 @@ export function RebalancePanel({
     <Card as="section" xstyle={[styles.card, entrance.panel]}>
       <header {...stylex.props(styles.header)}>
         <span aria-hidden="true" {...stylex.props(styles.badge)}>
-          <Icon name="balance" size={18} />
+          <Icon name="balance" size={14} />
         </span>
         <h2 id="rebalance-heading" tabIndex={-1} {...stylex.props(styles.heading)}>
           Rebalancing {teamName}
@@ -161,7 +210,7 @@ export function RebalancePanel({
         </details>
         {runningLate.length > 0 && (
           <div {...stylex.props(styles.note)}>
-            <WeatherIcon weather="storm" size={26} label="" />
+            <WeatherIcon weather="storm" size={18} label="" />
             <p>
               {late} {runningLate.length === 1 ? "stays" : "stay"} in a storm
               {moves ? " after these moves" : ""}: overdue work stays with whoever has it. Finish
@@ -178,31 +227,7 @@ export function RebalancePanel({
           busy={busy}
           onReassign={onReassign}
         >
-          {rebalanceNow.length > 0 &&
-            (asked ? (
-              <ConfirmMoves
-                moves={asked}
-                onConfirm={() => {
-                  onApplyNow(asked);
-                  setConfirming(null);
-                }}
-                onCancel={() => {
-                  setConfirming(null);
-                  setCancelled(true);
-                }}
-              />
-            ) : (
-              <Button
-                variant="primary"
-                data-apply-now
-                disabled={applying || rebalanceNow.some(busy)}
-                aria-busy={applying || undefined}
-                onClick={() => setConfirming(rebalanceNow)}
-                xstyle={styles.applyAll}
-              >
-                {applying ? "Making today's moves…" : "Make all of today's moves"}
-              </Button>
-            ))}
+          {rebalanceNow.length > 0 && batchAction({ week: null, moves: rebalanceNow })}
         </Horizon>
         <Horizon
           id="rebalance-forecast"
@@ -213,7 +238,14 @@ export function RebalancePanel({
           busy={busy}
           onReassign={onReassign}
           byWeek
-        />
+          weekAction={(week, weekMoves) =>
+            running
+              ? week === running.week && batchAction(running)
+              : week === nextWeek && weekMoves.length > 1 && batchAction({ week, moves: weekMoves })
+          }
+        >
+          {running && !runningWeekLeft && batchAction(running)}
+        </Horizon>
       </div>
     </Card>
   );
@@ -228,6 +260,7 @@ function Horizon({
   busy,
   onReassign,
   byWeek,
+  weekAction,
   children,
 }: {
   id: string;
@@ -239,6 +272,8 @@ function Horizon({
   onReassign: (move: Suggestion) => void;
   /** Splits the moves into the weeks whose storm they head off. */
   byWeek?: boolean;
+  /** Anything to do with a whole week's moves, shown above them. */
+  weekAction?: (week: number | null, moves: Suggestion[]) => ComponentChildren;
   /** Anything to do with the whole list, shown above it. */
   children?: ComponentChildren;
 }) {
@@ -272,7 +307,7 @@ function Horizon({
       {children}
       {suggestions.length === 0 ? (
         <p {...stylex.props(styles.empty)}>
-          <WeatherIcon weather="sun" size={22} label="" />
+          <WeatherIcon weather="sun" size={16} label="" />
           {empty}
         </p>
       ) : byWeek ? (
@@ -281,6 +316,7 @@ function Horizon({
             <h4 aria-hidden="true" {...stylex.props(styles.weekHeading)}>
               {weekName(week)}
             </h4>
+            {weekAction?.(week, moves)}
             {list(moves)}
           </section>
         ))
@@ -289,6 +325,17 @@ function Horizon({
       )}
     </section>
   );
+}
+
+/** Moves to make together after one yes: today's (`week` null), or a week's ahead. */
+interface Batch {
+  week: number | null;
+  moves: Suggestion[];
+}
+
+/** E.g. "today's", "this week's" or "week 3's". */
+function batchName(week: number | null): string {
+  return week === null ? "today's" : week === 1 ? "this week's" : `week ${week}'s`;
 }
 
 /** A forecast week's heading; a move with no week is one for today. */
@@ -320,7 +367,8 @@ function SuggestionItem({
   return (
     <li aria-busy={busy || undefined} {...stylex.props(styles.item, busy && styles.busy)}>
       <div {...stylex.props(styles.itemMeta)}>
-        <span {...stylex.props(styles.quadrant, quadrantFill[quadrant])}>
+        <span {...stylex.props(styles.quadrant)}>
+          <span aria-hidden="true" {...stylex.props(dot.dot, quadrantDot[quadrant])} />
           {quadrantInfo[quadrant].name}
         </span>
         <a href={issue.url} target="_blank" rel="noreferrer" {...stylex.props(styles.identifier)}>
@@ -372,14 +420,14 @@ function Side({
 }) {
   const icon = weatherIcon[weather];
   return (
-    <span {...stylex.props(styles.side, toneOf[icon])}>
+    <span {...stylex.props(styles.side)}>
       {/* The weather it leaves them in sits on their avatar, like a status. */}
       <span {...stylex.props(styles.face)}>
-        <Avatar name={person.name} src={person.avatarUrl} size={28} />
+        <Avatar name={person.name} src={person.avatarUrl} size={24} />
         <span {...stylex.props(styles.faceWeather)}>
           <WeatherIcon
             weather={icon}
-            size={16}
+            size={14}
             label={`${person.name} would be: ${weatherLabels[icon]} ${when}.`}
           />
         </span>
@@ -433,31 +481,28 @@ const styles = stylex.create({
   header: {
     display: "flex",
     alignItems: "center",
-    gap: space.sm,
-    paddingBlock: space.sm,
+    gap: space.xs,
+    height: "44px",
     paddingInlineStart: space.md,
-    paddingInlineEnd: space.sm,
+    paddingInlineEnd: "6px",
     borderBottom: `1px solid ${colors.border}`,
   },
   badge: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 32,
-    height: 32,
+    width: 22,
+    height: 22,
     flexShrink: 0,
     borderRadius: radii.sm,
     color: colors.onSelected,
     backgroundColor: colors.selected,
-    boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.14)",
   },
   heading: {
     flexGrow: 1,
     minWidth: 0,
-    fontFamily: fonts.display,
-    fontSize: "1.0625rem",
-    fontWeight: 750,
-    letterSpacing: "-0.01em",
+    fontSize: "0.8125rem",
+    fontWeight: 600,
     outline: "none",
   },
   close: { flexShrink: 0 },
@@ -476,12 +521,12 @@ const styles = stylex.create({
     alignItems: "center",
     gap: space.xxs,
     paddingBlock: space.xxs,
-    paddingInline: space.xs,
-    marginInlineStart: `calc(-1 * ${space.xs})`,
-    borderRadius: radii.pill,
+    paddingInline: "6px",
+    marginInlineStart: "-6px",
+    borderRadius: radii.sm,
     color: colors.inkMuted,
-    fontSize: "0.8125rem",
-    fontWeight: 600,
+    fontSize: "0.75rem",
+    fontWeight: 500,
     cursor: "pointer",
     listStyle: "none",
     "::-webkit-details-marker": { display: "none" },
@@ -489,7 +534,7 @@ const styles = stylex.create({
       default: "transparent",
       [media.hover]: { default: "transparent", ":hover": colors.hover },
     },
-    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+    outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
   },
   howChevron: {
     transitionProperty: "transform",
@@ -501,79 +546,57 @@ const styles = stylex.create({
   subheading: {
     display: "flex",
     alignItems: "center",
-    gap: space.xs,
-    fontFamily: fonts.display,
-    fontSize: "0.9375rem",
-    fontWeight: 750,
+    gap: "6px",
+    fontSize: "0.8125rem",
+    fontWeight: 600,
   },
   tally: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: "1.6em",
-    height: "1.6em",
-    paddingInline: "0.45em",
-    borderRadius: radii.pill,
-    backgroundColor: colors.hover,
-    color: colors.inkMuted,
-    fontFamily: fonts.body,
-    fontSize: "0.75rem",
-    fontWeight: 700,
+    color: colors.inkFaint,
+    fontWeight: 500,
     fontVariantNumeric: "tabular-nums",
   },
-  fine: { color: colors.inkMuted, fontSize: "0.8125rem", lineHeight: 1.45 },
+  fine: { color: colors.inkMuted, fontSize: "0.75rem", lineHeight: 1.5 },
   note: {
     display: "flex",
-    alignItems: "center",
-    gap: space.sm,
-    paddingBlock: space.sm,
-    paddingInline: space.sm,
+    alignItems: "flex-start",
+    gap: space.xs,
+    paddingBlock: space.xs,
+    paddingInline: "10px",
     borderRadius: radii.md,
-    color: weatherTones.stormInk,
-    backgroundColor: weatherTones.stormFill,
-    fontSize: "0.8125rem",
-    lineHeight: 1.45,
+    color: colors.inkMuted,
+    backgroundColor: colors.subtle,
+    boxShadow: `inset 0 0 0 1px ${colors.border}`,
+    fontSize: "0.75rem",
+    lineHeight: 1.5,
   },
-  horizon: { display: "flex", flexDirection: "column", gap: space.sm, minWidth: 0 },
+  horizon: { display: "flex", flexDirection: "column", gap: space.xs, minWidth: 0 },
   applyAll: { width: "100%" },
   empty: {
     display: "flex",
     alignItems: "center",
-    gap: space.sm,
-    padding: space.sm,
-    borderRadius: radii.md,
-    border: `1px dashed ${colors.controlBorder}`,
+    gap: space.xs,
     color: colors.inkMuted,
-    fontSize: "0.8125rem",
-    lineHeight: 1.45,
+    fontSize: "0.75rem",
+    lineHeight: 1.5,
   },
-  week: { display: "flex", flexDirection: "column", gap: space.xs },
-  weekHeading: {
-    fontSize: "0.6875rem",
-    fontWeight: 700,
-    letterSpacing: "0.07em",
-    textTransform: "uppercase",
-    color: colors.inkMuted,
-  },
+  week: { display: "flex", flexDirection: "column", gap: "2px", marginTop: space.xxs },
+  weekHeading: { fontSize: "0.75rem", fontWeight: 500, color: colors.inkMuted },
+  // Rows divided by hairlines, as in a Linear list, rather than cards inside a card.
   list: {
     listStyle: "none",
     margin: 0,
     padding: 0,
     display: "flex",
     flexDirection: "column",
-    gap: space.xs,
   },
-  // Which issue and the button on top, then its title and who to whom across the card.
+  // Which issue and the button on top, then its title and who to whom across the row.
   item: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) auto",
     columnGap: space.sm,
-    rowGap: "6px",
-    padding: space.sm,
-    borderRadius: radii.md,
-    border: `1px solid ${colors.controlBorder}`,
-    backgroundColor: colors.surfaceStrong,
-    boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(29, 26, 51, 0.05)",
+    rowGap: "4px",
+    paddingBlock: "10px",
+    borderTop: `1px solid ${colors.border}`,
     minWidth: 0,
     transitionProperty: "opacity",
     transitionDuration: "200ms",
@@ -592,28 +615,28 @@ const styles = stylex.create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    fontSize: "0.875rem",
-    fontWeight: 550,
+    fontSize: "0.8125rem",
+    fontWeight: 500,
   },
   handOver: { gridColumn: "2", gridRow: "1", alignSelf: "center" },
   identifier: {
     flexShrink: 0,
-    fontWeight: 700,
+    fontWeight: 500,
     fontSize: "0.75rem",
-    letterSpacing: "0.01em",
     color: colors.inkMuted,
+    fontVariantNumeric: "tabular-nums",
     textDecoration: { default: "none", ":hover": "underline" },
-    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+    outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
     borderRadius: "4px",
   },
   quadrant: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "5px",
     flexShrink: 0,
-    paddingInline: "7px",
-    paddingBlock: "2px",
-    borderRadius: radii.pill,
-    fontSize: "0.6875rem",
-    fontWeight: 700,
-    lineHeight: 1.3,
+    fontSize: "0.75rem",
+    fontWeight: 500,
+    color: colors.inkMuted,
   },
   // Two ends with an arrow between, sharing the width evenly whatever the names.
   transfer: {
@@ -622,69 +645,55 @@ const styles = stylex.create({
     gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
     alignItems: "center",
     gap: space.xs,
-    paddingTop: space.xs,
-    borderTop: `1px solid ${colors.border}`,
+    paddingTop: "2px",
   },
   reason: { gridColumn: "1 / -1", margin: 0 },
-  transferArrow: { display: "inline-flex", color: colors.inkMuted },
-  side: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    minWidth: 0,
-    paddingBlock: "5px",
-    paddingInline: "6px",
-    borderRadius: radii.sm,
-  },
+  transferArrow: { display: "inline-flex", color: colors.inkFaint },
+  side: { display: "flex", alignItems: "center", gap: space.xs, minWidth: 0 },
   face: { position: "relative", display: "inline-flex", flexShrink: 0 },
   faceWeather: {
     position: "absolute",
-    right: "-6px",
-    bottom: "-5px",
+    right: "-5px",
+    bottom: "-4px",
     display: "inline-flex",
     padding: "1px",
     borderRadius: "50%",
     backgroundColor: colors.surfaceStrong,
-    boxShadow: "0 1px 2px rgba(29, 26, 51, 0.18)",
+    boxShadow: `0 0 0 1px ${colors.border}`,
   },
   sideText: { display: "flex", flexDirection: "column", minWidth: 0 },
   sideName: {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    fontSize: "0.8125rem",
-    fontWeight: 600,
+    fontSize: "0.75rem",
+    fontWeight: 500,
   },
   load: {
     display: "inline-flex",
     alignItems: "center",
     gap: "3px",
-    fontSize: "0.75rem",
+    fontSize: "0.6875rem",
     color: colors.inkMuted,
     fontVariantNumeric: "tabular-nums",
     whiteSpace: "nowrap",
   },
   loadArrow: { opacity: 0.6, paddingInline: "1px" },
-  loadAfter: { color: colors.ink, fontWeight: 700, marginInlineEnd: "2px" },
-  busy: { opacity: 0.55 },
+  loadAfter: { color: colors.ink, fontWeight: 600, marginInlineEnd: "2px" },
+  busy: { opacity: 0.5 },
   confirm: {
     display: "flex",
     flexDirection: "column",
     gap: space.sm,
     padding: space.sm,
     borderRadius: radii.md,
-    border: `1px solid ${colors.controlBorder}`,
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.subtle,
+    boxShadow: `inset 0 0 0 1px ${colors.border}`,
   },
-  confirmQuestion: {
-    fontFamily: fonts.display,
-    fontSize: "0.9375rem",
-    fontWeight: 700,
-    outline: "none",
-  },
+  confirmQuestion: { fontSize: "0.8125rem", fontWeight: 600, outline: "none" },
   confirmList: {
     margin: 0,
-    paddingInlineStart: space.lg,
+    paddingInlineStart: space.md,
     display: "flex",
     flexDirection: "column",
     gap: space.xxs,
@@ -693,20 +702,10 @@ const styles = stylex.create({
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: space.xs,
-    fontSize: "0.8125rem",
+    gap: "6px",
+    fontSize: "0.75rem",
   },
-  arrow: { color: colors.inkMuted },
-  who: { display: "inline-flex", alignItems: "center", gap: space.xxs, fontWeight: 600 },
-  actions: { display: "flex", flexWrap: "wrap", gap: space.xs },
-});
-
-// Each end of a move tinted by the weather it leaves that person in.
-const toneOf = stylex.create({
-  sun: { backgroundColor: weatherTones.sunFill },
-  partly: { backgroundColor: weatherTones.partlyFill },
-  rain: { backgroundColor: weatherTones.rainFill },
-  storm: { backgroundColor: weatherTones.stormFill },
-  fog: { backgroundColor: weatherTones.fogFill },
-  away: { backgroundColor: weatherTones.awayFill },
+  arrow: { color: colors.inkFaint },
+  who: { display: "inline-flex", alignItems: "center", gap: space.xxs, fontWeight: 500 },
+  actions: { display: "flex", flexWrap: "wrap", gap: "6px" },
 });

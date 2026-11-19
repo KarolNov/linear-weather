@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { app } from "./index";
 import { type TeamChannel, teamChannels } from "./team-channel";
-import { MAX_WEBHOOK_AGE_MS, sign, signedBy } from "./webhooks";
+import { MAX_WEBHOOK_AGE_MS, MAX_WEBHOOK_BYTES, sign, signedBy } from "./webhooks";
 
 const SECRET = env.LINEAR_WEBHOOK_SECRET;
 const WEBHOOK_URL = "https://linear-weather.example/webhooks/linear";
@@ -54,8 +54,8 @@ async function deliver(
   return deliverBody(body, signature ?? (await sign(secret, body)));
 }
 
-/** Delivers `body` as it is, under `signature`; its status and who was told. */
-async function deliverBody(body: string, signature: string) {
+/** Delivers `body` as it is, under `signature`, to a server with `envChanges`; its status and who was told. */
+async function deliverBody(body: string, signature: string, envChanges: Partial<Env> = {}) {
   const channels = recordingChannels();
   const res = await app.request(
     WEBHOOK_URL,
@@ -64,7 +64,7 @@ async function deliverBody(body: string, signature: string) {
       headers: { "content-type": "application/json", "linear-signature": signature },
       body,
     },
-    { ...env, TEAM_CHANNELS: channels.namespace },
+    { ...env, TEAM_CHANNELS: channels.namespace, ...envChanges },
   );
   return { status: res.status, told: channels.told };
 }
@@ -142,12 +142,53 @@ describe("POST /webhooks/linear", () => {
   });
 
   it("refuses everything while no signing secret is set", async () => {
-    const res = await app.request(
-      WEBHOOK_URL,
-      { method: "POST", headers: { "linear-signature": await sign("any", "{}") }, body: "{}" },
-      { ...env, LINEAR_WEBHOOK_SECRET: "" },
-    );
-    expect(res.status).toBe(401);
+    const body = JSON.stringify({ webhookTimestamp: Date.now(), ...issueUpdated("team-a") });
+    const { status, told } = await deliverBody(body, await sign("any", body), {
+      LINEAR_WEBHOOK_SECRET: "",
+    });
+    expect(status).toBe(401);
+    expect(told).toEqual([]);
+  });
+
+  it("refuses a body too large to be Linear's before checking it", async () => {
+    const body = JSON.stringify({
+      webhookTimestamp: Date.now(),
+      ...issueUpdated("team-a"),
+      padding: "x".repeat(MAX_WEBHOOK_BYTES),
+    });
+    const { status, told } = await deliverBody(body, await sign(SECRET, body));
+    expect(status).toBe(413);
+    expect(told).toEqual([]);
+  });
+
+  it("doesn't tell anyone about an issue's edits boards don't show", async () => {
+    const { status, told } = await deliver({
+      ...issueUpdated("team-a"),
+      updatedFrom: { description: "Before", updatedAt: "2026-11-19T10:00:00.000Z" },
+    });
+    expect(status).toBe(204);
+    expect(told).toEqual([]);
+  });
+
+  it("tells the team about an update that doesn't say what changed", async () => {
+    const { updatedFrom: _, ...update } = issueUpdated("team-a");
+    const { told } = await deliver(update);
+    expect(told).toEqual(["team-a"]);
+  });
+
+  it("takes a delivery whose team can't be told, since a retry would come too late", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const unreachable = {
+      idFromName: (name: string) => env.TEAM_CHANNELS.idFromName(name),
+      get: () => ({ publish: () => Promise.reject(new Error("Channel down")) }),
+    } as unknown as DurableObjectNamespace<TeamChannel>;
+    const body = JSON.stringify({ webhookTimestamp: Date.now(), ...issueUpdated("team-a") });
+    const { status } = await deliverBody(body, await sign(SECRET, body), {
+      TEAM_CHANNELS: unreachable,
+    });
+    expect(status).toBe(204);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("team-a"));
+    error.mockRestore();
   });
 });
 
@@ -159,6 +200,54 @@ describe("teamChannels().listen", () => {
     });
     stop();
     expect(() => stop()).not.toThrow();
+  });
+
+  it("says once that it lost the channel when the channel closes", async () => {
+    // A channel whose end of the socket the test holds, to close it.
+    let channelEnd: WebSocket | undefined;
+    const namespace = {
+      idFromName: (name: string) => env.TEAM_CHANNELS.idFromName(name),
+      get: () => ({
+        async fetch() {
+          const pair = new WebSocketPair();
+          channelEnd = pair[1];
+          channelEnd.accept();
+          return new Response(null, { status: 101, webSocket: pair[0] });
+        },
+      }),
+    } as unknown as DurableObjectNamespace<TeamChannel>;
+    let lost = 0;
+    const stop = await teamChannels(namespace).listen("team-a", {
+      changed: () => {},
+      lost: () => {
+        lost++;
+      },
+    });
+    stopAll.push(stop);
+    channelEnd?.close(1011, "Restarting");
+    await vi.waitFor(() => expect(lost).toBe(1));
+    stop();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(lost).toBe(1);
+  });
+
+  it("hears nothing once stopped, nor says it lost the channel", async () => {
+    const teamId = "team-stopped";
+    let changed = 0;
+    let lost = 0;
+    const channels = teamChannels(env.TEAM_CHANNELS);
+    const stop = await channels.listen(teamId, {
+      changed: () => {
+        changed++;
+      },
+      lost: () => {
+        lost++;
+      },
+    });
+    stop();
+    await channels.publish(teamId);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect({ changed, lost }).toEqual({ changed: 0, lost: 0 });
   });
 });
 

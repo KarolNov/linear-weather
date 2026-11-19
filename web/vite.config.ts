@@ -22,8 +22,49 @@ function requireStylexCss(): Plugin {
   };
 }
 
+// The local Workers' own tools live under /cdn-cgi/ and /__cf_local/, among them the data
+// explorer, which reads and writes every binding (the session store, with its Linear tokens,
+// included) and checks nobody. Through a webhook tunnel they'd be anyone's, so only localhost
+// reaches them.
+function localOnlyWorkerTools(): Plugin {
+  const toolPath = /\/(?:cdn-cgi|__cf_local)(?:\/|$)/i;
+  return {
+    name: "local-only-worker-tools",
+    apply: "serve",
+    enforce: "pre",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        let path = req.url ?? "";
+        try {
+          path = decodeURIComponent(path);
+        } catch {
+          // Malformed escapes: match the path as sent.
+        }
+        if (toolPath.test(path) && !isLocalHost(req.headers.host)) {
+          res.statusCode = 404;
+          res.end();
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
+
+function isLocalHost(host: string | undefined): boolean {
+  if (!host) return false;
+  try {
+    const { hostname } = new URL(`http://${host}`);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 export default defineConfig({
   plugins: [
+    // First, so it answers before the Cloudflare plugin's own middleware sees the request.
+    localOnlyWorkerTools(),
     // Compiles stylex.create() in both the client bundle and the server-rendering Worker, so
     // they agree on class names. With no other CSS in the client bundle, the build writes all
     // rules to assets/stylex.css. devPersistToDisk lets the dev CSS endpoint see the rules the
@@ -43,7 +84,8 @@ export default defineConfig({
   server: {
     // Linear's webhooks reach the dev server through a Cloudflare quick tunnel (see the README).
     // Vite refuses hosts it doesn't know, which guards against DNS rebinding; this lets the
-    // tunnel's through without telling the server it's on localhost.
+    // tunnel's through without telling the server it's on localhost. localOnlyWorkerTools keeps
+    // the local Workers' tools off it.
     allowedHosts: [".trycloudflare.com"],
     // The tunnel puts the whole dev server online, /@fs/ included. Vite's own list (the first
     // six, which this replaces) misses the local Workers' secrets and state: .dev.vars, and

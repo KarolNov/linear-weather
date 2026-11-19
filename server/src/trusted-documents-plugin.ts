@@ -24,7 +24,9 @@ export function useTrustedDocuments({
   return {
     // Runs before Yoga checks the params, so `documentId` is gone by the time it would object.
     onParams({ params, request, setParams }) {
-      const { documentId, ...rest } = params as GraphQLParams & { documentId?: unknown };
+      const { documentId = fromQueryString(request), ...rest } = params as GraphQLParams & {
+        documentId?: unknown;
+      };
       if (documentId === undefined) {
         if (!allowAnyQuery(request)) {
           throw refusal(
@@ -43,6 +45,15 @@ export function useTrustedDocuments({
       setParams({ ...rest, query: documents[documentId] });
     },
   };
+}
+
+/**
+ * A GET request's `documentId`, which Yoga leaves out of the params it reads from the query
+ * string. Subscriptions come this way, since a browser's EventSource can only GET.
+ */
+function fromQueryString(request: Request): string | undefined {
+  if (request.method !== "GET") return undefined;
+  return new URL(request.url).searchParams.get("documentId") ?? undefined;
 }
 
 function refusal(message: string, code: string) {

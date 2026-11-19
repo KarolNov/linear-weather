@@ -1,6 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { app } from "./index";
+import { DEMO_TEAM } from "./linear/demo";
 import { CURRENT_DOCUMENT_IDS } from "./trusted-documents";
 
 describe("server worker", () => {
@@ -263,6 +264,50 @@ describe("off localhost", () => {
   it("refuses an id and a query together", async () => {
     const res = await post({ documentId: boardId, query: "{ hello }" });
     expect(res.status).toBe(400);
+  });
+
+  describe("subscriptions, which a browser's EventSource sends as GET", () => {
+    const listen = (teamId: string, documentId: string = CURRENT_DOCUMENT_IDS.TeamWeather) => {
+      const params = new URLSearchParams({ documentId, variables: JSON.stringify({ teamId }) });
+      return app.request(
+        `${deployed}&${params}`,
+        { headers: { accept: "text/event-stream" } },
+        env,
+      );
+    };
+    /** The stream's text until it ends, or as far as `until` shows up. */
+    async function read(res: Response, until?: string): Promise<string> {
+      const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+      const decoder = new TextDecoder();
+      let text = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (value) text += decoder.decode(value, { stream: true });
+        if (done || (until && text.includes(until))) break;
+      }
+      await reader.cancel();
+      return text;
+    }
+
+    it("streams the board's subscription by id", async () => {
+      const res = await listen(DEMO_TEAM.id);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/event-stream");
+      // A new day is the demo's first update; until then the stream only keeps itself alive.
+      expect(await read(res, ":\n\n")).toBe(":\n\n");
+    });
+
+    it("answers a team the viewer can't see with an error, and ends", async () => {
+      const text = await read(await listen("not-a-team"));
+      expect(text).toContain("event: next");
+      expect(text).toContain("TEAM_NOT_FOUND");
+      expect(text).toContain("event: complete");
+    });
+
+    it("refuses an id it doesn't know", async () => {
+      const res = await listen(DEMO_TEAM.id, "sha256:0000");
+      expect(res.status).toBe(400);
+    });
   });
 
   it("doesn't serve GraphiQL", async () => {

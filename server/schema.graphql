@@ -397,6 +397,13 @@ type SetCapacitySuccess {
   user: User!
 }
 
+type Subscription {
+  """
+  The team's board each time it may read differently: an issue changed in Linear (as its webhooks tell us), someone changed the board here, or a new day began, which moves due dates and the forecast along. Changes close together answer once. Nothing comes at first: the board is what a query just read.
+  """
+  teamWeatherUpdated(teamId: ID!): TeamWeatherUpdate!
+}
+
 """Hand one issue from one person to another to even out urgent load."""
 type Suggestion {
   """Who holds it now."""
@@ -500,6 +507,17 @@ type TeamForecast {
 type TeamNotFound implements Error {
   message: String!
   teamId: ID!
+}
+
+"""A team's board as it reads now, after a change or as a new day begins."""
+type TeamWeatherUpdate {
+  """The team; null if you can no longer see it."""
+  team: Team
+
+  """
+  The day issues are placed against now (UTC), which moves on at midnight.
+  """
+  today: Date!
 }
 
 """A stretch of days someone is away, first and last day included."""

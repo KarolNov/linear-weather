@@ -14,6 +14,7 @@ import {
   type LinearSource,
 } from "./linear/client";
 import { DemoLinear } from "./linear/demo";
+import { teamUpdates } from "./live";
 import { Placements } from "./placements";
 import { type GraphQLContext, schema } from "./schema";
 import {
@@ -23,6 +24,7 @@ import {
   isLocalhost,
   linearAuthorization,
 } from "./session";
+import { teamChannels } from "./team-channel";
 import { useTrustedDocuments } from "./trusted-documents-plugin";
 import { webhooks } from "./webhooks";
 import { Workspace } from "./workspace";
@@ -56,22 +58,52 @@ export const app = new Hono<{ Bindings: Env }>()
     if (c.req.method === "POST" && !isGraphQLBody(c.req.header("content-type"))) {
       return c.text("Send GraphQL as application/json", 415);
     }
-    // Resolved on first use, so queries that don't touch Linear skip the session lookup.
-    let workspace: Promise<Workspace | null> | undefined;
-    const today = new Date().toISOString().slice(0, 10);
     // The demo never touches D1: each visitor's changes live in their own cookie.
-    const demo = isDemo(c) ? DemoStore.fromCookie(getCookie(c, DEMO_COOKIE), today) : null;
-    const response = await yoga.fetch(c.req.raw, {
-      workspace: () =>
-        (workspace ??= linearSource(c, demo).then((linear) => linear && new Workspace(linear))),
-      placements: new Placements(demo ?? new Store(c.env.DB)),
-      today,
-    });
+    const demo = isDemo(c) ? DemoStore.fromCookie(getCookie(c, DEMO_COOKIE), utcToday()) : null;
+    const response = await yoga.fetch(c.req.raw, requestContext(c, demo));
     if (!demo?.changed) return response;
     const headers = new Headers(response.headers);
     headers.append("set-cookie", demoCookie(c, demo));
     return new Response(response.body, { status: response.status, headers });
   });
+
+/** What a request's resolvers share. A subscription renews it for each update. */
+function requestContext(c: AppContext, demo: DemoStore | null): GraphQLContext {
+  // Resolved on first use, so queries that don't touch Linear skip the session lookup.
+  let workspace: Promise<Workspace | null> | undefined;
+  const placements = () => new Placements(demo ?? new Store(c.env.DB));
+  // The demo has no webhooks, and its changes stay in the visitor's browser: it only hears days.
+  const channels = demo ? undefined : teamChannels(c.env.TEAM_CHANNELS);
+  const context: GraphQLContext = {
+    workspace: () =>
+      (workspace ??= linearSource(c, demo).then((linear) => linear && new Workspace(linear))),
+    placements: placements(),
+    today: utcToday(),
+    teamUpdates: (teamId) => teamUpdates(teamId, channels),
+    teamChanged: (teamId) => {
+      if (!channels) return;
+      // Other boards hear after the answer is sent. One that misses it hears the next change.
+      const told = channels.publish(teamId).catch((error: unknown) => {
+        console.error(`Couldn't tell team ${teamId}'s boards it changed: ${error}`);
+      });
+      try {
+        c.executionCtx.waitUntil(told);
+      } catch {
+        // No ExecutionContext (Hono's app.request in tests): it finishes on its own.
+      }
+    },
+    renew: () => {
+      workspace = undefined;
+      context.placements = placements();
+      context.today = utcToday();
+    },
+  };
+  return context;
+}
+
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 /** Keeps the visitor's demo changes in their browser. */
 function demoCookie(c: AppContext, demo: DemoStore): string {

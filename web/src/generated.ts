@@ -80,6 +80,13 @@ export type SuggestionFragment = { week: number | null, toWeather: WeatherKind, 
 
 export type BoardIssueFragment = { id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, quadrantSource: QuadrantSource, placementReason: string, state: { name: string } };
 
+export type TeamWeatherSubscriptionVariables = Exact<{
+  teamId: string;
+}>;
+
+
+export type TeamWeatherSubscription = { teamWeatherUpdated: { today: string, team: { id: string, name: string, key: string, rules: { importantFrom: number, urgencyWindowDays: number, noDueDate: NoDueDate, dropAlertPercent: number, awayStatuses: Array<string>, blockersAreImportant: boolean, currentCycleIsUrgent: boolean }, weather: { kind: WeatherKind, reason: string }, backlogRot: { rotting: boolean, reason: string }, rebalanceNow: Array<{ week: number | null, toWeather: WeatherKind, reason: string, issue: { id: string, identifier: string, title: string, url: string, quadrant: Quadrant, becomesUrgentOn: string | null }, from: { id: string, name: string, avatarUrl: string | null }, to: { id: string, name: string, avatarUrl: string | null } }>, rebalanceForecast: Array<{ week: number | null, toWeather: WeatherKind, reason: string, issue: { id: string, identifier: string, title: string, url: string, quadrant: Quadrant, becomesUrgentOn: string | null }, from: { id: string, name: string, avatarUrl: string | null }, to: { id: string, name: string, avatarUrl: string | null } }>, people: Array<{ id: string, name: string, avatarUrl: string | null, capacity: number, timeOff: Array<{ id: string, startsOn: string, endsOn: string }>, weather: { kind: WeatherKind, reason: string, overdue: number } | null, forecast: Array<{ startsOn: string, endsOn: string, summary: string, weather: { kind: WeatherKind, reason: string }, turningUrgent: Array<{ identifier: string }> }> | null, matrix: { counts: { do: number, schedule: number, delegate: number, drop: number }, do: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, quadrantSource: QuadrantSource, placementReason: string, state: { name: string } }>, schedule: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, quadrantSource: QuadrantSource, placementReason: string, state: { name: string } }>, delegate: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, quadrantSource: QuadrantSource, placementReason: string, state: { name: string } }>, drop: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, quadrantSource: QuadrantSource, placementReason: string, state: { name: string } }> } | null }>, unassigned: { counts: { do: number, schedule: number, delegate: number, drop: number }, do: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, quadrantSource: QuadrantSource, placementReason: string, state: { name: string } }>, schedule: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, quadrantSource: QuadrantSource, placementReason: string, state: { name: string } }>, delegate: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, quadrantSource: QuadrantSource, placementReason: string, state: { name: string } }>, drop: Array<{ id: string, identifier: string, title: string, url: string, dueDate: string | null, priority: number, estimate: number | null, quadrantSource: QuadrantSource, placementReason: string, state: { name: string } }> } } | null } };
+
 export type UpdateRulesMutationVariables = Exact<{
   teamId: string;
   input: QuadrantRulesInput;
@@ -542,6 +549,134 @@ fragment BoardIssue on Issue {
   quadrantSource
   placementReason
 }`) as unknown as TypedDocumentString<BoardQuery, BoardQueryVariables>;
+export const TeamWeatherDocument = /*#__PURE__*/ new TypedDocumentString(`
+    subscription TeamWeather($teamId: ID!) {
+  teamWeatherUpdated(teamId: $teamId) {
+    today
+    team {
+      ...TeamBoard
+    }
+  }
+}
+    fragment TeamBoard on Team {
+  id
+  name
+  key
+  rules {
+    importantFrom
+    urgencyWindowDays
+    noDueDate
+    dropAlertPercent
+    awayStatuses
+    blockersAreImportant
+    currentCycleIsUrgent
+  }
+  weather {
+    kind
+    reason
+  }
+  backlogRot {
+    rotting
+    reason
+  }
+  rebalanceNow: rebalanceSuggestions(horizon: NOW) {
+    ...Suggestion
+  }
+  rebalanceForecast: rebalanceSuggestions(horizon: FORECAST) {
+    ...Suggestion
+  }
+  people {
+    id
+    name
+    avatarUrl
+    capacity
+    timeOff {
+      id
+      startsOn
+      endsOn
+    }
+    weather {
+      kind
+      reason
+      overdue
+    }
+    forecast {
+      startsOn
+      endsOn
+      weather {
+        kind
+        reason
+      }
+      summary
+      turningUrgent {
+        identifier
+      }
+    }
+    matrix {
+      ...Matrix
+    }
+  }
+  unassigned {
+    ...Matrix
+  }
+}
+fragment Matrix on Matrix {
+  counts {
+    do
+    schedule
+    delegate
+    drop
+  }
+  do {
+    ...BoardIssue
+  }
+  schedule {
+    ...BoardIssue
+  }
+  delegate {
+    ...BoardIssue
+  }
+  drop {
+    ...BoardIssue
+  }
+}
+fragment Suggestion on Suggestion {
+  issue {
+    id
+    identifier
+    title
+    url
+    quadrant
+    becomesUrgentOn
+  }
+  from {
+    id
+    name
+    avatarUrl
+  }
+  to {
+    id
+    name
+    avatarUrl
+  }
+  week
+  toWeather
+  reason
+}
+fragment BoardIssue on Issue {
+  id
+  identifier
+  title
+  url
+  dueDate
+  priority
+  estimate
+  state {
+    name
+  }
+  quadrantSource
+  placementReason
+}`) as unknown as TypedDocumentString<TeamWeatherSubscription, TeamWeatherSubscriptionVariables>;
 export const UpdateRulesDocument = /*#__PURE__*/ new TypedDocumentString(`
     mutation UpdateRules($teamId: ID!, $input: QuadrantRulesInput!) {
   updateQuadrantRules(teamId: $teamId, input: $input) {

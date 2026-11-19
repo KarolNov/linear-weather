@@ -49,6 +49,18 @@ export interface GraphQLContext {
   placements: Placements;
   /** The day issues are placed against. UTC, so near midnight a PM elsewhere may be a day off. */
   today: CalendarDate;
+  /**
+   * Yields each time a team's board may read differently: it changed in Linear or on another
+   * board, or a new day began. Absent where nothing can listen for changes.
+   */
+  teamUpdates?: (teamId: string) => AsyncIterable<unknown>;
+  /** Tells the team's other open boards it was changed here. */
+  teamChanged?: (teamId: string) => void;
+  /**
+   * Starts over, for a subscription's next update: Linear and the store read afresh, and today
+   * as it is now.
+   */
+  renew?: () => void;
 }
 
 // Fields are non-null unless marked `nullable`; Pothos 4 defaults the other way. An error in a
@@ -991,6 +1003,61 @@ builder.queryType({
   }),
 });
 
+/** A team's board to read again, by its id: whatever made it change, it's read whole. */
+interface TeamUpdate {
+  teamId: string;
+}
+
+const TeamUpdateRef = builder.objectRef<TeamUpdate>("TeamWeatherUpdate").implement({
+  description: "A team's board as it reads now, after a change or as a new day begins.",
+  fields: (t) => ({
+    today: t.field({
+      type: "Date",
+      description: "The day issues are placed against now (UTC), which moves on at midnight.",
+      resolve: (_update, _args, context) => context.today,
+    }),
+    team: t.field({
+      type: TeamRef,
+      nullable: true,
+      description: "The team; null if you can no longer see it.",
+      resolve: async ({ teamId }, _args, context) =>
+        (await (await signedIn(context)).teams()).find(({ id }) => id === teamId) ?? null,
+    }),
+  }),
+});
+
+builder.subscriptionType({
+  fields: (t) => ({
+    teamWeatherUpdated: t.field({
+      type: TeamUpdateRef,
+      description:
+        "The team's board each time it may read differently: an issue changed in Linear (as its webhooks tell us), someone changed the board here, or a new day began, which moves due dates and the forecast along. Changes close together answer once. Nothing comes at first: the board is what a query just read.",
+      args: { teamId: t.arg.id({ required: true }) },
+      subscribe: async (_root, args, context) => {
+        const teamId = String(args.teamId);
+        const teams = await (await signedIn(context)).teams();
+        if (!teams.some(({ id }) => id === teamId)) {
+          throw new GraphQLError("There's no such team, or you can't see it.", {
+            extensions: { code: "TEAM_NOT_FOUND" },
+          });
+        }
+        if (!context.teamUpdates) {
+          throw new GraphQLError("Live updates aren't available here.", {
+            extensions: { code: "UNAVAILABLE" },
+          });
+        }
+        return context.teamUpdates(teamId);
+      },
+      resolve: (_change, args, context): TeamUpdate => {
+        // The connection outlives what the last update read, and possibly the day it read it on.
+        context.renew?.();
+        forgetWork(context);
+        return { teamId: String(args.teamId) };
+      },
+    }),
+  }),
+});
+
 // Mutations answer with a union: what they did, or one of the ways it can fail that a client is
 // expected to handle. Each failure implements Error, so `... on Error { message }` covers any
 // the client doesn't single out. Top-level `errors` are left for the unexpected.
@@ -1268,7 +1335,11 @@ async function attempt<T>(
   const workspace = await context.workspace();
   if (!workspace) return unauthorized("Sign in with Linear first.");
   try {
-    return await work(workspace);
+    const result = await work(workspace);
+    // Every success hands back the team it changed.
+    const changed = (result as { team?: Team }).team;
+    if (changed) context.teamChanged?.(changed.id);
+    return result;
   } catch (error) {
     if (error instanceof LinearAuthError) {
       return unauthorized("Linear rejected the session; sign in again.");

@@ -124,7 +124,12 @@ export function RebalancePanel({
       ? confirming
       : null;
   // Which batch is being made, for its button to say so.
-  const [making, setMaking] = useState<number | null>(null);
+  const [making, setMaking] = useState<Batch | null>(null);
+  // A week's batch being made keeps its button, busy, until it's done, even once the forecast,
+  // planned again after each move, has fewer than two of its moves left, or none.
+  const running = applying && making !== null && making.week !== null ? making : null;
+  const runningWeekLeft =
+    running !== null && rebalanceForecast.some((m) => m.week === running.week);
   // Cancelling gives the keyboard back to the button that asked.
   const [cancelled, setCancelled] = useState(false);
   useEffect(() => {
@@ -140,7 +145,7 @@ export function RebalancePanel({
       <ConfirmMoves
         moves={asked.moves}
         onConfirm={() => {
-          setMaking(asked.week);
+          setMaking(asked);
           onApplyNow(asked.moves);
           setConfirming(null);
         }}
@@ -155,11 +160,11 @@ export function RebalancePanel({
         icon={batch.week === null ? undefined : "check"}
         data-apply-now
         disabled={applying || batch.moves.some(busy)}
-        aria-busy={(applying && making === batch.week) || undefined}
+        aria-busy={(applying && making?.week === batch.week) || undefined}
         onClick={() => setConfirming(batch)}
         xstyle={styles.applyAll}
       >
-        {applying && making === batch.week
+        {applying && making?.week === batch.week
           ? `Making ${batchName(batch.week)} moves…`
           : batch.week === null
             ? "Make all of today's moves"
@@ -234,9 +239,13 @@ export function RebalancePanel({
           onReassign={onReassign}
           byWeek
           weekAction={(week, weekMoves) =>
-            week === nextWeek && weekMoves.length > 1 && batchAction({ week, moves: weekMoves })
+            running
+              ? week === running.week && batchAction(running)
+              : week === nextWeek && weekMoves.length > 1 && batchAction({ week, moves: weekMoves })
           }
-        />
+        >
+          {running && !runningWeekLeft && batchAction(running)}
+        </Horizon>
       </div>
     </Card>
   );

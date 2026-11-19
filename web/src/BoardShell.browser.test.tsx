@@ -455,6 +455,10 @@ describe("the rebalance panel", () => {
     const first = await server.next();
     expect(first.variables).toEqual({ issueId: "i-4", userId: "u-bruce" });
     first.answer(handedOver(rebalancing([], ahead.slice(1))));
+    // Week 1 is down to one move, but the batch is still running: its button says so.
+    await expect
+      .element(page.getByRole("button", { name: "Making this week's moves…" }))
+      .toBeDisabled();
     (await server.next()).answer(handedOver(rebalancing([], ahead.slice(2))));
 
     // Week 2 is the first left now, so it can go at once too.

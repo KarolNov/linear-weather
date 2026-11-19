@@ -216,6 +216,34 @@ describe("teamWeather", () => {
     });
   });
 
+  it("says when someone with overdue work is also under rain by load", () => {
+    const { team } = teamWeather(
+      [
+        { name: "Natasha", matrix: matrixOf(overdueDo, doIssue(9)) },
+        { name: "A", matrix: matrixOf(doIssue(6)) },
+        { name: "B", matrix: matrixOf(doIssue(6)) },
+        { name: "C", matrix: matrixOf(doIssue(6)) },
+      ],
+      "points",
+      TODAY,
+    );
+    // Average 28 / 4 = 7: Natasha at 1.43× would be under rain even without the overdue issue.
+    expect(team.reason).toBe("Natasha has overdue work; Natasha is under rain");
+  });
+
+  it("doesn't call nobody overloaded when a late load can't be measured", () => {
+    const { team } = teamWeather(
+      [
+        { name: "Natasha", matrix: matrixOf({ ...overdueDo, estimate: null }) },
+        { name: "A", matrix: matrixOf(doIssue(5)) },
+        { name: "B", matrix: matrixOf(doIssue(5)) },
+      ],
+      "points",
+      TODAY,
+    );
+    expect(team).toMatchObject({ kind: "storm", reason: "Natasha has overdue work" });
+  });
+
   it("is rainy when the worst is rain, naming everyone under it", () => {
     const { team } = teamWeather(
       [

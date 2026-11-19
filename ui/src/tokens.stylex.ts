@@ -130,6 +130,10 @@ export const media = stylex.defineConsts({
   dockedMotion: "@media (min-width: 1080px) and (prefers-reduced-motion: no-preference)",
   /** Touch screens fire :hover on tap and leave it stuck, so hover styles apply only with a mouse. */
   hover: "@media (hover: hover) and (pointer: fine)",
+  /** A phone's width: controls drop to icons, secondary text hides. */
+  phone: "@media (max-width: 639px)",
+  /** Wider than a phone; the complement of `phone`. */
+  abovePhone: "@media (min-width: 640px)",
   /** A finger, which needs bigger targets. */
   touch: "@media (pointer: coarse)",
 });

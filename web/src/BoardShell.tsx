@@ -186,7 +186,7 @@ function TeamBoard({
       }
       return next;
     });
-  // Today's moves are being made, one after another.
+  // A batch of moves (today's, or a week's) is being made, one after another.
   const [applying, setApplying] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   // Read out by screen readers; the board redrawing is the visible answer.
@@ -245,17 +245,18 @@ function TeamBoard({
   };
   // A failed change's message sits above the board, often out of sight of the card or panel it
   // came from: take the keyboard, and the view, there. An earlier change's word in the status
-  // would contradict it.
+  // would contradict it. Not when the change came from a form that stays open for a retry: the
+  // keyboard stays there, and the alert is still read out.
   const [failureFocus, setFailureFocus] = useState(false);
   useEffect(() => {
     if (!failureFocus) return;
     setFailureFocus(false);
     document.getElementById("board-failure")?.focus();
   }, [failureFocus]);
-  const changeFailed = (message: string) => {
+  const changeFailed = (message: string, takeFocus = true) => {
     setStatus("");
     setFailure(message);
-    setFailureFocus(true);
+    if (takeFocus) setFailureFocus(true);
   };
   // A suggestion's button goes once its move is made, so give the keyboard to the panel once the
   // board has redrawn, unless the PM went on to something else.
@@ -267,11 +268,12 @@ function TeamBoard({
     document.getElementById("rebalance-heading")?.focus();
   }, [panelFocus]);
   const refocusPanel = () => setPanelFocus(true);
-  /** Makes moves in Linear, one at a time; `all` when they're today's, made after a yes. */
+  /** Makes moves in Linear, one at a time; `all` when they're a batch (today's, or a week's),
+   * made after a yes. */
   const makeMoves = async (moves: Suggestion[], all: boolean) => {
     if (!team) return;
     const ids = moves.map(({ issue }) => issue.id);
-    // Only today's moves lock the panel; a single move answering mustn't unlock it mid-run.
+    // Only a batch locks the panel; a single move answering mustn't unlock it mid-run.
     if (all) setApplying(true);
     markPending(ids, true);
     setFailure(null);
@@ -312,7 +314,8 @@ function TeamBoard({
     const result = await client.addTimeOff(team.id, person.id, startsOn, endsOn);
     markPending([person.id], false);
     if (!result.ok) {
-      changeFailed(`Couldn't add ${person.name}'s time off. ${result.message}`);
+      // The form stays open with the dates in it, for another try.
+      changeFailed(`Couldn't add ${person.name}'s time off. ${result.message}`, false);
       return false;
     }
     if (showAnswer(result.team)) {
@@ -553,12 +556,15 @@ const weatherLegend: [Glyph, string][] = [
 ];
 
 const DOCKED = media.docked;
-const PHONE = "@media (max-width: 639px)";
+const PHONE = media.phone;
 const PANEL_WIDTH = "clamp(380px, 32vw, 460px)";
 
 const styles = stylex.create({
   // Clear of the sticky header when focus scrolls it into view.
-  failureFocus: { outline: "none", scrollMarginTop: "88px" },
+  failureFocus: {
+    outline: "none",
+    scrollMarginTop: "calc(var(--header-height, 52px) + 12px)",
+  },
   header: {
     position: "sticky",
     top: 0,
@@ -575,12 +581,12 @@ const styles = stylex.create({
     borderBottom: `1px solid ${colors.border}`,
   },
   brand: { display: "flex", alignItems: "center", gap: space.sm, minWidth: 0 },
-  workspace: { display: { default: "none", "@media (min-width: 640px)": "inline-flex" } },
+  workspace: { display: { default: "none", [media.abovePhone]: "inline-flex" } },
   account: { display: "flex", alignItems: "center", gap: space.xs, margin: 0 },
   viewerName: {
     fontWeight: 500,
     fontSize: "0.8125rem",
-    display: { default: "none", "@media (min-width: 640px)": "inline" },
+    display: { default: "none", [media.abovePhone]: "inline" },
   },
   main: {
     display: "flex",

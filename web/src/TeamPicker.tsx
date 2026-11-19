@@ -169,7 +169,8 @@ const styles = stylex.create({
   },
   menu: {
     position: "absolute",
-    insetInlineEnd: 0,
+    // The picker leads its row, flush with the left gutter on phones: open rightwards from it.
+    insetInlineStart: 0,
     top: "calc(100% + 8px)",
     zIndex: 2,
     minWidth: "240px",

@@ -118,6 +118,10 @@ export const motion = stylex.defineVars({
 });
 
 export const media = stylex.defineConsts({
+  /** Wide enough for the rebalance panel to dock beside the people, who keep two columns. */
+  docked: "@media (min-width: 1080px)",
+  /** Docked, with motion allowed: the panel slides in from the edge it's docked to. */
+  dockedMotion: "@media (min-width: 1080px) and (prefers-reduced-motion: no-preference)",
   /** Touch screens fire :hover on tap and leave it stuck, so hover styles apply only with a mouse. */
   hover: "@media (hover: hover) and (pointer: fine)",
   /** A finger, which needs bigger targets. */

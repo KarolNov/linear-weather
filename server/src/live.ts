@@ -29,8 +29,10 @@ export function msUntilNextUtcDay(now: number): number {
 /**
  * Yields each time a team's board should be read again, until it's returned. Changes close
  * together yield once, and so do changes that come while the last update is still being read.
- * Without `changes` only new days do. Ends when it stops hearing the team's changes, so the
- * client starts over rather than miss them.
+ * Without `changes` only new days do. Once listening, it yields once (settled like a change) for
+ * whatever changed before it could hear: since the board was read, or while the client
+ * reconnected. Ends when it stops hearing the team's changes, so the client starts over rather
+ * than miss them.
  */
 export function teamUpdates(
   teamId: string,
@@ -59,7 +61,10 @@ export function teamUpdates(
 
     let unlisten = () => {};
     try {
-      if (changes) unlisten = await changes.listen(teamId, { changed, lost: () => stop() });
+      if (changes) {
+        unlisten = await changes.listen(teamId, { changed, lost: () => stop() });
+        changed();
+      }
     } catch (error) {
       stop(error);
     }

@@ -50,6 +50,14 @@ describe("teamUpdates", () => {
     await updates.return(undefined);
   });
 
+  it("yields once as it starts listening, for changes made before it could hear", async () => {
+    const fake = fakeChanges();
+    const updates = teamUpdates("team-1", fake.changes, quick);
+    expect(await yieldsWithin(updates.next(), 200)).toBe(true);
+    expect(await yieldsWithin(updates.next(), 60)).toBe(false);
+    await updates.return(undefined);
+  });
+
   it("keeps one update waiting while the last is still being read", async () => {
     const fake = fakeChanges();
     const updates = teamUpdates("team-1", fake.changes, quick);

@@ -308,6 +308,16 @@ describe("off localhost", () => {
       const res = await listen(DEMO_TEAM.id, "sha256:0000");
       expect(res.status).toBe(400);
     });
+
+    it("won't run a mutation's id over GET, which a cross-site link could send", async () => {
+      const params = new URLSearchParams({
+        documentId: CURRENT_DOCUMENT_IDS.OverrideQuadrant,
+        variables: JSON.stringify({ issueId: "demo-issue-avg-1", quadrant: "DROP" }),
+      });
+      const res = await app.request(`${deployed}&${params}`, {}, env);
+      expect(res.status).toBe(405);
+      expect(res.headers.get("set-cookie")).toBeNull();
+    });
   });
 
   it("doesn't serve GraphiQL", async () => {

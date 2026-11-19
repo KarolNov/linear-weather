@@ -399,7 +399,7 @@ type SetCapacitySuccess {
 
 type Subscription {
   """
-  The team's board each time it may read differently: an issue changed in Linear (as its webhooks tell us), someone changed the board here, or a new day began, which moves due dates and the forecast along. Changes close together answer once. Nothing comes at first: the board is what a query just read.
+  The team's board each time it may read differently: an issue changed in Linear (as its webhooks tell us), someone changed the board here, or a new day began, which moves due dates and the forecast along. Changes close together answer once. The first comes a moment after subscribing, for whatever changed since the board was read. Once you can no longer see the team (signed out, say), that update is the last.
   """
   teamWeatherUpdated(teamId: ID!): TeamWeatherUpdate!
 }

@@ -6,6 +6,7 @@ import { auth } from "./auth";
 import { DEMO_COOKIE, DEMO_COOKIE_MAX_AGE } from "./db/demo-cookie";
 import { DemoStore } from "./db/demo-store";
 import { Store } from "./db/store";
+import type { CalendarDate } from "./domain/quadrant";
 import { useQueryLimits } from "./limits";
 import {
   LinearAuthError,
@@ -59,8 +60,9 @@ export const app = new Hono<{ Bindings: Env }>()
       return c.text("Send GraphQL as application/json", 415);
     }
     // The demo never touches D1: each visitor's changes live in their own cookie.
-    const demo = isDemo(c) ? DemoStore.fromCookie(getCookie(c, DEMO_COOKIE), utcToday()) : null;
-    const response = await yoga.fetch(c.req.raw, requestContext(c, demo));
+    const today = utcToday();
+    const demo = isDemo(c) ? DemoStore.fromCookie(getCookie(c, DEMO_COOKIE), today) : null;
+    const response = await yoga.fetch(c.req.raw, requestContext(c, demo, today));
     if (!demo?.changed) return response;
     const headers = new Headers(response.headers);
     headers.append("set-cookie", demoCookie(c, demo));
@@ -68,7 +70,11 @@ export const app = new Hono<{ Bindings: Env }>()
   });
 
 /** What a request's resolvers share. A subscription renews it for each update. */
-function requestContext(c: AppContext, demo: DemoStore | null): GraphQLContext {
+function requestContext(
+  c: AppContext,
+  demo: DemoStore | null,
+  today: CalendarDate,
+): GraphQLContext {
   // Resolved on first use, so queries that don't touch Linear skip the session lookup.
   let workspace: Promise<Workspace | null> | undefined;
   const placements = () => new Placements(demo ?? new Store(c.env.DB));
@@ -78,7 +84,7 @@ function requestContext(c: AppContext, demo: DemoStore | null): GraphQLContext {
     workspace: () =>
       (workspace ??= linearSource(c, demo).then((linear) => linear && new Workspace(linear))),
     placements: placements(),
-    today: utcToday(),
+    today,
     teamUpdates: (teamId) => teamUpdates(teamId, channels),
     teamChanged: (teamId) => {
       if (!channels) return;
@@ -93,9 +99,12 @@ function requestContext(c: AppContext, demo: DemoStore | null): GraphQLContext {
       }
     },
     renew: () => {
+      context.today = utcToday();
+      // The demo's store judges time off by the day it was read on. A subscription changes
+      // nothing, so the visitor's cookie still holds everything.
+      if (demo) demo = DemoStore.fromCookie(getCookie(c, DEMO_COOKIE), context.today);
       workspace = undefined;
       context.placements = placements();
-      context.today = utcToday();
     },
   };
   return context;

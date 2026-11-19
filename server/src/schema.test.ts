@@ -1675,11 +1675,15 @@ describe("teamWeatherUpdated", () => {
   /** Subscribes as someone signed in to the demo; `update()` is the team changing. */
   async function subscribeTo(teamId: string, { signedIn = true } = {}) {
     let update: (() => void) | undefined;
-    const updates = new Repeater<true>((push) => {
+    let listening = true;
+    const updates = new Repeater<true>(async (push, stop) => {
       update = () => void push(true);
+      await stop;
+      listening = false;
     });
     const days = ["2026-10-19", "2026-10-20"];
-    const newWorkspace = () => (signedIn ? new Workspace(new DemoLinear({ today })) : null);
+    let session = signedIn;
+    const newWorkspace = () => (session ? new Workspace(new DemoLinear({ today })) : null);
     let workspace = newWorkspace();
     const contextValue: GraphQLContext = {
       workspace: async () => workspace,
@@ -1698,7 +1702,14 @@ describe("teamWeatherUpdated", () => {
       variableValues: { teamId },
       contextValue,
     });
-    return { result, update: () => update?.() };
+    return {
+      result,
+      update: () => update?.(),
+      signOut: () => {
+        session = false;
+      },
+      listening: () => listening,
+    };
   }
 
   /** The next update, once the team changes. Nothing listens until the update is asked for. */
@@ -1728,6 +1739,26 @@ describe("teamWeatherUpdated", () => {
     expect(second.teamWeatherUpdated.today).toBe("2026-10-20");
     expect(second.teamWeatherUpdated.team?.rules.dropAlertPercent).toBe(25);
     await result.return?.();
+  });
+
+  it("ends after the first update that finds the viewer signed out", async () => {
+    const { result, update, signOut } = await subscribeTo(DEMO_TEAM.id);
+    if (!(Symbol.asyncIterator in result)) throw new Error("expected a subscription");
+    signOut();
+    const last: ExecutionResult = (await updated(result, update)).value;
+    expect((last.data as Update).teamWeatherUpdated.team).toBeNull();
+    expect(last.errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
+    expect(await result.next()).toEqual({ done: true, value: undefined });
+  });
+
+  it("stops listening when returned while waiting for an update", async () => {
+    const { result, listening } = await subscribeTo(DEMO_TEAM.id);
+    if (!(Symbol.asyncIterator in result)) throw new Error("expected a subscription");
+    const waiting = result.next();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await result.return?.();
+    expect(await waiting).toEqual({ done: true, value: undefined });
+    expect(listening()).toBe(false);
   });
 
   it("refuses a team the viewer can't see", async () => {
@@ -1772,6 +1803,35 @@ describe("changes made on the board", () => {
     expect(
       await change(OVERRIDE_MUTATION, { issueId: "demo-issue-avg-1", quadrant: "DROP" }),
     ).toEqual([DEMO_TEAM.id]);
+  });
+
+  it("tell every team when someone's capacity or time off changes, since it counts on each", async () => {
+    const everyTeam = [DEMO_TEAM.id, DEMO_OPS_TEAM.id].sort();
+    expect(
+      (
+        await change(SET_CAPACITY_MUTATION, {
+          teamId: DEMO_TEAM.id,
+          userId: "demo-user-tony",
+          factor: 0.5,
+        })
+      ).sort(),
+    ).toEqual(everyTeam);
+    expect(
+      (
+        await change(ADD_TIME_OFF_MUTATION, {
+          teamId: DEMO_TEAM.id,
+          userId: "demo-user-tony",
+          startsOn: "2026-10-18",
+          endsOn: "2026-10-23",
+        })
+      ).sort(),
+    ).toEqual(everyTeam);
+  });
+
+  it("leave changes made in Linear to its webhooks", async () => {
+    expect(
+      await change(REASSIGN_MUTATION, { issueId: "demo-issue-avg-10", userId: "demo-user-wanda" }),
+    ).toEqual([]);
   });
 
   it("don't when nothing changed", async () => {

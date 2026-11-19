@@ -112,7 +112,7 @@ function teamHref(team: Team, demo?: boolean): string {
 }
 
 const styles = stylex.create({
-  picker: { position: "relative" },
+  picker: { position: "relative", minWidth: 0, maxWidth: "100%" },
   trigger: {
     display: "flex",
     alignItems: "center",
@@ -146,7 +146,7 @@ const styles = stylex.create({
     transform: { default: null, ":active": "scale(0.98)" },
     outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
     outlineOffset: "1px",
-    maxWidth: "min(320px, 80vw)",
+    maxWidth: "min(320px, 100%)",
   },
   triggerName: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   chevron: {

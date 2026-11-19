@@ -359,13 +359,24 @@ function TeamBoard({
           <TeamForecast weather={team.weather} />
           {team.backlogRot.rotting && <BacklogRotFlag reason={team.backlogRot.reason} />}
         </div>
+        {/* One toolbar row: which team first, since it sets everything else, then what to do.
+            On phones the secondary actions keep only their icons, so the row doesn't wrap. */}
         <div {...stylex.props(styles.controls)}>
+          {teams.length > 1 && (
+            <div {...stylex.props(styles.pickerSlot)}>
+              <TeamPicker teams={teams} selected={team} demo={demo} />
+            </div>
+          )}
           {withIssues.length > 0 && (
             <Button
               icon={allExpanded ? "collapse" : "expand"}
+              title={allExpanded ? "Collapse all" : "Expand all"}
               onClick={() => setExpanded(new Set(allExpanded ? [] : withIssues))}
+              xstyle={styles.iconOnPhone}
             >
-              {allExpanded ? "Collapse all" : "Expand all"}
+              <span {...stylex.props(styles.labelOnPhone)}>
+                {allExpanded ? "Collapse all" : "Expand all"}
+              </span>
             </Button>
           )}
           <Button
@@ -385,14 +396,15 @@ function TeamBoard({
           </Button>
           <Button
             icon="sliders"
+            title="Sorting rules"
             selected={editingRules}
             aria-expanded={editingRules}
             aria-controls={editingRules ? "rules-panel" : undefined}
             onClick={() => setEditingRules(!editingRules)}
+            xstyle={styles.iconOnPhone}
           >
-            Sorting rules
+            <span {...stylex.props(styles.labelOnPhone)}>Sorting rules</span>
           </Button>
-          {teams.length > 1 && <TeamPicker teams={teams} selected={team} demo={demo} />}
         </div>
       </div>
       {editingRules && (
@@ -529,6 +541,7 @@ const weatherLegend: [Glyph, string][] = [
 
 // Wide enough for the people beside the panel to keep two columns.
 const DOCKED = "@media (min-width: 1080px)";
+const PHONE = "@media (max-width: 639px)";
 const PANEL_WIDTH = "clamp(380px, 32vw, 460px)";
 
 const styles = stylex.create({
@@ -622,7 +635,35 @@ const styles = stylex.create({
     alignItems: "start",
     gap: space.sm,
   },
-  controls: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" },
+  controls: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    width: { default: null, [PHONE]: "100%" },
+    minWidth: 0,
+  },
+  // The picker shrinks first, and on phones takes the row's spare width, pushing the actions
+  // to the right edge.
+  pickerSlot: {
+    display: "flex",
+    minWidth: 0,
+    flexShrink: 1,
+    marginInlineEnd: { default: "6px", [PHONE]: "auto" },
+  },
+  // A square icon button on phones; its label stays for screen readers and in the title.
+  iconOnPhone: {
+    flexShrink: 0,
+    aspectRatio: { default: null, [PHONE]: "1" },
+    paddingInline: { default: null, [PHONE]: 0 },
+  },
+  labelOnPhone: {
+    position: { default: null, [PHONE]: "absolute" },
+    width: { default: null, [PHONE]: "1px" },
+    height: { default: null, [PHONE]: "1px" },
+    overflow: { default: null, [PHONE]: "hidden" },
+    clipPath: { default: null, [PHONE]: "inset(50%)" },
+    whiteSpace: "nowrap",
+  },
   failure: {
     display: "flex",
     flexWrap: "wrap",

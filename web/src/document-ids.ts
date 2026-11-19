@@ -2,14 +2,14 @@
 // Each operation's trusted-document id, by name: what the board sends instead of the query.
 
 export const DOCUMENT_IDS = {
-  "AddTimeOff": "sha256:efe1e7d786cd093e75b2f47716296573f20d67d134921b55778567f567ded193",
-  "Board": "sha256:cb7ab03ad9076abb5e582b4bd6b80df02056d419117f8db76b2960c5ec39291d",
-  "ClearOverride": "sha256:0b9470e7d6f75fbc745b8b1f977d250f9f48ceb2d08bd16fd6ce0f53245d418e",
-  "OverrideQuadrant": "sha256:d2eac7072c4ae47ab5b3d73ad1f06d983744986ed59d821ddf072133d47df653",
-  "ReassignIssue": "sha256:c268f8768c4a3233832f2dc7708bcabed663a79962641c885594d763ad0530b0",
-  "RemoveTimeOff": "sha256:8a403fdb0c5bf981efe6403cb9acca774d4ff6bfa2911b9df753d19261480fee",
-  "SetCapacity": "sha256:7d4cfeb97d23ee49f422c255916d684b1e8f11632209c8e2f7b698fa37d64d27",
-  "Team": "sha256:f7e269f8e0c0ea21e9c5560dadeaa7a92c4fed741c752615439b2216343c9794",
-  "TeamWeather": "sha256:cab8e53a53e6e415cef81f0cabddd6216744fc9a8b909786b3145912334a131a",
-  "UpdateRules": "sha256:d2f971b93fed204ca81d6c0fd186e729474df728268eb74e66f61a3ff498cc66"
+  "AddTimeOff": "sha256:0e2f050563418edb77d7ff017830a07a4276fdff55ab3e67373ada14a24b0695",
+  "Board": "sha256:4513a88a631f6de4573bce14f4b3e54b9f78de3d8523fe72f1c6b35196523459",
+  "ClearOverride": "sha256:1665541d9c8451ffff98ff7c635b20b5ba77b8bf5e7c7ff95e2fffaae1e9e4da",
+  "OverrideQuadrant": "sha256:9df477fb27bb546e4eb659ecd5db2d1b9c035f56a9657d7d7b1542eb5c430ea4",
+  "ReassignIssue": "sha256:1e79d89ca435e0d825ae5dbc2d2a9d49883b1375ea54a7cee606e83504d53aff",
+  "RemoveTimeOff": "sha256:abb824e96b264be50ad17e7d1a9b03696ae058c8d03f921fb395a064e5a7b4c5",
+  "SetCapacity": "sha256:feb7639a97bdb74853a6c042fc61255fcc0529d935179e548b0a7fa7d81e98c8",
+  "Team": "sha256:eff3a619fd30a5b8925198cfbd080eeee725630282c2d19972f22057cfafc8de",
+  "TeamWeather": "sha256:033a02e80e855eb1f754625c5b9ef9483dd6f990cd3a7703b49a155bf08d9bc7",
+  "UpdateRules": "sha256:aac21a0b2915f86610e2e826c1bd3bf7b9800fa7ef287f85c46cd01c70acfd45"
 } as const;

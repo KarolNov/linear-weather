@@ -44,6 +44,11 @@ describe("rebalance now", () => {
     expect(suggestions[0]?.reason).toBe(
       "Ana goes from 2.0× to 1.67× the team average, Ben from 0.33× to 0.67×",
     );
+    // The same numbers, for the board to lay out as before → after.
+    expect(suggestions[0]).toMatchObject({
+      fromLoad: { before: 2, after: 1.67 },
+      toLoad: { before: 0.33, after: 0.67 },
+    });
     expect(suggestions.every(({ week }) => week === null)).toBe(true);
   });
 
@@ -377,6 +382,9 @@ describe("rebalance with time off", () => {
       fromWeather: "away",
       toWeather: "storm",
       reason: "Ana is away until Oct 20; Cy goes from 0.0× to 1.0× the team average",
+      // Away, Ana has no load to compare; Cy had no urgent work before.
+      fromLoad: null,
+      toLoad: { before: 0, after: 1 },
     });
   });
 

@@ -145,8 +145,11 @@ function handOver(n: number, week: number | null = null): Suggestion {
     from: tony,
     to: bruce,
     week,
+    fromWeather: "CLOUDY",
     toWeather: "SUNNY",
     reason: "Tony Stark goes from 2× to 1× the team average",
+    fromLoad: { before: 2, after: 1 },
+    toLoad: { before: 0, after: 1 },
   };
 }
 
@@ -196,7 +199,7 @@ afterEach(async () => {
 const sky = () => root.querySelector<HTMLElement>("[data-weather]");
 /** The chip under the team's name with its weather and why. */
 const teamForecast = () =>
-  root.querySelector('[aria-label^="Team weather"]')?.parentElement?.textContent;
+  root.querySelector('[aria-label^="Team weather"]')?.closest("p")?.textContent;
 
 /** Opens Tony's list and moves AVG-1 to Schedule through its menu. */
 async function moveReactorToSchedule() {

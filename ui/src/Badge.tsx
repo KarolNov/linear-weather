@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren } from "preact";
-import { colors, radii, space } from "./tokens.stylex";
+import { colors, radii, space, weatherTones } from "./tokens.stylex";
 
 export type BadgeTone = "neutral" | "sun" | "rain" | "storm" | "fog" | "onSky";
 
@@ -27,16 +27,10 @@ const styles = stylex.create({
     whiteSpace: "nowrap",
   },
   neutral: { color: colors.inkMuted, backgroundColor: "rgba(29, 26, 51, 0.07)" },
-  sun: { color: "#8a5a00", backgroundColor: `color-mix(in srgb, ${colors.sun} 25%, transparent)` },
-  rain: {
-    color: "#1f4fa8",
-    backgroundColor: `color-mix(in srgb, ${colors.rain} 16%, transparent)`,
-  },
-  storm: {
-    color: "#5428a8",
-    backgroundColor: `color-mix(in srgb, ${colors.storm} 16%, transparent)`,
-  },
-  fog: { color: "#555b70", backgroundColor: `color-mix(in srgb, ${colors.fog} 22%, transparent)` },
+  sun: { color: weatherTones.sunInk, backgroundColor: weatherTones.sunFill },
+  rain: { color: weatherTones.rainInk, backgroundColor: weatherTones.rainFill },
+  storm: { color: weatherTones.stormInk, backgroundColor: weatherTones.stormFill },
+  fog: { color: weatherTones.fogInk, backgroundColor: weatherTones.fogFill },
   onSky: {
     color: colors.inkOnSky,
     backgroundColor: colors.surfaceOnSky,

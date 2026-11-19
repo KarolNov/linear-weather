@@ -1,13 +1,14 @@
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Avatar, Card, VisuallyHidden, WeatherIcon, weatherLabels } from "ui";
-import { colors, fonts, media, motion, radii, space } from "ui/tokens.stylex";
+import { colors, fonts, media, motion, radii, space, weatherTones } from "ui/tokens.stylex";
 import {
   type BoardIssue,
   CAPACITIES,
   type CalendarDate,
   total as countIssues,
   describeCapacity,
+  describeDay,
   describeWeek,
   type ForecastWeek,
   type PersonMatrix as Person,
@@ -16,7 +17,7 @@ import {
   type TimeOff,
 } from "./board";
 import { IssueCard } from "./IssueCard";
-import { entrance } from "./motion";
+import { entrance, useChanged } from "./motion";
 import { quadrantFill, quadrantInfo } from "./quadrants";
 import { TimeOffList } from "./TimeOff";
 import { weatherIcon } from "./weather";
@@ -56,6 +57,7 @@ export function PersonMatrix({
   xstyle,
 }: PersonMatrixProps) {
   const [only, setOnly] = useState<Quadrant | null>(null);
+  const weatherChanged = useChanged(weather?.kind);
   // A quadrant the PM just moved the last issue out of shows every quadrant again, and stays
   // unpicked, so moving an issue back in later doesn't hide the rest.
   if (only !== null && matrix.counts[only] === 0) setOnly(null);
@@ -172,7 +174,11 @@ export function PersonMatrix({
           </span>
         </div>
         {weather && (
-          <span title={weather.reason} {...stylex.props(styles.weather)}>
+          <span
+            key={weather.kind}
+            title={weather.reason}
+            {...stylex.props(styles.weather, weatherChanged && entrance.changed)}
+          >
             <WeatherIcon
               weather={weatherIcon[weather.kind]}
               size={36}
@@ -219,7 +225,7 @@ export function PersonMatrix({
               )}
             >
               <span {...stylex.props(styles.cellName)}>{quadrantInfo[q].name}</span>
-              <span {...stylex.props(styles.count)}>{count}</span>
+              <ChangedCount count={count} />
             </button>
           );
         })}
@@ -312,6 +318,16 @@ function capacityChoices(current: number): number[] {
  * The weeks ahead as a strip of small icons. Each explains itself on hover, and on a press for
  * keyboards, touch and screen readers.
  */
+/** A quadrant's count, keyed by its value so a move settles the number it changed into place. */
+function ChangedCount({ count }: { count: number }) {
+  const changed = useChanged(count);
+  return (
+    <span key={count} {...stylex.props(styles.count, changed && entrance.changed)}>
+      {count}
+    </span>
+  );
+}
+
 function Forecast({ name, weeks }: { name: string; weeks: ForecastWeek[] }) {
   const [picked, setPicked] = useState<CalendarDate | null>(null);
   const explain = ({ endsOn, weather, summary, turningUrgent }: ForecastWeek) => {
@@ -325,6 +341,7 @@ function Forecast({ name, weeks }: { name: string; weeks: ForecastWeek[] }) {
       <ol aria-label={`${name}'s forecast`} {...stylex.props(styles.forecast)}>
         {weeks.map((week) => {
           const explained = explain(week);
+          const icon = weatherIcon[week.weather.kind];
           return (
             <li key={week.endsOn} {...stylex.props(styles.weekItem)}>
               <button
@@ -333,10 +350,15 @@ function Forecast({ name, weeks }: { name: string; weeks: ForecastWeek[] }) {
                 aria-label={explained}
                 aria-pressed={week.endsOn === picked}
                 onClick={() => setPicked(week.endsOn === picked ? null : week.endsOn)}
-                {...stylex.props(styles.week)}
+                {...stylex.props(
+                  styles.week,
+                  weekTones[icon],
+                  week.endsOn === picked && styles.weekPicked,
+                )}
               >
-                <WeatherIcon weather={weatherIcon[week.weather.kind]} size={22} label="" />
-                <span {...stylex.props(styles.weekLabel)}>{describeWeek(week.endsOn)}</span>
+                <WeatherIcon weather={icon} size={30} label="" />
+                {/* The tile is labelled in full; the date alone is enough to see. */}
+                <span {...stylex.props(styles.weekLabel)}>{describeDay(week.endsOn)}</span>
               </button>
             </li>
           );
@@ -396,24 +418,29 @@ const styles = stylex.create({
     listStyle: "none",
   },
   weekItem: { minWidth: 0 },
+  // Each week a tile in its weather's colour, so the strip reads as a forecast at a glance.
   week: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "2px",
+    gap: "3px",
     width: "100%",
-    padding: "2px",
+    paddingTop: "6px",
+    paddingBottom: "5px",
+    paddingInline: "2px",
     borderWidth: 0,
     borderRadius: radii.sm,
-    backgroundColor: {
-      default: "transparent",
-      [media.hover]: { default: "transparent", ":hover": "rgba(29, 26, 51, 0.06)" },
-    },
     font: "inherit",
     cursor: "pointer",
+    boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.5)",
+    transitionProperty: "transform, box-shadow",
+    transitionDuration: `${motion.press}, ${motion.hover}`,
+    transitionTimingFunction: `${motion.easeOut}, ease`,
+    transform: { default: null, ":active": "scale(0.96)" },
     outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
   },
-  weekLabel: { fontSize: "0.6875rem", color: colors.inkMuted, whiteSpace: "nowrap" },
+  weekPicked: { boxShadow: `inset 0 0 0 1.5px ${colors.ink}` },
+  weekLabel: { fontSize: "0.6875rem", fontWeight: 600, whiteSpace: "nowrap" },
   weekNews: { marginTop: space.xs, marginBottom: 0, fontSize: "0.8125rem", color: colors.inkMuted },
   weekNewsEmpty: { display: "none" },
   name: {
@@ -459,12 +486,20 @@ const styles = stylex.create({
     transform: { default: null, ":active": "scale(0.97)" },
     opacity: { default: 1, [media.hover]: { default: 1, ":hover": 0.92 } },
   },
-  // Kept in place but faded, so every person's grid reads the same at a glance.
-  empty: { opacity: 0.45 },
+  // Kept in place but drained of colour, so every person's grid reads the same at a glance.
+  // Muted ink on a pale well rather than faded colour, which fell below AA contrast.
+  empty: {
+    color: colors.inkMuted,
+    backgroundImage: "none",
+    backgroundColor: "rgba(29, 26, 51, 0.05)",
+    boxShadow: "inset 0 0 0 1px rgba(29, 26, 51, 0.06)",
+  },
   dimmed: { opacity: 0.4 },
   picked: { boxShadow: `0 0 0 2px ${colors.surfaceStrong}, 0 0 0 4px ${colors.ink}` },
   cellName: { fontSize: "0.8125rem", fontWeight: 700 },
   count: {
+    // A box, so the change tick can move it.
+    display: "inline-block",
     fontFamily: fonts.display,
     fontSize: "1.375rem",
     fontWeight: 800,
@@ -535,4 +570,14 @@ const styles = stylex.create({
     flexDirection: "column",
     gap: space.xs,
   },
+});
+
+// A forecast week's tile: its weather's fill, with ink that reads on it.
+const weekTones = stylex.create({
+  sun: { color: weatherTones.sunInk, backgroundColor: weatherTones.sunFill },
+  partly: { color: weatherTones.partlyInk, backgroundColor: weatherTones.partlyFill },
+  rain: { color: weatherTones.rainInk, backgroundColor: weatherTones.rainFill },
+  storm: { color: weatherTones.stormInk, backgroundColor: weatherTones.stormFill },
+  fog: { color: weatherTones.fogInk, backgroundColor: weatherTones.fogFill },
+  away: { color: weatherTones.awayInk, backgroundColor: weatherTones.awayFill },
 });

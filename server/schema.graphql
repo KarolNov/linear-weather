@@ -132,6 +132,17 @@ type LinearRateLimited implements Error {
   resetAt: String
 }
 
+"""
+Someone's urgent load as a multiple of their fair share, before and after a move.
+"""
+type LoadChange {
+  """After the move."""
+  after: Float!
+
+  """Before the move; null when there was no share to compare with."""
+  before: Float
+}
+
 """What urgent load is counted in."""
 enum LoadMetric {
   """Issues, whatever their size."""
@@ -409,6 +420,11 @@ type Suggestion {
   """Who holds it now."""
   from: User!
 
+  """
+  The giver's load against their fair share, before and after; null when away.
+  """
+  fromLoad: LoadChange
+
   """The giver's weather after the move, now or in that week."""
   fromWeather: WeatherKind!
   issue: Issue!
@@ -420,6 +436,11 @@ type Suggestion {
 
   """Who should take it."""
   to: User!
+
+  """
+  The taker's load against their fair share, before and after; null with no share to compare.
+  """
+  toLoad: LoadChange
 
   """The taker's weather after the move, now or in that week."""
   toWeather: WeatherKind!

@@ -25,7 +25,13 @@ import {
   type QuadrantRules,
   type RuleProblem,
 } from "./domain/quadrant";
-import { type Horizon, rebalanceAhead, rebalanceNow, type Suggestion } from "./domain/rebalance";
+import {
+  type Horizon,
+  type LoadChange,
+  rebalanceAhead,
+  rebalanceNow,
+  type Suggestion,
+} from "./domain/rebalance";
 import { MAX_TIME_OFF, parseTimeOff, staffingOn, type TimeOff, upcoming } from "./domain/time-off";
 import {
   DEFAULT_THRESHOLDS,
@@ -736,6 +742,17 @@ const HorizonEnum = builder.enumType("Horizon", {
   } as const,
 });
 
+const LoadChangeRef = builder.objectRef<LoadChange>("LoadChange").implement({
+  description: "Someone's urgent load as a multiple of their fair share, before and after a move.",
+  fields: (t) => ({
+    before: t.exposeFloat("before", {
+      nullable: true,
+      description: "Before the move; null when there was no share to compare with.",
+    }),
+    after: t.exposeFloat("after", { description: "After the move." }),
+  }),
+});
+
 const SuggestionRef = builder.objectRef<Suggestion<UserModel, TeamIssue>>("Suggestion").implement({
   description: "Hand one issue from one person to another to even out urgent load.",
   fields: (t) => ({
@@ -757,6 +774,17 @@ const SuggestionRef = builder.objectRef<Suggestion<UserModel, TeamIssue>>("Sugge
     reason: t.exposeString("reason", {
       description:
         'How the move evens things out, e.g. "Ana goes from 2.1× to 1.4× the team average, Ben from 0.5× to 1.1×".',
+    }),
+    fromLoad: t.expose("fromLoad", {
+      type: LoadChangeRef,
+      nullable: true,
+      description: "The giver's load against their fair share, before and after; null when away.",
+    }),
+    toLoad: t.expose("toLoad", {
+      type: LoadChangeRef,
+      nullable: true,
+      description:
+        "The taker's load against their fair share, before and after; null with no share to compare.",
     }),
   }),
 });

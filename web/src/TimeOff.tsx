@@ -105,10 +105,10 @@ export function TimeOffList({ name, timeOff, today, onAdd, onRemove, pending }: 
             />
           </label>
           <div {...stylex.props(styles.actions)}>
-            <Button type="submit" variant="quiet" disabled={pending}>
+            <Button type="submit" size="sm" variant="primary" disabled={pending}>
               Add
             </Button>
-            <Button variant="quiet" onClick={() => setAdding(false)}>
+            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
               Cancel
             </Button>
           </div>

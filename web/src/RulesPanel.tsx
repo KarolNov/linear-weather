@@ -234,11 +234,11 @@ export function RulesPanel({ teamName, rules, onSave, onClose }: RulesPanelProps
         )}
 
         <div {...stylex.props(styles.actions)}>
-          <Button type="submit" disabled={saving}>
+          <Button type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving…" : "Save rules"}
           </Button>
           {/* Once sent, the save can't be called back, so Cancel waits for it. */}
-          <Button variant="quiet" onClick={onClose} disabled={saving}>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
         </div>

@@ -95,8 +95,11 @@ const nowMove: Suggestion = {
   from: tony,
   to: wanda,
   week: null,
+  fromWeather: "STORM",
   toWeather: "SUNNY",
   reason: "Tony Stark goes from 2.75× to 2.5× the team average, Wanda Maximoff from 0.0× to 0.25×",
+  fromLoad: { before: 2.75, after: 2.5 },
+  toLoad: { before: 0, after: 0.25 },
 };
 
 const forecastMove: Suggestion = {
@@ -111,8 +114,11 @@ const forecastMove: Suggestion = {
   from: tony,
   to: wanda,
   week: 3,
+  fromWeather: "RAIN",
   toWeather: "CLOUDY",
   reason: "Tony Stark goes from 2.0× to 1.5× the team average, Wanda Maximoff from 0.5× to 1.0×",
+  fromLoad: { before: 2, after: 1.5 },
+  toLoad: { before: 0.5, after: 1 },
 };
 
 const defaultTeam: BoardData["team"] = {
@@ -350,7 +356,8 @@ describe("web worker", () => {
   it("offers rebalancing, counting the moves it would suggest", async () => {
     const { bindings } = serverReturning(fury);
     const page = await (await app.request("/", {}, bindings)).text();
-    expect(page).toContain("Rebalance · 2");
+    // The count sits in its own pill, after a pause for screen readers.
+    expect(page).toMatch(/Rebalance<span[^>]*>:<\/span><span[^>]*>2<\/span>/);
   });
 
   it("lists moves for now and for the forecast, each with the taker's weather after", () => {

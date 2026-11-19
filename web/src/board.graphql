@@ -126,8 +126,17 @@ fragment Suggestion on Suggestion {
     avatarUrl
   }
   week
+  fromWeather
   toWeather
   reason
+  fromLoad {
+    before
+    after
+  }
+  toLoad {
+    before
+    after
+  }
 }
 
 fragment BoardIssue on Issue {

@@ -1,4 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
+import { useId } from "preact/hooks";
 import { colors } from "./tokens.stylex";
 
 /** A sky's weather: what a whole board can be under. */
@@ -33,6 +34,9 @@ export function WeatherIcon({
   size = 32,
   label = weatherLabels[weather],
 }: WeatherIconProps) {
+  // Gradients are looked up by id, and an icon can appear many times on a page.
+  const id = useId();
+  const ref = (name: string) => `url(#${id}-${name})`;
   return (
     <svg
       viewBox="0 0 48 48"
@@ -43,47 +47,122 @@ export function WeatherIcon({
       aria-hidden={label ? undefined : true}
       {...stylex.props(styles.icon, stylex.defaultMarker())}
     >
-      {weather === "sun" && <Sun cx={24} cy={24} r={9} />}
+      <Defs id={id} weather={weather} />
+      {weather === "sun" && <Sun cx={24} cy={24} r={9} fill={ref} />}
       {weather === "partly" && (
         <>
-          <Sun cx={17} cy={17} r={7} />
-          <Cloud y={8} />
+          <Sun cx={18} cy={17} r={7} fill={ref} />
+          <Cloud x={3} y={7} scale={0.92} fill={ref("cloud")} />
         </>
       )}
       {weather === "rain" && (
         <>
-          <Cloud y={-2} dark />
-          <g {...stylex.props(styles.rain)}>
-            <path d="M17 36l-2 5" {...stylex.props(styles.drop)} />
-            <path d="M25 36l-2 5" {...stylex.props(styles.drop, styles.delay1)} />
-            <path d="M33 36l-2 5" {...stylex.props(styles.drop, styles.delay2)} />
+          <g {...stylex.props(styles.rain)} fill={ref("drop")}>
+            <path d={drop(16, 34)} {...stylex.props(styles.drop)} />
+            <path d={drop(24, 37)} {...stylex.props(styles.drop, styles.delay1)} />
+            <path d={drop(32, 34)} {...stylex.props(styles.drop, styles.delay2)} />
           </g>
+          <Cloud x={0} y={-4} fill={ref("cloud")} />
         </>
       )}
       {weather === "storm" && (
         <>
           {/* Drawn first, so the cloud covers its top and it strikes from underneath. */}
-          <path d="M26 32l-6 8h5l-3 7 8-10h-5l3-5z" {...stylex.props(styles.bolt, styles.flash)} />
-          <Cloud y={-2} dark />
+          <path
+            d="M26.5 27l-8 11.5h6l-3.5 8.5 10-13h-6l4-7z"
+            fill={ref("bolt")}
+            {...stylex.props(styles.bolt, styles.flash)}
+          />
+          <Cloud x={0} y={-4} fill={ref("cloud")} />
         </>
       )}
       {weather === "fog" && (
-        <g {...stylex.props(styles.fog)}>
-          <path d="M8 14h26" {...stylex.props(styles.wisp)} />
-          <path d="M14 21h28" {...stylex.props(styles.wisp, styles.wisp2)} />
-          <path d="M6 28h30" {...stylex.props(styles.wisp, styles.wisp3)} />
-          <path d="M14 35h22" {...stylex.props(styles.wisp, styles.wisp4)} />
+        <g {...stylex.props(styles.fog)} stroke={ref("mist")}>
+          <path d="M9 15h24" {...stylex.props(styles.wisp)} />
+          <path d="M15 22h26" {...stylex.props(styles.wisp, styles.wisp2)} />
+          <path d="M7 29h28" {...stylex.props(styles.wisp, styles.wisp3)} />
+          <path d="M14 36h21" {...stylex.props(styles.wisp, styles.wisp4)} />
         </g>
       )}
       {weather === "away" && (
         <g {...stylex.props(styles.drift)}>
-          <path d="M28 8a16 16 0 1 0 12 27A13 13 0 0 1 28 8z" {...stylex.props(styles.moon)} />
-          <path d="M35 11h5l-5 6h5" {...stylex.props(styles.snooze)} />
+          <path
+            d="M27 7a17 17 0 1 0 14 27A14 14 0 0 1 27 7z"
+            fill={ref("moon")}
+            {...stylex.props(styles.moon)}
+          />
+          <path d={sparkle(37, 11, 3.2)} {...stylex.props(styles.star)} />
+          <path d={sparkle(42, 20, 2)} {...stylex.props(styles.star, styles.starFaint)} />
         </g>
       )}
     </svg>
   );
 }
+
+/** Only the gradients the weather draws with. */
+function Defs({ id, weather }: { id: string; weather: Glyph }) {
+  const sunny = weather === "sun" || weather === "partly";
+  const cloud = cloudColours[weather];
+  return (
+    <defs>
+      {sunny && (
+        <radialGradient id={`${id}-sun`} cx="38%" cy="35%" r="70%">
+          <stop offset="0%" stop-color="#fff4c2" />
+          <stop offset="45%" stop-color="#ffcf4a" />
+          <stop offset="100%" stop-color="#ff9f1c" />
+        </radialGradient>
+      )}
+      {cloud && (
+        <linearGradient id={`${id}-cloud`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color={cloud[0]} />
+          <stop offset="100%" stop-color={cloud[1]} />
+        </linearGradient>
+      )}
+      {weather === "rain" && (
+        <linearGradient id={`${id}-drop`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#8ab4ff" />
+          <stop offset="100%" stop-color="#3a6fd8" />
+        </linearGradient>
+      )}
+      {weather === "storm" && (
+        <linearGradient id={`${id}-bolt`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#fff0a8" />
+          <stop offset="55%" stop-color="#ffc83d" />
+          <stop offset="100%" stop-color="#ff8a1f" />
+        </linearGradient>
+      )}
+      {weather === "fog" && (
+        // In the icon's own units: a horizontal line has no height for a bounding box to scale.
+        <linearGradient
+          id={`${id}-mist`}
+          gradientUnits="userSpaceOnUse"
+          x1="5"
+          y1="0"
+          x2="43"
+          y2="0"
+        >
+          <stop offset="0%" stop-color="#9aa0b4" stop-opacity="0.35" />
+          <stop offset="35%" stop-color="#8a90a6" />
+          <stop offset="70%" stop-color="#8a90a6" />
+          <stop offset="100%" stop-color="#9aa0b4" stop-opacity="0.35" />
+        </linearGradient>
+      )}
+      {weather === "away" && (
+        <linearGradient id={`${id}-moon`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#e4e0ff" />
+          <stop offset="100%" stop-color="#9a94cf" />
+        </linearGradient>
+      )}
+    </defs>
+  );
+}
+
+// Top and bottom of each cloud: white in fair weather, greyer with rain, slate in a storm.
+const cloudColours: Partial<Record<Glyph, [string, string]>> = {
+  partly: ["#ffffff", "#e3e8f5"],
+  rain: ["#eef1f8", "#b3bcd3"],
+  storm: ["#b9bfd6", "#6d7494"],
+};
 
 // Each sun's rays, worked out once per shape and rounded to keep the markup short.
 const rayPaths = new Map<string, string>();
@@ -95,7 +174,7 @@ function sunRays(cx: number, cy: number, r: number): string {
   if (!d) {
     d = Array.from({ length: 8 }, (_, i) => {
       const a = (i * Math.PI) / 4;
-      const [inner, outer] = [r + 3, r + 7];
+      const [inner, outer] = [r + 3.5, r + 7];
       return `M${round(cx + Math.cos(a) * inner)} ${round(cy + Math.sin(a) * inner)}L${round(cx + Math.cos(a) * outer)} ${round(cy + Math.sin(a) * outer)}`;
     }).join("");
     rayPaths.set(key, d);
@@ -103,22 +182,54 @@ function sunRays(cx: number, cy: number, r: number): string {
   return d;
 }
 
-function Sun({ cx, cy, r }: { cx: number; cy: number; r: number }) {
+/** A raindrop hanging from (x, y): a point on top, round below. */
+function drop(x: number, y: number): string {
+  return `M${x} ${y}c-1.5 2.4-2.4 3.7-2.4 4.8a2.4 2.4 0 0 0 4.8 0c0-1.1-.9-2.4-2.4-4.8z`;
+}
+
+/** A four-pointed twinkle centred on (x, y). */
+function sparkle(x: number, y: number, r: number): string {
+  const k = r * 0.28;
+  return `M${x} ${y - r}Q${x + k} ${y - k} ${x + r} ${y}Q${x + k} ${y + k} ${x} ${y + r}Q${x - k} ${y + k} ${x - r} ${y}Q${x - k} ${y - k} ${x} ${y - r}z`;
+}
+
+function Sun({
+  cx,
+  cy,
+  r,
+  fill,
+}: {
+  cx: number;
+  cy: number;
+  r: number;
+  fill: (name: string) => string;
+}) {
   return (
     <g>
+      <circle cx={cx} cy={cy} r={r + 4} {...stylex.props(styles.halo)} />
       <path d={sunRays(cx, cy, r)} {...stylex.props(styles.rays, styles.spin)} />
-      <circle cx={cx} cy={cy} r={r} {...stylex.props(styles.sun, styles.pulse)} />
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill={fill("sun")}
+        {...stylex.props(styles.sun, styles.pulse)}
+      />
     </g>
   );
 }
 
-function Cloud({ y, dark }: { y: number; dark?: boolean }) {
+// Three puffs on a flat base: right, top (the biggest), then left.
+const CLOUD = "M15 36h19a8 8 0 0 0 1.2-15.9 11 11 0 0 0-20.9-1.5A8.7 8.7 0 0 0 15 36z";
+
+function Cloud({ x, y, scale = 1, fill }: { x: number; y: number; scale?: number; fill: string }) {
   return (
     <g {...stylex.props(styles.drift)}>
       <path
-        transform={`translate(0 ${y})`}
-        d="M14 36a8 8 0 0 1-1-15.9A11 11 0 0 1 34 18a7 7 0 0 1 1 14 4 4 0 0 1-1 4z"
-        {...stylex.props(styles.cloud, dark && styles.cloudDark)}
+        transform={`translate(${x} ${y})${scale === 1 ? "" : ` scale(${scale})`}`}
+        d={CLOUD}
+        fill={fill}
+        {...stylex.props(styles.cloud)}
       />
     </g>
   );
@@ -168,21 +279,16 @@ const HOVER_MOTION =
 // stylex.create, so each animated style repeats it.)
 const styles = stylex.create({
   icon: { display: "block", flexShrink: 0, overflow: "visible" },
-  sun: { fill: colors.sun },
-  rays: { stroke: colors.sun, strokeWidth: 3, strokeLinecap: "round" },
-  cloud: { fill: colors.cloud, stroke: "rgba(29, 26, 51, 0.12)", strokeWidth: 1 },
-  cloudDark: { fill: "#c9cfe0" },
-  rain: { stroke: colors.rain, strokeWidth: 3, strokeLinecap: "round", fill: "none" },
-  bolt: { fill: colors.sun, stroke: colors.accentStrong, strokeWidth: 1, strokeLinejoin: "round" },
-  fog: { stroke: colors.fog, strokeWidth: 3.5, strokeLinecap: "round", fill: "none" },
-  moon: { fill: colors.fog, stroke: "rgba(29, 26, 51, 0.12)", strokeWidth: 1 },
-  snooze: {
-    stroke: colors.fog,
-    strokeWidth: 2,
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    fill: "none",
-  },
+  halo: { fill: colors.sun, opacity: 0.18 },
+  sun: { stroke: "rgba(214, 120, 0, 0.35)", strokeWidth: 0.75 },
+  rays: { stroke: "#ffb21f", strokeWidth: 3, strokeLinecap: "round" },
+  cloud: { stroke: "rgba(29, 26, 51, 0.14)", strokeWidth: 0.9, strokeLinejoin: "round" },
+  rain: { stroke: "none" },
+  bolt: { stroke: "#d9620f", strokeWidth: 0.9, strokeLinejoin: "round" },
+  fog: { strokeWidth: 3.5, strokeLinecap: "round", fill: "none" },
+  moon: { stroke: "rgba(29, 26, 51, 0.14)", strokeWidth: 0.9 },
+  star: { fill: "#ffd36e" },
+  starFaint: { opacity: 0.7 },
 
   spin: {
     animationName: spin,

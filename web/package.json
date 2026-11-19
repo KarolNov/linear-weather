@@ -4,13 +4,14 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter server db:migrate:local --persist-to ../web/.wrangler/state && vite",
-    "build": "vite build",
+    "build": "pnpm codegen:check && vite build",
     "preview": "vite preview",
-    "deploy": "vite build && wrangler deploy",
+    "deploy": "pnpm build && wrangler deploy",
     "cf-typegen": "wrangler types",
     "typecheck": "tsc -p . && tsc -p scripts",
     "codegen": "graphql-codegen && tsx scripts/trusted-documents.ts",
-    "codegen:check": "graphql-codegen --check && tsx scripts/trusted-documents.ts --check"
+    "codegen:check": "graphql-codegen --check && tsx scripts/trusted-documents.ts --check",
+    "codegen:prune": "tsx scripts/trusted-documents.ts --prune"
   },
   "dependencies": {
     "@stylexjs/stylex": "^0.19.1",

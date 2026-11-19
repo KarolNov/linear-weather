@@ -4,7 +4,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { BoardShell } from "./BoardShell";
 import type { Board, BoardIssue, Matrix, Suggestion, TeamBoardData, WeatherKind } from "./board";
 import { teamBoard } from "./board";
-import { documentText } from "./operations";
+import { documentText } from "./document-text";
 
 // The rain's drawing code, stubbed so a test sees the sky start, change and stop it.
 const rain = vi.hoisted(() => {

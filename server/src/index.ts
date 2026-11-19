@@ -24,7 +24,10 @@ import {
   linearAuthorization,
 } from "./session";
 import { useTrustedDocuments } from "./trusted-documents-plugin";
+import { webhooks } from "./webhooks";
 import { Workspace } from "./workspace";
+
+export { TeamChannel } from "./team-channel";
 
 const yoga = createYoga<GraphQLContext>({
   schema,
@@ -45,6 +48,7 @@ const yoga = createYoga<GraphQLContext>({
 export const app = new Hono<{ Bindings: Env }>()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/auth", auth)
+  .route("/webhooks", webhooks)
   .on(["GET", "POST"], "/graphql", async (c) => {
     // A cross-site form can POST urlencoded or multipart bodies without a CORS preflight, which
     // Yoga would run as a mutation. The session cookie is SameSite, but a dev API key needs no

@@ -40,6 +40,10 @@ export default defineConfig({
       persistState: { path: ".wrangler/state" },
     }),
   ],
+  // Linear's webhooks reach the dev server through a Cloudflare quick tunnel (see the README).
+  // Vite refuses hosts it doesn't know, which guards against DNS rebinding; this lets the
+  // tunnel's through without telling the server it's on localhost.
+  server: { allowedHosts: [".trycloudflare.com"] },
   environments: {
     client: {
       build: {

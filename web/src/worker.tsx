@@ -41,6 +41,8 @@ const toServer = (c: Context<{ Bindings: Bindings }>) => c.env.SERVER.fetch(c.re
 export const app = new Hono<{ Bindings: Bindings }>()
   .all("/auth/*", toServer)
   .all("/graphql", toServer)
+  // Linear's webhooks, for live updates. The server checks their signature.
+  .post("/webhooks/linear", toServer)
   // Only known pages render; anything else 404s without asking Linear who is signed in.
   .get("/", async (c) => {
     const demo = c.req.query("demo") === "true";

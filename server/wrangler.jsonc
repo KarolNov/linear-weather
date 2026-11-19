@@ -17,6 +17,10 @@
       "migrations_dir": "migrations"
     }
   ],
+  // One channel per Linear team (src/team-channel.ts): each board's live subscription listens on
+  // it, and Linear's webhooks and the board's own changes publish to it.
+  "durable_objects": { "bindings": [{ "name": "TEAM_CHANNELS", "class_name": "TeamChannel" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TeamChannel"] }],
   // LINEAR_API_KEY is an optional dev shortcut, typed in src/env.d.ts.
   "secrets": { "required": ["LINEAR_CLIENT_ID", "LINEAR_CLIENT_SECRET", "LINEAR_WEBHOOK_SECRET"] },
   // Worker Previews (each non-main branch) don't inherit the bindings above. They share a staging
@@ -30,6 +34,7 @@
         "database_name": "linear-weather-preview",
         "database_id": "1eece4f3-d0c2-4d9d-8456-7a3bc1ad1e78"
       }
-    ]
+    ],
+    "durable_objects": { "bindings": [{ "name": "TEAM_CHANNELS", "class_name": "TeamChannel" }] }
   }
 }

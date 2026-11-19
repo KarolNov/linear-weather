@@ -1,5 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
-import { motion } from "ui/tokens.stylex";
+import { useRef } from "preact/hooks";
+import { media, motion } from "ui/tokens.stylex";
 
 // Entrances shared by the pages. Everything rises a little and fades in; with reduced motion it
 // only fades. `fill-mode: backwards` holds the start frame through the delay, then lets go, so
@@ -61,7 +62,7 @@ export const entrance = stylex.create({
     "--rise": "6px",
     animationName: {
       default: rise,
-      "@media (min-width: 1080px) and (prefers-reduced-motion: no-preference)": slideIn,
+      [media.dockedMotion]: slideIn,
       "@media (prefers-reduced-motion: reduce)": fadeIn,
     },
     animationDuration: "240ms",
@@ -85,3 +86,14 @@ export const entrance = stylex.create({
   },
   delay: (ms: number) => ({ animationDelay: `${ms}ms` }),
 });
+
+/**
+ * Whether a value has changed since its component mounted, so `entrance.changed` marks a value a
+ * move changed rather than every value on the board as it first draws.
+ */
+export function useChanged<T>(value: T): boolean {
+  const first = useRef(value);
+  const changed = useRef(false);
+  if (value !== first.current) changed.current = true;
+  return changed.current;
+}

@@ -15,7 +15,7 @@ import {
   WeatherIcon,
   weatherLabels,
 } from "ui";
-import { boardSky, colors, radii, space } from "ui/tokens.stylex";
+import { boardSky, colors, media, radii, space } from "ui/tokens.stylex";
 import {
   type Board,
   type BoardError,
@@ -64,9 +64,21 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
     () => board && { team: board.team, people: board.people, today: board.today },
   );
   const show = (answer: Answer) => setShown((current) => current && { ...current, ...answer });
+  // The sticky header wraps on narrower screens; the docked panel sticks just below it.
+  const header = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = header.current;
+    const page = el?.parentElement;
+    if (!el || !page || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() =>
+      page.style.setProperty("--header-height", `${el.offsetHeight}px`),
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   return (
     <Sky time="dawn" weather={shown?.team ? skyFor(shown.team.weather.kind) : undefined}>
-      <header {...stylex.props(styles.header)}>
+      <header ref={header} {...stylex.props(styles.header)}>
         <div {...stylex.props(styles.brand)}>
           <Logo compactOnPhones />
           {/* Phones keep the header to one row; the workspace is the least needed there. */}
@@ -540,8 +552,7 @@ const weatherLegend: [Glyph, string][] = [
   ["away", "on time off: out of the average, and their urgent work needs a taker"],
 ];
 
-// Wide enough for the people beside the panel to keep two columns.
-const DOCKED = "@media (min-width: 1080px)";
+const DOCKED = media.docked;
 const PHONE = "@media (max-width: 639px)";
 const PANEL_WIDTH = "clamp(380px, 32vw, 460px)";
 
@@ -619,10 +630,10 @@ const styles = stylex.create({
     gridColumn: { default: null, [DOCKED]: "2" },
     gridRow: { default: null, [DOCKED]: "1" },
     position: { default: null, [DOCKED]: "sticky" },
-    top: { default: null, [DOCKED]: "64px" },
+    top: { default: null, [DOCKED]: "calc(var(--header-height, 52px) + 12px)" },
     display: { default: null, [DOCKED]: "flex" },
     flexDirection: "column",
-    maxHeight: { default: null, [DOCKED]: "calc(100dvh - 80px)" },
+    maxHeight: { default: null, [DOCKED]: "calc(100dvh - var(--header-height, 52px) - 28px)" },
     minWidth: 0,
   },
   peopleDocked: {

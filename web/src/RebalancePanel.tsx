@@ -264,7 +264,7 @@ function Horizon({
   /** Splits the moves into the weeks whose storm they head off. */
   byWeek?: boolean;
   /** Anything to do with a whole week's moves, shown above them. */
-  weekAction?: (week: number, moves: Suggestion[]) => ComponentChildren;
+  weekAction?: (week: number | null, moves: Suggestion[]) => ComponentChildren;
   /** Anything to do with the whole list, shown above it. */
   children?: ComponentChildren;
 }) {
@@ -303,9 +303,9 @@ function Horizon({
         </p>
       ) : byWeek ? (
         weeksOf(suggestions).map(([week, moves]) => (
-          <section key={week} aria-label={`Week ${week}`} {...stylex.props(styles.week)}>
+          <section key={week ?? "now"} aria-label={weekName(week)} {...stylex.props(styles.week)}>
             <h4 aria-hidden="true" {...stylex.props(styles.weekHeading)}>
-              {week === 1 ? "This week" : `Week ${week}`}
+              {weekName(week)}
             </h4>
             {weekAction?.(week, moves)}
             {list(moves)}
@@ -329,11 +329,15 @@ function batchName(week: number | null): string {
   return week === null ? "today's" : week === 1 ? "this week's" : `week ${week}'s`;
 }
 
+/** A forecast week's heading; a move with no week is one for today. */
+const weekName = (week: number | null) =>
+  week === null ? "Now" : week === 1 ? "This week" : `Week ${week}`;
+
 /** The moves in the order they came, gathered by week. */
-function weeksOf(moves: Suggestion[]): [number, Suggestion[]][] {
-  const weeks = new Map<number, Suggestion[]>();
+function weeksOf(moves: Suggestion[]): [number | null, Suggestion[]][] {
+  const weeks = new Map<number | null, Suggestion[]>();
   for (const move of moves) {
-    const week = move.week ?? 0;
+    const week = move.week;
     weeks.set(week, [...(weeks.get(week) ?? []), move]);
   }
   return [...weeks];
@@ -372,14 +376,14 @@ function SuggestionItem({
         size="sm"
         iconEnd="arrowRight"
         disabled={busy}
-        aria-label={`Hand ${issue.identifier} to ${to.name}`}
+        aria-label={`${busy ? "Handing" : "Hand"} ${issue.identifier} to ${to.name}${busy ? "…" : ""}`}
         data-reassign={issue.id}
         onClick={onReassign}
         xstyle={styles.handOver}
       >
         {busy ? "Handing…" : "Hand over"}
       </Button>
-      <div title={reason} {...stylex.props(styles.transfer)}>
+      <div {...stylex.props(styles.transfer)}>
         <VisuallyHidden>Move from</VisuallyHidden>
         <Side person={from} load={fromLoad} weather={fromWeather} when={when} />
         <span aria-hidden="true" {...stylex.props(styles.transferArrow)}>
@@ -388,6 +392,7 @@ function SuggestionItem({
         <VisuallyHidden>to</VisuallyHidden>
         <Side person={to} load={toLoad} weather={toWeather} when={when} />
       </div>
+      <p {...stylex.props(styles.fine, styles.reason)}>{reason}</p>
     </li>
   );
 }
@@ -434,9 +439,9 @@ function Side({
               )}
               <strong {...stylex.props(styles.loadAfter)}>{times(load.after)}</strong>
             </>
-          ) : (
+          ) : weather === "AWAY" ? (
             "away"
-          )}
+          ) : null}
         </span>
       </span>
     </span>
@@ -633,6 +638,7 @@ const styles = stylex.create({
     gap: space.xs,
     paddingTop: "2px",
   },
+  reason: { gridColumn: "1 / -1", margin: 0 },
   transferArrow: { display: "inline-flex", color: colors.inkFaint },
   side: { display: "flex", alignItems: "center", gap: space.xs, minWidth: 0 },
   face: { position: "relative", display: "inline-flex", flexShrink: 0 },

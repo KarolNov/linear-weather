@@ -17,7 +17,7 @@ import {
   type TimeOff,
 } from "./board";
 import { IssueCard } from "./IssueCard";
-import { entrance } from "./motion";
+import { entrance, useChanged } from "./motion";
 import { dot, quadrantDot, quadrantInfo } from "./quadrants";
 import { TimeOffList } from "./TimeOff";
 import { weatherIcon } from "./weather";
@@ -57,6 +57,7 @@ export function PersonMatrix({
   xstyle,
 }: PersonMatrixProps) {
   const [only, setOnly] = useState<Quadrant | null>(null);
+  const weatherChanged = useChanged(weather?.kind);
   // A quadrant the PM just moved the last issue out of shows every quadrant again, and stays
   // unpicked, so moving an issue back in later doesn't hide the rest.
   if (only !== null && matrix.counts[only] === 0) setOnly(null);
@@ -176,7 +177,7 @@ export function PersonMatrix({
           <span
             key={weather.kind}
             title={weather.reason}
-            {...stylex.props(styles.weather, entrance.changed)}
+            {...stylex.props(styles.weather, weatherChanged && entrance.changed)}
           >
             <WeatherIcon
               weather={weatherIcon[weather.kind]}
@@ -226,10 +227,7 @@ export function PersonMatrix({
                 <span aria-hidden="true" {...stylex.props(dot.dot, quadrantDot[q])} />
                 {quadrantInfo[q].name}
               </span>
-              {/* Keyed by the count, so a move settles the numbers it changed into place. */}
-              <span key={count} {...stylex.props(styles.count, entrance.changed)}>
-                {count}
-              </span>
+              <ChangedCount count={count} />
             </button>
           );
         })}
@@ -323,6 +321,16 @@ function capacityChoices(current: number): number[] {
  * The weeks ahead as a strip of small icons. Each explains itself on hover, and on a press for
  * keyboards, touch and screen readers.
  */
+/** A quadrant's count, keyed by its value so a move settles the number it changed into place. */
+function ChangedCount({ count }: { count: number }) {
+  const changed = useChanged(count);
+  return (
+    <span key={count} {...stylex.props(styles.count, changed && entrance.changed)}>
+      {count}
+    </span>
+  );
+}
+
 function Forecast({ name, weeks }: { name: string; weeks: ForecastWeek[] }) {
   const [picked, setPicked] = useState<CalendarDate | null>(null);
   const explain = ({ endsOn, weather, summary, turningUrgent }: ForecastWeek) => {

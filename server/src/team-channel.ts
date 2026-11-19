@@ -56,13 +56,27 @@ export function teamChannels(namespace: DurableObjectNamespace<TeamChannel>): Te
       const socket = response.webSocket;
       if (!socket) throw new Error(`The team's channel answered ${response.status}`);
       socket.accept();
-      socket.addEventListener("message", changed);
-      socket.addEventListener("close", lost);
-      socket.addEventListener("error", lost);
+      // Listening ends once, whichever comes first: the listener stops, or the socket errors or
+      // closes (an error is followed by a close, which mustn't tell the listener twice).
+      let listening = true;
+      socket.addEventListener("message", () => {
+        if (listening) changed();
+      });
+      const end = () => {
+        if (!listening) return;
+        listening = false;
+        lost();
+      };
+      socket.addEventListener("close", end);
+      socket.addEventListener("error", end);
       return () => {
-        socket.removeEventListener("close", lost);
-        socket.removeEventListener("error", lost);
-        socket.close(1000, "Done listening");
+        if (!listening) return;
+        listening = false;
+        try {
+          socket.close(1000, "Done listening");
+        } catch {
+          // Already closing; nothing left to stop.
+        }
       };
     },
     async publish(teamId) {

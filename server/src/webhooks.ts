@@ -25,12 +25,13 @@ export const webhooks = new Hono<{ Bindings: Env }>().post("/linear", async (c) 
   if (!signature || !(await signedBy(c.env.LINEAR_WEBHOOK_SECRET, body, signature))) {
     return c.text("Bad signature", 401);
   }
-  let payload: WebhookPayload;
+  let payload: unknown;
   try {
-    payload = JSON.parse(body) as WebhookPayload;
+    payload = JSON.parse(body);
   } catch {
     return c.text("Expected JSON", 400);
   }
+  if (!isWebhookPayload(payload)) return c.text("Expected a JSON object", 400);
   const sent = payload.webhookTimestamp;
   if (typeof sent !== "number" || Math.abs(Date.now() - sent) > MAX_WEBHOOK_AGE_MS) {
     return c.text("Stale delivery", 400);
@@ -40,6 +41,10 @@ export const webhooks = new Hono<{ Bindings: Env }>().post("/linear", async (c) 
   await Promise.all(teams.map((teamId) => channels.publish(teamId)));
   return c.body(null, 204);
 });
+
+function isWebhookPayload(value: unknown): value is WebhookPayload {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function teamsTouched({ data, updatedFrom }: WebhookPayload): string[] {
   const ids = [data?.teamId, updatedFrom?.teamId].filter(
@@ -51,13 +56,7 @@ function teamsTouched({ data, updatedFrom }: WebhookPayload): string[] {
 /** Whether `signature` is the hex HMAC-SHA256 of `body` under `secret`, compared in constant time. */
 export async function signedBy(secret: string, body: string, signature: string): Promise<boolean> {
   if (!secret || !/^(?:[0-9a-f]{2})+$/i.test(signature)) return false;
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["verify"],
-  );
+  const key = await hmacKey(secret, "verify");
   const bytes = new Uint8Array(signature.length / 2);
   for (let i = 0; i < bytes.length; i++) {
     bytes[i] = Number.parseInt(signature.slice(i * 2, i * 2 + 2), 16);
@@ -67,13 +66,18 @@ export async function signedBy(secret: string, body: string, signature: string):
 
 /** Signs `body` as Linear would, for tests and local tries. */
 export async function sign(secret: string, body: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
+  const key = await hmacKey(secret, "sign");
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body)));
+  return Array.from(mac, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** The HMAC-SHA256 key Linear signs webhooks with, for signing or verifying. */
+function hmacKey(secret: string, usage: "sign" | "verify"): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"],
+    [usage],
   );
-  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body)));
-  return Array.from(mac, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

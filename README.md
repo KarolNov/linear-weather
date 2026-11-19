@@ -57,6 +57,16 @@ Checks (same as CI): `pnpm typecheck`, `pnpm codegen:check`, `pnpm lint`, `pnpm 
 
 After changing a `wrangler.jsonc`, run `pnpm --filter server cf-typegen` to regenerate `worker-configuration.d.ts`.
 
+### Webhooks locally
+
+Linear can only deliver webhooks to a public URL. To receive them in `pnpm dev:web`, open a Cloudflare quick tunnel to it:
+
+```bash
+cloudflared tunnel --url http://localhost:5173
+```
+
+Point a Linear webhook (Issues and Cycles) at `https://<tunnel>.trycloudflare.com/webhooks/linear`, and put its signing secret in `LINEAR_WEBHOOK_SECRET` in `server/.env`. The tunnel exposes the whole dev server to anyone who has its URL, so close it when you're done.
+
 ## Querying Linear
 
 Queries to Linear live in `.graphql` files under `server/src/` (e.g. `server/src/linear/team-issues.graphql`). [GraphQL Code Generator](https://the-guild.dev/graphql/codegen) checks them against [Linear's schema](https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql) and generates `server/src/linear/generated.ts`: one typed document per query (`OpenIssuesDocument`) plus its result and variable types. Code imports only the documents it uses, so the bundle carries just those queries, once each. We skip the client preset's `graphql()` tag because it bundles a lookup table of every query.

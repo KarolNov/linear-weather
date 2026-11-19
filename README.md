@@ -31,6 +31,7 @@ Everything deploys to Cloudflare Workers.
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Workspace   | [pnpm](https://pnpm.io) workspaces: `server/`, `web/` and `ui/` (shared Preact components)                                                                                                                                                                                                                         |
 | Server      | [Hono](https://hono.dev) Worker hosting [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server) with a code-first [Pothos](https://pothos-graphql.dev) schema                                                                                                                                                    |
+| Live        | Linear webhooks into a [Durable Object](https://developers.cloudflare.com/durable-objects/) per team, out to the board as a GraphQL subscription over [server-sent events](https://the-guild.dev/graphql/yoga-server/docs/features/subscriptions)                                                                    |
 | Storage     | [D1](https://developers.cloudflare.com/d1/) (Cloudflare's SQLite) for team rules, hand-placed issues, and people's capacity and time off, through [Drizzle ORM](https://orm.drizzle.team). Linear tokens live in KV                                                                                                |
 | Web         | [Preact](https://preactjs.com) server-rendered by a Hono Worker, hydrated in the browser; built with [Vite](https://vite.dev) and the [Cloudflare Vite plugin](https://developers.cloudflare.com/workers/vite-plugin/)                                                                                             |
 | Styling     | [StyleX](https://stylexjs.com), compiled at build time by `@stylexjs/unplugin`. Theme tokens (sky gradients, weather colours) live in `ui/src/tokens.stylex.ts`                                                                                                                                                    |
@@ -216,6 +217,14 @@ type Mutation {
   addTimeOff(teamId: ID!, userId: ID!, startsOn: Date!, endsOn: Date!): TimeOffResult!
   removeTimeOff(teamId: ID!, userId: ID!, timeOffId: ID!): TimeOffResult!
 }
+
+type Subscription {
+  teamWeatherUpdated(teamId: ID!): TeamWeatherUpdate! # over server-sent events
+}
+type TeamWeatherUpdate {
+  today: Date!
+  team: Team # null if you can no longer see it
+}
 union UpdateRulesResult =
   | UpdateRulesSuccess
   | InvalidRules
@@ -322,11 +331,49 @@ Errors stay next to the field that failed: `teams` and `team` are nullable, so a
 
 Our schema has cycles: an issue's assignee has a matrix of issues, whose assignees have matrices, and so on. Every level can mean another call to Linear, so a query only a few levels deeper than the board's could spend a user's whole Linear budget. Two layers stop that.
 
-**Trusted documents.** `pnpm --filter web codegen` hashes each operation in `web/src/*.graphql` and writes the list to `server/src/trusted-documents.ts`. The board sends `{ documentId: "sha256:…", variables }` instead of the query, as the [GraphQL over HTTP draft on persisted documents](https://github.com/graphql/graphql-over-http/blob/main/spec/Appendix%20A%20--%20Persisted%20Documents.md) spells it, and off localhost the server runs nothing else. An unknown id gets `PERSISTED_QUERY_NOT_FOUND`; a query sent as text gets `PERSISTED_QUERY_ONLY`. The list only grows, so a tab still running an older bundle keeps working after a deploy. To prune it, run `pnpm --filter web codegen:prune` on a branch: it keeps just the current ids and those of the live bundle (`origin/main`, or a ref you pass). `pnpm codegen:check` fails if the list is stale, a web test checks each id against its operation's text, and the web build runs `codegen:check` first, so stale ids can't ship. On localhost any query still runs, and GraphiQL is only served there.
+**Trusted documents.** `pnpm --filter web codegen` hashes each operation in `web/src/*.graphql` and writes the list to `server/src/trusted-documents.ts`. The board sends `{ documentId: "sha256:…", variables }` instead of the query (in the query string for its subscription, which a browser's `EventSource` can only `GET`), as the [GraphQL over HTTP draft on persisted documents](https://github.com/graphql/graphql-over-http/blob/main/spec/Appendix%20A%20--%20Persisted%20Documents.md) spells it, and off localhost the server runs nothing else. An unknown id gets `PERSISTED_QUERY_NOT_FOUND`; a query sent as text gets `PERSISTED_QUERY_ONLY`. The list only grows, so a tab still running an older bundle keeps working after a deploy. To prune it, run `pnpm --filter web codegen:prune` on a branch: it keeps just the current ids and those of the live bundle (`origin/main`, or a ref you pass). `pnpm codegen:check` fails if the list is stale, a web test checks each id against its operation's text, and the web build runs `codegen:check` first, so stale ids can't ship. On localhost any query still runs, and GraphiQL is only served there.
 
 **Depth and cost limits.** Every operation, trusted or not, is measured while it's validated (`server/src/limits.ts`) and refused before anything runs if it nests more than 10 fields deep (`QUERY_TOO_DEEP`) or costs more than 10,000 points (`QUERY_TOO_COSTLY`). The board's own operations nest at most 7 deep and cost about 3,000; `server/src/limits.test.ts` checks each one.
 
 This mirrors how [Linear limits us](https://linear.app/developers/rate-limiting). The cost is Linear's own model: a scalar or enum field costs 0.1, an object 1, and a list multiplies what's inside it by its length. The 10,000-point cap per query is Linear's too. One difference: Linear reads a list's length from `first` (50 if left out), but our lists don't page, so each counts as 10 items, about a team's people or a quadrant's issues. We don't keep an hourly budget per user the way Linear does. Trusted documents bound what one request can cost, and Linear's own hourly limit, which the client already respects, still sits behind every request.
+
+### Live updates
+
+An open board follows its team as it changes, through the `teamWeatherUpdated(teamId:)` subscription:
+
+```mermaid
+sequenceDiagram
+  participant L as Linear
+  participant S as server Worker
+  participant C as TeamChannel (Durable Object, one per team)
+  participant B as Board (EventSource)
+  B->>S: GET /graphql?documentId=…TeamWeather (SSE)
+  S->>C: WebSocket: listen
+  L->>S: POST /webhooks/linear (signed)
+  S->>C: publish
+  C-->>S: "changed"
+  S->>L: read the team again, as the viewer
+  S-->>B: event: next { today, team { …TeamBoard } }
+```
+
+- **Webhooks** (`server/src/webhooks.ts`) take Linear's `Issue` and `Cycle` events: created, updated (reassigned, due date changed, …) or removed. Each must carry a `Linear-Signature` that's the HMAC-SHA256 of its body under `LINEAR_WEBHOOK_SECRET`, and a `webhookTimestamp` under a minute old, so a captured delivery can't be replayed. The issue's team hears it changed, and so does the team it left, if it moved.
+- **One channel per team** (`server/src/team-channel.ts`). A webhook and a board's stream land in whichever Worker isolate Cloudflare picks, and isolates share no memory, so they meet in a Durable Object named by the team's id. Each subscription holds a WebSocket to it; it hibernates while the team is quiet, so an idle board costs nothing there. The message says only "changed": each board reads the team again with its own viewer's Linear session, so nobody sees what Linear wouldn't show them.
+- **The board's own changes** (rules, hand placements, capacity, time off, a hand-over) tell the team's other open boards too. Rules and the rest live in D1, so no webhook would.
+- **Changes close together answer once** (`server/src/live.ts`). One edit in Linear can send several webhooks, and every update costs each open board a read of Linear, so a change waits a second for more, and changes that arrive while the last update is being read make one more update, not several.
+- **The daily tick.** Each subscription also answers a second past midnight (UTC, as `today` counts), with no edits at all: due dates come a day closer and the forecast's weeks move along. Each update renews the request's context, so it reads Linear and D1 afresh, against the new `today`.
+- **The board** (`web/src/live.ts`) listens with an `EventSource` and redraws from each update as it does from a mutation's answer. The browser reconnects by itself after a network blip; when the server ends the stream (a deploy, a channel restart), the board connects again, waiting longer each time it fails, and reads the team once it's back for whatever it missed. It gives up when the subscription is refused (signed out, or a team they can't see). The demo doesn't listen: it has no webhooks, and its changes live in the visitor's cookie, which a long-lived stream would read only once.
+
+#### Webhooks from Linear
+
+In the OAuth app's settings (**Settings → API → OAuth applications**), turn on **Webhooks**, set the URL to `https://<your web Worker's domain>/webhooks/linear`, and tick **Issues** and **Cycles**. Every workspace that installs the app then sends its changes. Copy the signing secret to the server with `wrangler secret put LINEAR_WEBHOOK_SECRET`. An OAuth app has one webhook URL, so only production hears from Linear. Previews don't need it: nobody can sign in on one, and the demo doesn't listen for updates. The web Worker passes `/webhooks/linear` through to the server, which checks the signature.
+
+To try it locally, Linear needs a public URL for your dev server. A [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/) needs no account:
+
+```bash
+cloudflared tunnel --url http://localhost:5173
+```
+
+In a workspace you admin, add a webhook under **Settings → API → Webhooks** pointing at `https://<random>.trycloudflare.com/webhooks/linear` for Issues and Cycles, and put its signing secret in `server/.env` as `LINEAR_WEBHOOK_SECRET`. Restart `pnpm dev:web`, sign in at http://localhost:5173, and change an issue in Linear: the board redraws about a second later. `web/vite.config.ts` lets `*.trycloudflare.com` through Vite's host check. The tunnel's requests keep that host, so the server doesn't take them for localhost: no GraphiQL, no `LINEAR_API_KEY`. A new quick tunnel gets a new URL each time, so update the webhook when you restart it.
 
 ## Our own data
 
@@ -350,6 +397,7 @@ Within a request, rules, overrides, capacities and time off are read through Dat
 - Tests apply every migration to an empty database in workerd (`server/test/apply-migrations.ts`) and empty the tables after each test.
 - In production, `pnpm --filter server deploy` (`server/scripts/deploy.sh`, the server's Workers Builds deploy command) applies migrations, then deploys. A migration runs while the previous code is still live, so it should add rather than rename or drop.
 - The production database and session namespace are pinned by id in `server/wrangler.jsonc`. Without ids, Wrangler works out on each deploy which ones the live Worker uses, and when it couldn't, it tried to create them again and the deploy failed on the taken name.
+- The `TeamChannel` Durable Object is declared with a migration (`migrations` in `server/wrangler.jsonc`), which `wrangler deploy` applies on its own. Renaming or deleting the class needs a migration of its own.
 - **Deploy the server before the web.** The two Workers deploy on their own, and the web's queries and mutations are checked against the server's schema. A web Worker that's ahead asks for fields the live server doesn't have yet, like `reassignIssue`, and those requests fail until the server catches up. Any change to an operation also gives it a new trusted-document id, which a server that's behind refuses (`PERSISTED_QUERY_NOT_FOUND`): until it catches up, the board can't load at all. Before trusting a merge, check that both Workers Builds passed. A server that's behind also rewrites the demo's `lw_demo` cookie without the parts it doesn't know, such as reassigned issues.
 - [Worker Previews](https://developers.cloudflare.com/workers/previews/) of other branches use a shared staging database, `linear-weather-preview`, and their own session store (the `previews` block in `server/wrangler.jsonc`). `pnpm --filter server preview` (`server/scripts/preview.sh`, the server's Workers Builds preview command) migrates that database, then deploys the Preview.
 
@@ -404,7 +452,7 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 
 ## Status
 
-🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules, including when to flag backlog rot (too much in Drop), which the header then shows; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** suggests who should hand which issue to whom, now and before the storms the forecast sees; **Hand over** makes a move in Linear in one click, and **Make all of today's moves** makes the Now list's moves in order after a yes, stopping at the first that fails.
+🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules, including when to flag backlog rot (too much in Drop), which the header then shows; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** suggests who should hand which issue to whom, now and before the storms the forecast sees; **Hand over** makes a move in Linear in one click, and **Make all of today's moves** makes the Now list's moves in order after a yes, stopping at the first that fails. The board updates live as issues change in Linear or another PM changes the board, and moves on as days pass.
 
 # linear-weather
 

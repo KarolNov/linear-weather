@@ -4,6 +4,10 @@ A team-load "weather report" for [Linear](https://linear.app), built on its Grap
 
 Each developer's assigned issues are sorted into an **Eisenhower matrix** (Do / Schedule / Delegate / Drop). A PM can then see at a glance who is overloaded **now** and who is about to be.
 
+![The demo board: storms now and in the weeks ahead, today's moves made at once, then each move ahead of the storm, and the forecast clears](docs/demo.gif)
+
+_The [demo workspace](#the-demo-workspace): Tony and Bruce are in storms now and over the next weeks. **Rebalance** hands today's urgent work over in one go, then the work that would turn urgent in weeks 1 to 3, and their forecasts clear. Natasha and Tony stay stormy because of overdue work, which never moves. Recorded with `pnpm --filter web demo-gif` while `pnpm dev:web` runs._
+
 ## The idea
 
 - **Quadrants from rules.** Default rules (configurable per team):
@@ -22,6 +26,13 @@ Each developer's assigned issues are sorted into an **Eisenhower matrix** (Do / 
 ## Why GraphQL
 
 This is a learning project. It consumes Linear's GraphQL API and exposes its own GraphQL server that extends Linear's types with derived fields (`quadrant`, `weather`, `forecast(weeks:)`). Along the way it covers DataLoader, mutations with typed errors, and subscriptions driven by Linear webhooks.
+
+## Design decisions
+
+- **Rules as data.** What makes an issue important or urgent is a row per team (`quadrant_rules` in D1), not code: `importantFrom`, `urgencyWindowDays`, `noDueDate`, `dropAlertPercent`, `awayStatuses`, `blockersAreImportant`, `currentCycleIsUrgent`. Teams without a row use the defaults. The rules engine (`server/src/domain/`) is pure functions from rules, issues and a date to quadrants, weather, forecasts and moves. It never calls Linear or D1, so its tests need neither, and the same functions answer for today and for any week of the forecast. A PM changes a team's rules in the board's **Sorting rules** panel (`updateQuadrantRules`), and every derived field follows on the next read. A hand placement (`quadrant_override`) is data too, and sits on top of the rules without replacing them: the issue still says where the rules would put it.
+- **Derived fields on Linear's types, not a separate REST service.** The quadrant, weather and forecast could have come from a REST service beside Linear (`GET /teams/:id/weather?weeks=4`), with the board joining its answers to Linear's issues itself. Instead our schema mirrors the slice of Linear's `Issue`, `User` and `Team` the board needs and adds the derived fields to them (★ in [Our schema](#our-schema)). So the board asks for an issue's title and its quadrant in one query, from one endpoint, and the server never works out what nobody asked for: a query without `forecast` runs no forecast. Field arguments carry the options (`forecast(weeks: 12)`, `weather(metric: ISSUES)`), and aliases ask for two of them at once. It costs a [batching layer](#n1-measured) so that many small resolvers don't each call Linear, and [query limits](#hardening-trusted-documents-and-query-limits), since a schema with cycles can be asked for something very expensive.
+- **Errors in the schema, as unions.** Each mutation answers with a union of what it did or the failures a client should handle (`InvalidRules`, `IssueNotFound`, `Unauthorized`, `LinearRateLimited`, …), each a type with fields of its own and each implementing `Error`. A client sees every expected failure in the schema and switches on `__typename`; top-level `errors` are kept for the unexpected. See [Mutations and their errors](#mutations-and-their-errors).
+- **Subscriptions over server-sent events, not WebSockets.** The board only listens, so a one-way stream is all it needs. An `EventSource` reconnects by itself, goes through the same `/graphql` route, cookie and trusted-document check as every other request, and needs no subprotocol (GraphQL Yoga serves SSE without any). WebSockets are used inside Cloudflare, between the server Worker and a Durable Object per team, where Linear's webhooks and the board's streams meet. The message there says only "changed", and each board reads the team again as its own viewer. See [Live updates](#live-updates).
 
 ## Tech stack
 
@@ -60,6 +71,15 @@ After changing a `wrangler.jsonc`, run `pnpm --filter server cf-typegen` to rege
 
 To receive Linear's webhooks locally, see [Live updates](#live-updates).
 
+### Running it locally, step by step
+
+1. **See the board with no setup:** `pnpm dev:web`, then open http://localhost:5173/?demo=true. The [demo workspace](#the-demo-workspace) needs no Linear account, and `server/.env` can stay as `.env.example` left it, empty.
+2. **Your own Linear data, quickly:** put a personal API key in `server/.env` as `LINEAR_API_KEY` ([Dev shortcut](#dev-shortcut-personal-api-key)) and open http://localhost:5173. It's used only on localhost and only while nobody is signed in.
+3. **The real sign-in:** [register an OAuth app](#register-the-oauth-app) with `http://localhost:5173/auth/callback` as a callback URL, put its ID and secret in `server/.env` as `LINEAR_CLIENT_ID` and `LINEAR_CLIENT_SECRET`, and leave `LINEAR_API_KEY` empty.
+4. **Live updates from Linear:** run a [Cloudflare quick tunnel](#webhooks-from-linear) to port 5173, add a webhook in Linear pointing at it, and put its signing secret in `server/.env` as `LINEAR_WEBHOOK_SECRET`. Restart `pnpm dev:web` after changing `.env`.
+
+D1 (rules, hand placements, capacity, time off) and KV (sessions) run locally in Miniflare, under `web/.wrangler/state`; nothing needs creating on Cloudflare.
+
 ## Querying Linear
 
 Queries to Linear live in `.graphql` files under `server/src/` (e.g. `server/src/linear/team-issues.graphql`). [GraphQL Code Generator](https://the-guild.dev/graphql/codegen) checks them against [Linear's schema](https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql) and generates `server/src/linear/generated.ts`: one typed document per query (`OpenIssuesDocument`) plus its result and variable types. Code imports only the documents it uses, so the bundle carries just those queries, once each. We skip the client preset's `graphql()` tag because it bundles a lookup table of every query.
@@ -83,7 +103,7 @@ The client reads Linear's rate-limit headers after each request and remembers wh
 
 ## Our schema
 
-The server's own schema (`server/src/schema.ts`, code-first with Pothos) mirrors the slice of Linear's `Issue`, `User` and `Team` the board needs, and extends them with fields derived by the pure rules engine in `server/src/domain/`:
+The server's own schema (`server/src/schema.ts`, code-first with Pothos) mirrors the slice of Linear's `Issue`, `User` and `Team` the board needs, and extends them with fields derived by the pure rules engine in `server/src/domain/`. **★ marks the derived fields**: Linear has nothing like them, and they're worked out when asked for. `Matrix`, `Weather`, `ForecastWeek`, `TeamForecast`, `Suggestion` and `BacklogRot` are derived through and through. The full printed schema, with every description, is `server/schema.graphql`.
 
 ```graphql
 enum Quadrant {
@@ -99,10 +119,10 @@ enum QuadrantSource {
 
 type Issue {
   # id, identifier, title, url, dueDate, priority, estimate, state, assignee, plus:
-  quadrant: Quadrant!
-  quadrantSource: QuadrantSource!
-  placementReason: String! # "High priority, due in 3 days"
-  becomesUrgentOn: Date # today if already urgent, null if it never will be
+  quadrant: Quadrant! # ★
+  quadrantSource: QuadrantSource! # ★
+  placementReason: String! # ★ "High priority, due in 3 days"
+  becomesUrgentOn: Date # ★ today if already urgent, null if it never will be
 }
 
 type Matrix {
@@ -166,9 +186,9 @@ type User {
   # teamId defaults to the team it was reached through
   capacity: Float! # share of a full-time week, 0.5 = half time; the same on every team
   timeOff: [TimeOff!]! # not over yet, soonest first; the same on every team
-  matrix(teamId: ID): Matrix!
-  weather(teamId: ID, metric: LoadMetric): Weather! # urgent load vs teamAverage × capacity
-  forecast(teamId: ID, weeks: Int! = 4, metric: LoadMetric): [ForecastWeek!]! # 1 to 12 weeks
+  matrix(teamId: ID): Matrix! # ★
+  weather(teamId: ID, metric: LoadMetric): Weather! # ★ urgent load vs teamAverage × capacity
+  forecast(teamId: ID, weeks: Int! = 4, metric: LoadMetric): [ForecastWeek!]! # ★ 1 to 12 weeks
 }
 type TimeOff {
   id: ID!
@@ -186,12 +206,12 @@ type BacklogRot {
 type Team {
   rules: QuadrantRules!
   people: [User!]!
-  unassigned: Matrix!
-  backlogRot: BacklogRot! # Drop's share of all open issues, against rules.dropAlertPercent
-  loadMetric: LoadMetric! # POINTS if every urgent issue is estimated, else ISSUES
-  weather(metric: LoadMetric): Weather! # how evenly urgent load is spread
-  forecast(weeks: Int! = 4, metric: LoadMetric): TeamForecast! # worst: the team's score
-  rebalanceSuggestions(horizon: Horizon!, weeks: Int! = 4, metric: LoadMetric): [Suggestion!]!
+  unassigned: Matrix! # ★
+  backlogRot: BacklogRot! # ★ Drop's share of all open issues, against rules.dropAlertPercent
+  loadMetric: LoadMetric! # ★ POINTS if every urgent issue is estimated, else ISSUES
+  weather(metric: LoadMetric): Weather! # ★ how evenly urgent load is spread
+  forecast(weeks: Int! = 4, metric: LoadMetric): TeamForecast! # ★ worst: the team's score
+  rebalanceSuggestions(horizon: Horizon!, weeks: Int! = 4, metric: LoadMetric): [Suggestion!]! # ★
 }
 type Query {
   today: Date!
@@ -446,7 +466,3 @@ No Linear account? Open `/?demo=true` to see the board as Nick Fury, PM of a moc
 ## Status
 
 🌦️ Board: pick a team and see each person's issues sorted into Do / Schedule / Delegate / Drop by its team's rules or by hand, served by our GraphQL schema. **Sorting rules** edits the team's rules, including when to flag backlog rot (too much in Drop), which the header then shows; each issue's menu moves it to another quadrant or hands it back to the rules, and cards placed by hand say so. Both work in the demo too. Each person shows their weather now and a strip of the next 4 weeks; hover or press a week to see why. **Rebalance** suggests who should hand which issue to whom, now and before the storms the forecast sees; **Hand over** makes a move in Linear in one click, and **Make all of today's moves** makes the Now list's moves in order after a yes, stopping at the first that fails. The board updates live as issues change in Linear or another PM changes the board, and moves on as days pass.
-
-# linear-weather
-
-Eisenhower-matrix team load weather &amp; forecast for Linear, built with GraphQL

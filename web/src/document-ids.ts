@@ -2,13 +2,13 @@
 // Each operation's trusted-document id, by name: what the board sends instead of the query.
 
 export const DOCUMENT_IDS = {
-  "AddTimeOff": "sha256:29b1caf8617666587ecbd24469cb461adc11144a634b607c9e4f007bb7858ad5",
-  "Board": "sha256:26dabb5191006ecdb191a75315e1ee24e4b041ed16c4eee56344c43e99544138",
-  "ClearOverride": "sha256:8748672ba1c879441f163682f26d10c9205efd5567e70b4861c1b22ce26aec85",
-  "OverrideQuadrant": "sha256:5ed2ac2dc74aa0c25b074a5dbc6106dc8e4a00ed43f7244d89f06351eab883ae",
-  "ReassignIssue": "sha256:fd676ac7ae48c522b07081741760b289a8d26b3d7aaddd2044f25a6a7a301bd7",
-  "RemoveTimeOff": "sha256:dc01c154136b329b44b7d73ca80a9351f015bdaff04a9dce4c1fd2daa5589cc0",
-  "SetCapacity": "sha256:a002e1c9b0c0aeb3442068896b9da6957cdf5562bbd4c416dd88e958f6257182",
-  "Team": "sha256:c3df7ed78836a2bee89361720237431543e4241ae9a53955c5bb94abba95c2d4",
-  "UpdateRules": "sha256:3fcca4893a1ac75ad1134075dedf3cc36fa2a3faae21fb3a69bc4ee66163d59f"
+  "AddTimeOff": "sha256:efe1e7d786cd093e75b2f47716296573f20d67d134921b55778567f567ded193",
+  "Board": "sha256:cb7ab03ad9076abb5e582b4bd6b80df02056d419117f8db76b2960c5ec39291d",
+  "ClearOverride": "sha256:0b9470e7d6f75fbc745b8b1f977d250f9f48ceb2d08bd16fd6ce0f53245d418e",
+  "OverrideQuadrant": "sha256:d2eac7072c4ae47ab5b3d73ad1f06d983744986ed59d821ddf072133d47df653",
+  "ReassignIssue": "sha256:c268f8768c4a3233832f2dc7708bcabed663a79962641c885594d763ad0530b0",
+  "RemoveTimeOff": "sha256:8a403fdb0c5bf981efe6403cb9acca774d4ff6bfa2911b9df753d19261480fee",
+  "SetCapacity": "sha256:7d4cfeb97d23ee49f422c255916d684b1e8f11632209c8e2f7b698fa37d64d27",
+  "Team": "sha256:f7e269f8e0c0ea21e9c5560dadeaa7a92c4fed741c752615439b2216343c9794",
+  "UpdateRules": "sha256:d2f971b93fed204ca81d6c0fd186e729474df728268eb74e66f61a3ff498cc66"
 } as const;

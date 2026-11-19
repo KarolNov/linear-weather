@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Suggestion } from "./board";
+import { documentText } from "./document-text";
 import {
   ADD_TIME_OFF_MUTATION,
   applyMoves,
@@ -9,7 +10,6 @@ import {
   REMOVE_TIME_OFF_MUTATION,
   SET_CAPACITY_MUTATION,
 } from "./mutations";
-import { documentText } from "./operations";
 
 const team = { id: "t-avg", name: "Avengers", key: "AVG" };
 const rules = {

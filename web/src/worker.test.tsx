@@ -9,7 +9,7 @@ import {
   runningLate,
   type Suggestion,
 } from "./board";
-import { documentText } from "./operations";
+import { documentText } from "./document-text";
 import { ConfirmMoves, RebalancePanel, stillPlanned } from "./RebalancePanel";
 import { app, type Bindings } from "./worker";
 

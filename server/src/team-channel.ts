@@ -43,6 +43,25 @@ export class TeamChannel extends DurableObject<Env> {
 
   // Listeners only listen. Without this handler, a message from one would be an error.
   override async webSocketMessage(): Promise<void> {}
+
+  // A listener stopped. Finish the closing handshake here rather than count on the runtime to,
+  // so the socket leaves getWebSockets() whatever the compatibility date says.
+  override async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
+    try {
+      // 1005 and 1006 mean no code was sent; they can't be sent back.
+      socket.close(code === 1005 || code === 1006 ? 1000 : code, reason);
+    } catch {
+      // Already closed.
+    }
+  }
+
+  override async webSocketError(socket: WebSocket): Promise<void> {
+    try {
+      socket.close(1011, "Listener failed");
+    } catch {
+      // Already closed.
+    }
+  }
 }
 
 /** Each team's channel, in the TEAM_CHANNELS namespace. */

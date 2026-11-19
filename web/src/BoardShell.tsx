@@ -218,7 +218,7 @@ function TeamBoard({
     markPending([issue.id], false);
     setRefocus(issue.id);
     if (!result.ok) {
-      setFailure(`Couldn't move ${issue.identifier}. ${result.message}`);
+      changeFailed(`Couldn't move ${issue.identifier}. ${result.message}`);
       return;
     }
     if (!showAnswer(result.team)) return;
@@ -228,15 +228,16 @@ function TeamBoard({
         : `${issue.identifier} is back with the rules.`,
     );
   };
-  // A failed move's message sits below the panel, out of sight: take the keyboard, and the
-  // view, there. An earlier move's word in the status would contradict it.
+  // A failed change's message sits above the board, often out of sight of the card or panel it
+  // came from: take the keyboard, and the view, there. An earlier change's word in the status
+  // would contradict it.
   const [failureFocus, setFailureFocus] = useState(false);
   useEffect(() => {
     if (!failureFocus) return;
     setFailureFocus(false);
     document.getElementById("board-failure")?.focus();
   }, [failureFocus]);
-  const moveFailed = (message: string) => {
+  const changeFailed = (message: string) => {
     setStatus("");
     setFailure(message);
     setFailureFocus(true);
@@ -267,7 +268,7 @@ function TeamBoard({
       // The board as read again after the failure, else the newest one an answer carried; with
       // neither, the one shown stays.
       if (applied.team) showAnswer(applied.team);
-      moveFailed(said.failure);
+      changeFailed(said.failure);
       return;
     }
     if (showAnswer(applied.team)) setStatus(said.status);
@@ -281,7 +282,7 @@ function TeamBoard({
     const result = await client.setCapacity(team.id, person.id, factor);
     markPending([person.id], false);
     if (!result.ok) {
-      setFailure(`Couldn't change ${person.name}'s capacity. ${result.message}`);
+      changeFailed(`Couldn't change ${person.name}'s capacity. ${result.message}`);
       return;
     }
     if (showAnswer(result.team)) {
@@ -296,7 +297,7 @@ function TeamBoard({
     const result = await client.addTimeOff(team.id, person.id, startsOn, endsOn);
     markPending([person.id], false);
     if (!result.ok) {
-      setFailure(`Couldn't add ${person.name}'s time off. ${result.message}`);
+      changeFailed(`Couldn't add ${person.name}'s time off. ${result.message}`);
       return false;
     }
     if (showAnswer(result.team)) {
@@ -311,7 +312,7 @@ function TeamBoard({
     const result = await client.removeTimeOff(team.id, person.id, timeOff.id);
     markPending([person.id], false);
     if (!result.ok) {
-      setFailure(`Couldn't take back ${person.name}'s time off. ${result.message}`);
+      changeFailed(`Couldn't take back ${person.name}'s time off. ${result.message}`);
       return;
     }
     if (showAnswer(result.team)) {
@@ -528,7 +529,8 @@ const DOCKED = "@media (min-width: 1080px)";
 const PANEL_WIDTH = "clamp(380px, 32vw, 460px)";
 
 const styles = stylex.create({
-  failureFocus: { outline: "none" },
+  // Clear of the sticky header when focus scrolls it into view.
+  failureFocus: { outline: "none", scrollMarginTop: "88px" },
   header: {
     position: "sticky",
     top: 0,

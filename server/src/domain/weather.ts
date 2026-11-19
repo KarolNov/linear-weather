@@ -196,9 +196,18 @@ export function teamWeather(
         );
   });
 
+  // Who is in a storm only because of overdue work: by load alone they'd be calmer. Handing work
+  // over can't clear that, so the team's reason says it apart.
+  const lateOnly = weathers.map(
+    (weather, i) =>
+      weather.kind === "storm" &&
+      weather.overdue > 0 &&
+      weatherFor(weather.load, shareOf(teamAverage, capacities[i]), false, thresholds) !== "storm",
+  );
+
   return {
     people: weathers,
-    team: spread(people, loads, weathers, capacities, metric, teamAverage),
+    team: spread(people, loads, weathers, lateOnly, capacities, metric, teamAverage),
   };
 }
 
@@ -264,6 +273,7 @@ function spread(
   people: readonly Staffed[],
   loads: readonly Load[],
   weathers: Weather[],
+  lateOnly: readonly boolean[],
   capacities: readonly number[],
   metric: LoadMetric,
   teamAverage: number | null,
@@ -280,27 +290,35 @@ function spread(
   const base = { metric, load: busiest, teamAverage, overdue };
   const names = (kind: WeatherKind) =>
     people.filter((_, i) => weathers[i]?.kind === kind).map(({ name }) => name);
+  const lateOnlyOf = (kind: WeatherKind) => lateOnly.filter((_, i) => weathers[i]?.kind === kind);
 
   // Urgent work held by someone away is work nobody is doing.
   const stuck = people.flatMap(({ name, away }, i) => {
     const urgent = loads[i]?.urgent ?? 0;
     return away && urgent > 0 ? [`${name} is away with ${plural(urgent, "urgent issue")}`] : [];
   });
-  const stormy = names("storm");
+  // A storm from load is one rebalancing can clear; one from overdue work only finishing it can.
+  const overloaded = names("storm").filter((_, i) => !lateOnlyOf("storm")[i]);
+  const late = names("storm").filter((_, i) => lateOnlyOf("storm")[i]);
+  const rainy = names("rain");
+  const are = (who: string[], what: string) =>
+    `${list(who)} ${who.length === 1 ? "is" : "are"} ${what}`;
+  const have = (who: string[]) => `${list(who)} ${who.length === 1 ? "has" : "have"} overdue work`;
+  const storms = [
+    ...(overloaded.length > 0 ? [are(overloaded, "in a storm")] : []),
+    ...(late.length > 0 ? [have(late)] : []),
+  ];
   if (stuck.length > 0) {
-    const others =
-      stormy.length === 0
-        ? ""
-        : `; ${list(stormy)} ${stormy.length === 1 ? "is" : "are"} in a storm`;
-    return { ...base, kind: "storm", reason: `${stuck.join("; ")}${others}` };
+    return { ...base, kind: "storm", reason: [...stuck, ...storms].join("; ") };
   }
-  for (const kind of ["storm", "rain"] as const) {
-    const who = names(kind);
-    if (who.length > 0) {
-      const verb = kind === "storm" ? "in a storm" : "under rain";
-      return { ...base, kind, reason: `${list(who)} ${who.length === 1 ? "is" : "are"} ${verb}` };
-    }
+  if (overloaded.length > 0) return { ...base, kind: "storm", reason: storms.join("; ") };
+  if (late.length > 0) {
+    // Nobody is overloaded: say so, so a board where every move is made doesn't read as if
+    // rebalancing failed.
+    const rest = rainy.length > 0 ? are(rainy, "under rain") : "nobody is overloaded";
+    return { ...base, kind: "storm", reason: `${have(late)}; ${rest}` };
   }
+  if (rainy.length > 0) return { ...base, kind: "rain", reason: are(rainy, "under rain") };
   if (busiest === 0) {
     return { ...base, kind: "sunny", reason: "Nothing urgent on anyone's plate" };
   }

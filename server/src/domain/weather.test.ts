@@ -176,7 +176,44 @@ describe("teamWeather", () => {
       kind: "storm",
       reason: "1 urgent point, 1.0× the team average; 1 issue overdue",
     });
-    expect(team.reason).toBe("Natasha is in a storm");
+    // Her load alone is average: rebalancing can't clear this storm, so the team says so.
+    expect(team).toMatchObject({
+      kind: "storm",
+      reason: "Natasha has overdue work; nobody is overloaded",
+    });
+  });
+
+  it("tells a storm from load apart from one from overdue work", () => {
+    const { team } = teamWeather(
+      [
+        { name: "Natasha", matrix: matrixOf(overdueDo) },
+        { name: "Tony", matrix: matrixOf(doIssue(), doIssue(), doIssue(), doIssue()) },
+        { name: "Bruce", matrix: matrixOf() },
+        { name: "Steve", matrix: matrixOf() },
+      ],
+      "issues",
+      TODAY,
+    );
+    // Average 5 / 4: Tony at 3.2× is overloaded, Natasha at 0.8× is only late.
+    expect(team.reason).toBe("Tony is in a storm; Natasha has overdue work");
+  });
+
+  it("names who is under rain beside who has overdue work", () => {
+    const { team } = teamWeather(
+      [
+        { name: "Natasha", matrix: matrixOf(overdueDo) },
+        { name: "A", matrix: matrixOf(doIssue(9)) },
+        { name: "B", matrix: matrixOf(doIssue(7)) },
+        { name: "C", matrix: matrixOf(doIssue(7)) },
+      ],
+      "points",
+      TODAY,
+    );
+    // Average 24 / 4 = 6: A at 1.5× is under rain, nobody is overloaded.
+    expect(team).toMatchObject({
+      kind: "storm",
+      reason: "Natasha has overdue work; A is under rain",
+    });
   });
 
   it("is rainy when the worst is rain, naming everyone under it", () => {
@@ -369,7 +406,7 @@ describe("teamWeather", () => {
         "issues",
         TODAY,
       );
-      expect(team.reason).toBe("Ana is away with 1 urgent issue; Ben is in a storm");
+      expect(team.reason).toBe("Ana is away with 1 urgent issue; Ben has overdue work");
     });
 
     it("is calm about someone away with nothing urgent", () => {

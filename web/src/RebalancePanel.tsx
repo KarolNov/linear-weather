@@ -22,7 +22,7 @@ export interface RebalancePanelProps extends Rebalance {
   runningLate?: RunningLate[];
   /** Issues whose move hasn't answered yet. */
   pending: ReadonlySet<string>;
-  /** Today's moves are being made, one after another. */
+  /** A batch of moves (today's, or a week's) is being made, one after another. */
   applying: boolean;
   onReassign: (move: Suggestion) => void;
   /** Makes these moves, in order, once the PM has said yes. */
@@ -43,7 +43,7 @@ export function stillPlanned(asked: Suggestion[], planned: Suggestion[]): boolea
   );
 }
 
-/** Today's moves, as the PM is asked to make them: who gets what, in the order they'll be made. */
+/** A batch of moves, as the PM is asked to make them: who gets what, in the order they'll be made. */
 export function ConfirmMoves({
   moves,
   onConfirm,
@@ -92,8 +92,8 @@ export function ConfirmMoves({
 /**
  * Who could hand which issue to whom: for today's storms, and for the ones the forecast sees
  * coming. Each move is made in Linear in one click; today's can be made all at once, after a yes.
- * The ones ahead stay one at a time: they hand over work that isn't urgent yet, and assume
- * today's moves were made.
+ * The forecast plans each week as if today's moves and the weeks before it were made, so a
+ * week's moves can be made all at once only when it's the first left and today's are done.
  *
  * On a wide screen the board docks it beside the people, so it's built narrow: each move is a
  * compact card reading giver → taker, with each one's load before → after.
@@ -109,10 +109,22 @@ export function RebalancePanel({
   onApplyNow,
   onClose,
 }: RebalancePanelProps) {
-  // Today's moves as they stood when the PM asked to make them all, while they're asked to confirm.
-  const [confirming, setConfirming] = useState<Suggestion[] | null>(null);
-  // Only while they're still the plan: a move made meanwhile closes the question.
-  const asked = confirming && stillPlanned(confirming, rebalanceNow) ? confirming : null;
+  // The batch as it stood when the PM asked to make it all (today's, or the first week's), while
+  // they're asked to confirm.
+  const [confirming, setConfirming] = useState<Batch | null>(null);
+  // The first week ahead can go in one batch only once today's moves are made: it assumes them.
+  const [nextWeek, nextWeekMoves = []] =
+    rebalanceNow.length === 0 ? (weeksOf(rebalanceForecast)[0] ?? []) : [];
+  const planned = (batch: Batch) => (batch.week === null ? rebalanceNow : nextWeekMoves);
+  // Only while it's still the plan: a move made meanwhile closes the question.
+  const asked =
+    confirming &&
+    (confirming.week === null || confirming.week === nextWeek) &&
+    stillPlanned(confirming.moves, planned(confirming))
+      ? confirming
+      : null;
+  // Which batch is being made, for its button to say so.
+  const [making, setMaking] = useState<number | null>(null);
   // Cancelling gives the keyboard back to the button that asked.
   const [cancelled, setCancelled] = useState(false);
   useEffect(() => {
@@ -122,6 +134,38 @@ export function RebalancePanel({
   }, [cancelled]);
   const [explained, setExplained] = useState(false);
   const busy = (move: Suggestion) => applying || pending.has(move.issue.id);
+  /** The button that makes a batch, or the question that confirms it once pressed. */
+  const batchAction = (batch: Batch) =>
+    asked && asked.week === batch.week ? (
+      <ConfirmMoves
+        moves={asked.moves}
+        onConfirm={() => {
+          setMaking(asked.week);
+          onApplyNow(asked.moves);
+          setConfirming(null);
+        }}
+        onCancel={() => {
+          setConfirming(null);
+          setCancelled(true);
+        }}
+      />
+    ) : (
+      <Button
+        variant={batch.week === null ? "primary" : "secondary"}
+        icon={batch.week === null ? undefined : "check"}
+        data-apply-now
+        disabled={applying || batch.moves.some(busy)}
+        aria-busy={(applying && making === batch.week) || undefined}
+        onClick={() => setConfirming(batch)}
+        xstyle={styles.applyAll}
+      >
+        {applying && making === batch.week
+          ? `Making ${batchName(batch.week)} moves…`
+          : batch.week === null
+            ? "Make all of today's moves"
+            : `Make all ${batch.moves.length} of ${batchName(batch.week)} moves`}
+      </Button>
+    );
   const moves = rebalanceNow.length + rebalanceForecast.length > 0;
   const late = listOf(
     runningLate.map(({ person, overdue }) => `${person.name} (${overdue} overdue)`),
@@ -178,31 +222,7 @@ export function RebalancePanel({
           busy={busy}
           onReassign={onReassign}
         >
-          {rebalanceNow.length > 0 &&
-            (asked ? (
-              <ConfirmMoves
-                moves={asked}
-                onConfirm={() => {
-                  onApplyNow(asked);
-                  setConfirming(null);
-                }}
-                onCancel={() => {
-                  setConfirming(null);
-                  setCancelled(true);
-                }}
-              />
-            ) : (
-              <Button
-                variant="primary"
-                data-apply-now
-                disabled={applying || rebalanceNow.some(busy)}
-                aria-busy={applying || undefined}
-                onClick={() => setConfirming(rebalanceNow)}
-                xstyle={styles.applyAll}
-              >
-                {applying ? "Making today's moves…" : "Make all of today's moves"}
-              </Button>
-            ))}
+          {rebalanceNow.length > 0 && batchAction({ week: null, moves: rebalanceNow })}
         </Horizon>
         <Horizon
           id="rebalance-forecast"
@@ -213,6 +233,9 @@ export function RebalancePanel({
           busy={busy}
           onReassign={onReassign}
           byWeek
+          weekAction={(week, weekMoves) =>
+            week === nextWeek && weekMoves.length > 1 && batchAction({ week, moves: weekMoves })
+          }
         />
       </div>
     </Card>
@@ -228,6 +251,7 @@ function Horizon({
   busy,
   onReassign,
   byWeek,
+  weekAction,
   children,
 }: {
   id: string;
@@ -239,6 +263,8 @@ function Horizon({
   onReassign: (move: Suggestion) => void;
   /** Splits the moves into the weeks whose storm they head off. */
   byWeek?: boolean;
+  /** Anything to do with a whole week's moves, shown above them. */
+  weekAction?: (week: number, moves: Suggestion[]) => ComponentChildren;
   /** Anything to do with the whole list, shown above it. */
   children?: ComponentChildren;
 }) {
@@ -281,6 +307,7 @@ function Horizon({
             <h4 aria-hidden="true" {...stylex.props(styles.weekHeading)}>
               {week === 1 ? "This week" : `Week ${week}`}
             </h4>
+            {weekAction?.(week, moves)}
             {list(moves)}
           </section>
         ))
@@ -289,6 +316,17 @@ function Horizon({
       )}
     </section>
   );
+}
+
+/** Moves to make together after one yes: today's (`week` null), or a week's ahead. */
+interface Batch {
+  week: number | null;
+  moves: Suggestion[];
+}
+
+/** E.g. "today's", "this week's" or "week 3's". */
+function batchName(week: number | null): string {
+  return week === null ? "today's" : week === 1 ? "this week's" : `week ${week}'s`;
 }
 
 /** The moves in the order they came, gathered by week. */

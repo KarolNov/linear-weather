@@ -236,6 +236,20 @@ describe("the board after a move", () => {
     await expect.element(schedule.getByText(/^By hand/)).toBeVisible();
     await expect.element(schedule.getByRole("button", { name: "Move AVG-1" })).toHaveFocus();
   });
+
+  it("takes the keyboard, and the view, to the failure when a card's move fails", async () => {
+    const server = serverHolding();
+    render(<BoardShell viewer={viewer} board={loaded(avengersBoard(storm))} />, root);
+
+    await moveReactorToSchedule();
+    (await server.next()).answer({
+      overrideQuadrant: { __typename: "LinearError", message: "Linear said no." },
+    });
+
+    // Above the board, far from the card: without focus it would go unseen on a long board.
+    await expect.element(page.getByText(/Couldn't move AVG-1\. Linear said no\./)).toBeVisible();
+    await expect.poll(() => document.activeElement?.id).toBe("board-failure");
+  });
 });
 
 describe("live updates", () => {
@@ -357,6 +371,30 @@ describe("the rebalance panel", () => {
   const making = () => page.getByRole("button", { name: "Making today's moves…" });
   const question = () => page.getByText(/^Make these \d+ moves in Linear\?$/);
 
+  it("docks beside the people on a wide screen, and sits above them on a narrow one", async () => {
+    serverHolding();
+    const boxes = () => {
+      const panel = document.getElementById("rebalance-panel");
+      const people = panel?.nextElementSibling;
+      return { panel: panel?.getBoundingClientRect(), people: people?.getBoundingClientRect() };
+    };
+    try {
+      await page.viewport(1280, 800);
+      await openPanel(rebalancing([handOver(2)]));
+      // Beside, and level with them, so each move's effect on the cards stays in view.
+      await expect.poll(() => boxes().panel?.left).toBeGreaterThan(boxes().people?.right ?? 0);
+      // Polled, as the panel's entrance moves it for a moment.
+      await expect
+        .poll(() => Math.abs((boxes().panel?.top ?? 0) - (boxes().people?.top ?? 0)))
+        .toBeLessThan(2);
+
+      await page.viewport(600, 800);
+      await expect.poll(() => boxes().panel?.bottom).toBeLessThanOrEqual(boxes().people?.top ?? 0);
+    } finally {
+      await page.viewport(414, 896);
+    }
+  });
+
   it("stays locked through today's moves when a single hand-over answers mid-run", async () => {
     const server = serverHolding();
     await openPanel(rebalancing([handOver(2), handOver(3)], [handOver(4, 2)]));
@@ -393,6 +431,36 @@ describe("the rebalance panel", () => {
     await userEvent.click(page.getByRole("button", { name: "Cancel" }));
     await expect.element(question()).not.toBeInTheDocument();
     await expect.element(makeAll()).toHaveFocus();
+  });
+
+  it("makes the first week's moves at once, but only once today's are made", async () => {
+    const server = serverHolding();
+    const ahead = [handOver(4, 1), handOver(5, 1), handOver(6, 2), handOver(7, 2)];
+    const weekOne = () => page.getByRole("button", { name: "Make all 2 of this week's moves" });
+    await openPanel(rebalancing([handOver(2)], ahead));
+
+    // Week 1 assumes today's move was made: no batch until it is, and none for week 2.
+    await expect.element(weekOne()).not.toBeInTheDocument();
+    await userEvent.click(page.getByRole("button", { name: "Hand AVG-2 to Bruce Banner" }));
+    (await server.next()).answer(handedOver(rebalancing([], ahead)));
+    await expect.element(weekOne()).toBeInTheDocument();
+    expect(page.getByRole("button", { name: /of week 2's moves/ }).elements()).toHaveLength(0);
+
+    await userEvent.click(weekOne());
+    await expect.element(page.getByText("Make these 2 moves in Linear?")).toHaveFocus();
+    await userEvent.click(page.getByRole("button", { name: "Make them" }));
+    await expect
+      .element(page.getByRole("button", { name: "Making this week's moves…" }))
+      .toBeDisabled();
+    const first = await server.next();
+    expect(first.variables).toEqual({ issueId: "i-4", userId: "u-bruce" });
+    first.answer(handedOver(rebalancing([], ahead.slice(1))));
+    (await server.next()).answer(handedOver(rebalancing([], ahead.slice(2))));
+
+    // Week 2 is the first left now, so it can go at once too.
+    await expect
+      .element(page.getByRole("button", { name: "Make all 2 of week 2's moves" }))
+      .toBeInTheDocument();
   });
 
   it("gives the keyboard to the panel once a hand-over's button is gone", async () => {

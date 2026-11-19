@@ -235,7 +235,7 @@ describe("schema", () => {
     });
     expect(team.weather).toEqual({
       kind: "STORM",
-      reason: "Natasha Romanoff and Tony Stark are in a storm",
+      reason: "Tony Stark is in a storm; Natasha Romanoff has overdue work",
     });
   });
 

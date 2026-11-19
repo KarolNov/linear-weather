@@ -359,25 +359,14 @@ function TeamBoard({
           <TeamForecast weather={team.weather} />
           {team.backlogRot.rotting && <BacklogRotFlag reason={team.backlogRot.reason} />}
         </div>
-        {/* One toolbar row: which team first, since it sets everything else, then what to do.
-            On phones the secondary actions keep only their icons, so the row doesn't wrap. */}
+        {/* One toolbar row: which team first, since it sets everything else, then the main action,
+            then the secondary ones. On phones those keep only their icons, side by side at the
+            end, so the row doesn't wrap. */}
         <div {...stylex.props(styles.controls)}>
           {teams.length > 1 && (
             <div {...stylex.props(styles.pickerSlot)}>
               <TeamPicker teams={teams} selected={team} demo={demo} />
             </div>
-          )}
-          {withIssues.length > 0 && (
-            <Button
-              icon={allExpanded ? "collapse" : "expand"}
-              title={allExpanded ? "Collapse all" : "Expand all"}
-              onClick={() => setExpanded(new Set(allExpanded ? [] : withIssues))}
-              xstyle={styles.iconOnPhone}
-            >
-              <span {...stylex.props(styles.labelOnPhone)}>
-                {allExpanded ? "Collapse all" : "Expand all"}
-              </span>
-            </Button>
           )}
           <Button
             icon="balance"
@@ -394,6 +383,18 @@ function TeamBoard({
               </>
             )}
           </Button>
+          {withIssues.length > 0 && (
+            <Button
+              icon={allExpanded ? "collapse" : "expand"}
+              title={allExpanded ? "Collapse all" : "Expand all"}
+              onClick={() => setExpanded(new Set(allExpanded ? [] : withIssues))}
+              xstyle={styles.iconOnPhone}
+            >
+              <span {...stylex.props(styles.labelOnPhone)}>
+                {allExpanded ? "Collapse all" : "Expand all"}
+              </span>
+            </Button>
+          )}
           <Button
             icon="sliders"
             title="Sorting rules"

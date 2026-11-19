@@ -15,7 +15,7 @@ import {
   WeatherIcon,
   weatherLabels,
 } from "ui";
-import { boardSky, colors, fonts, radii, space } from "ui/tokens.stylex";
+import { boardSky, colors, radii, space } from "ui/tokens.stylex";
 import {
   type Board,
   type BoardError,
@@ -41,7 +41,7 @@ import { listenForUpdates } from "./live";
 import { entrance } from "./motion";
 import { applyMoves, boardClient, describeMoves } from "./mutations";
 import { PersonMatrix } from "./PersonMatrix";
-import { quadrantFill, quadrantInfo } from "./quadrants";
+import { dot, quadrantDot, quadrantInfo } from "./quadrants";
 import { RebalancePanel } from "./RebalancePanel";
 import { RulesPanel } from "./RulesPanel";
 import { TeamPicker } from "./TeamPicker";
@@ -82,7 +82,7 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
           aria-label={`Signed in as ${viewer.name}`}
           {...stylex.props(styles.account)}
         >
-          <Avatar name={viewer.name} src={viewer.avatarUrl} size={30} />
+          <Avatar name={viewer.name} src={viewer.avatarUrl} size={24} />
           <span {...stylex.props(styles.viewerName)}>{viewer.name}</span>
           <Button type="submit">{demo ? "Exit demo" : "Sign out"}</Button>
         </form>
@@ -100,8 +100,11 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
             <h2 {...stylex.props(styles.heading)}>How we sort issues</h2>
             <div {...stylex.props(styles.matrix)}>
               {QUADRANTS.map((q) => (
-                <div key={q} {...stylex.props(styles.quadrant, quadrantFill[q])}>
-                  <span {...stylex.props(styles.quadrantName)}>{quadrantInfo[q].name}</span>
+                <div key={q} {...stylex.props(styles.quadrant)}>
+                  <span {...stylex.props(styles.quadrantName)}>
+                    <span aria-hidden="true" {...stylex.props(dot.dot, quadrantDot[q])} />
+                    {quadrantInfo[q].name}
+                  </span>
                   <span {...stylex.props(styles.quadrantRule)}>{quadrantInfo[q].rule}</span>
                 </div>
               ))}
@@ -113,7 +116,7 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
             <ul {...stylex.props(styles.weatherList)}>
               {weatherLegend.map(([weather, meaning]) => (
                 <li key={weather} {...stylex.props(styles.weatherItem)}>
-                  <WeatherIcon weather={weather} size={30} label="" />
+                  <WeatherIcon weather={weather} size={20} label="" />
                   <span>
                     <strong>{weatherLabels[weather]}</strong>
                     <span {...stylex.props(styles.muted)}> · {meaning}</span>
@@ -539,18 +542,19 @@ const styles = stylex.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: space.sm,
-    paddingBlock: space.sm,
-    paddingInline: { default: space.md, "@media (min-width: 768px)": space.xl },
-    backgroundColor: "rgba(255, 255, 255, 0.55)",
-    backdropFilter: "blur(16px) saturate(1.4)",
+    height: "52px",
+    paddingInline: { default: space.md, "@media (min-width: 768px)": space.lg },
+    color: colors.ink,
+    backgroundColor: "rgba(255, 255, 255, 0.82)",
+    backdropFilter: "blur(16px)",
     borderBottom: `1px solid ${colors.border}`,
   },
   brand: { display: "flex", alignItems: "center", gap: space.sm, minWidth: 0 },
   workspace: { display: { default: "none", "@media (min-width: 640px)": "inline-flex" } },
-  account: { display: "flex", alignItems: "center", gap: space.sm, margin: 0 },
+  account: { display: "flex", alignItems: "center", gap: space.xs, margin: 0 },
   viewerName: {
-    fontWeight: 600,
-    fontSize: "0.9375rem",
+    fontWeight: 500,
+    fontSize: "0.8125rem",
     display: { default: "none", "@media (min-width: 640px)": "inline" },
   },
   main: {
@@ -559,8 +563,8 @@ const styles = stylex.create({
     gap: space.lg,
     maxWidth: "1440px",
     marginInline: "auto",
-    paddingBlock: space.xl,
-    paddingInline: { default: space.md, "@media (min-width: 768px)": space.xl },
+    paddingBlock: space.lg,
+    paddingInline: { default: space.md, "@media (min-width: 768px)": space.lg },
   },
   notice: {
     display: "flex",
@@ -570,20 +574,19 @@ const styles = stylex.create({
     padding: { default: space.lg, "@media (min-width: 768px)": space.xl },
   },
   title: {
-    fontFamily: fonts.display,
-    fontSize: "clamp(1.5rem, 3.5vw, 2.25rem)",
-    fontWeight: 800,
-    letterSpacing: "-0.02em",
-    lineHeight: 1.1,
+    fontSize: "1.375rem",
+    fontWeight: 600,
+    letterSpacing: "-0.015em",
+    lineHeight: 1.2,
   },
-  lead: { maxWidth: "40rem", fontSize: "1.0625rem", lineHeight: 1.55, color: colors.inkMuted },
+  lead: { maxWidth: "40rem", fontSize: "0.875rem", lineHeight: 1.55, color: colors.inkMuted },
   // Straight on the sky, so its colour follows the sky's, easing with it.
   onSky: { color: boardSky.text, transitionProperty: "color", transitionDuration: "1.6s" },
   // Muted by fading whatever colour the sky gives text.
-  subtitle: { opacity: 0.8 },
+  subtitle: { opacity: 0.75, fontSize: "0.8125rem", marginTop: "2px" },
   chip: { marginTop: space.sm, marginInlineEnd: space.xs },
-  chipLead: { fontWeight: 650 },
-  board: { display: "flex", flexDirection: "column", gap: space.lg },
+  chipLead: { fontWeight: 500 },
+  board: { display: "flex", flexDirection: "column", gap: space.md },
   boardHeader: {
     display: "flex",
     flexWrap: "wrap",
@@ -591,7 +594,7 @@ const styles = stylex.create({
     justifyContent: "space-between",
     gap: space.md,
   },
-  boardArea: { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: space.md },
+  boardArea: { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: space.sm },
   docked: {
     gridTemplateColumns: { default: "minmax(0, 1fr)", [DOCKED]: `minmax(0, 1fr) ${PANEL_WIDTH}` },
     alignItems: "start",
@@ -602,10 +605,10 @@ const styles = stylex.create({
     gridColumn: { default: null, [DOCKED]: "2" },
     gridRow: { default: null, [DOCKED]: "1" },
     position: { default: null, [DOCKED]: "sticky" },
-    top: { default: null, [DOCKED]: "76px" },
+    top: { default: null, [DOCKED]: "64px" },
     display: { default: null, [DOCKED]: "flex" },
     flexDirection: "column",
-    maxHeight: { default: null, [DOCKED]: "calc(100dvh - 92px)" },
+    maxHeight: { default: null, [DOCKED]: "calc(100dvh - 80px)" },
     minWidth: 0,
   },
   peopleDocked: {
@@ -617,9 +620,9 @@ const styles = stylex.create({
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))",
     alignItems: "start",
-    gap: space.md,
+    gap: space.sm,
   },
-  controls: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: space.xs },
+  controls: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" },
   failure: {
     display: "flex",
     flexWrap: "wrap",
@@ -630,33 +633,36 @@ const styles = stylex.create({
   legends: {
     display: "grid",
     gridTemplateColumns: { default: "1fr", "@media (min-width: 860px)": "1fr 1fr" },
-    gap: space.lg,
+    gap: space.sm,
   },
-  heading: {
-    fontFamily: fonts.display,
-    fontSize: "1.125rem",
-    fontWeight: 700,
-    marginBottom: space.md,
-  },
-  matrix: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: space.xs },
+  heading: { fontSize: "0.8125rem", fontWeight: 600, marginBottom: space.sm },
+  matrix: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px" },
   quadrant: {
     display: "flex",
     flexDirection: "column",
-    gap: space.xxs,
-    padding: space.md,
-    borderRadius: radii.md,
-    minHeight: "92px",
+    gap: "2px",
+    paddingBlock: space.xs,
+    paddingInline: "10px",
+    borderRadius: radii.sm,
+    backgroundColor: colors.subtle,
+    boxShadow: `inset 0 0 0 1px ${colors.border}`,
   },
-  quadrantName: { fontFamily: fonts.display, fontWeight: 800, fontSize: "1.0625rem" },
-  quadrantRule: { fontSize: "0.8125rem", lineHeight: 1.4, opacity: 0.85 },
+  quadrantName: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    fontWeight: 500,
+    fontSize: "0.8125rem",
+  },
+  quadrantRule: { fontSize: "0.75rem", lineHeight: 1.4, color: colors.inkMuted },
   weatherList: {
     listStyle: "none",
     margin: 0,
     padding: 0,
     display: "flex",
     flexDirection: "column",
-    gap: space.sm,
+    gap: space.xs,
   },
-  weatherItem: { display: "flex", alignItems: "center", gap: space.sm, fontSize: "0.9375rem" },
+  weatherItem: { display: "flex", alignItems: "center", gap: space.xs, fontSize: "0.8125rem" },
   muted: { color: colors.inkMuted },
 });

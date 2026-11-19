@@ -1,8 +1,8 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Avatar, Button, Card, VisuallyHidden, WeatherIcon, weatherLabels } from "ui";
-import { colors, fonts, radii, space } from "ui/tokens.stylex";
+import { Avatar, Button, Card, Icon, VisuallyHidden, WeatherIcon, weatherLabels } from "ui";
+import { colors, fonts, media, radii, space, weatherTones } from "ui/tokens.stylex";
 import {
   describeDay,
   listOf,
@@ -10,6 +10,7 @@ import {
   type Rebalance,
   type RunningLate,
   type Suggestion,
+  type WeatherKind,
 } from "./board";
 import { entrance } from "./motion";
 import { quadrantFill, quadrantInfo } from "./quadrants";
@@ -57,30 +58,30 @@ export function ConfirmMoves({
   useEffect(() => question.current?.focus(), []);
   return (
     <section aria-labelledby="confirm-moves" {...stylex.props(styles.confirm)}>
-      <p id="confirm-moves" ref={question} tabIndex={-1} {...stylex.props(styles.subheading)}>
+      <p id="confirm-moves" ref={question} tabIndex={-1} {...stylex.props(styles.confirmQuestion)}>
         Make {moves.length === 1 ? "this move" : `these ${moves.length} moves`} in Linear?
       </p>
       <ol {...stylex.props(styles.confirmList)}>
         {moves.map(({ issue, from, to }) => (
-          <li key={issue.id} {...stylex.props(styles.moveLine)}>
+          <li key={issue.id} {...stylex.props(styles.confirmLine)}>
             <span {...stylex.props(styles.identifier)}>{issue.identifier}</span>
             <VisuallyHidden>from</VisuallyHidden>
             <Who person={from} />
-            <span aria-hidden="true" {...stylex.props(styles.arrow)}>
-              →
-            </span>
+            <Icon name="arrowRight" size={14} xstyle={styles.arrow} />
             <VisuallyHidden>to</VisuallyHidden>
             <Who person={to} />
           </li>
         ))}
       </ol>
-      <p {...stylex.props(styles.muted)}>
+      <p {...stylex.props(styles.fine)}>
         One at a time, in this order. If one fails, the rest wait, and the board plans again from
         wherever things stand.
       </p>
       <div {...stylex.props(styles.actions)}>
-        <Button onClick={onConfirm}>Make {moves.length === 1 ? "it" : "them"}</Button>
-        <Button variant="quiet" onClick={onCancel}>
+        <Button variant="primary" icon="check" onClick={onConfirm}>
+          Make {moves.length === 1 ? "it" : "them"}
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
       </div>
@@ -93,6 +94,9 @@ export function ConfirmMoves({
  * coming. Each move is made in Linear in one click; today's can be made all at once, after a yes.
  * The ones ahead stay one at a time: they hand over work that isn't urgent yet, and assume
  * today's moves were made.
+ *
+ * On a wide screen the board docks it beside the people, so it's built narrow: each move is a
+ * compact card reading giver → taker, with each one's load before → after.
  */
 export function RebalancePanel({
   teamName,
@@ -116,27 +120,48 @@ export function RebalancePanel({
     setCancelled(false);
     document.querySelector<HTMLElement>("[data-apply-now]")?.focus();
   }, [cancelled]);
+  const [explained, setExplained] = useState(false);
   const busy = (move: Suggestion) => applying || pending.has(move.issue.id);
   const moves = rebalanceNow.length + rebalanceForecast.length > 0;
   const late = listOf(
     runningLate.map(({ person, overdue }) => `${person.name} (${overdue} overdue)`),
   );
   return (
-    <Card as="section" xstyle={entrance.reveal}>
-      <div {...stylex.props(styles.panel)}>
-        <div>
-          <h2 id="rebalance-heading" tabIndex={-1} {...stylex.props(styles.heading)}>
-            Rebalancing {teamName}
-          </h2>
-          <p {...stylex.props(styles.muted)}>
+    <Card as="section" xstyle={[styles.card, entrance.panel]}>
+      <header {...stylex.props(styles.header)}>
+        <span aria-hidden="true" {...stylex.props(styles.badge)}>
+          <Icon name="balance" size={18} />
+        </span>
+        <h2 id="rebalance-heading" tabIndex={-1} {...stylex.props(styles.heading)}>
+          Rebalancing {teamName}
+        </h2>
+        <Button size="sm" variant="ghost" icon="close" onClick={onClose} xstyle={styles.close}>
+          Close
+        </Button>
+      </header>
+      <div {...stylex.props(styles.scroll)}>
+        <details
+          onToggle={(event) => setExplained(event.currentTarget.open)}
+          {...stylex.props(styles.how)}
+        >
+          <summary {...stylex.props(styles.howToggle)}>
+            <Icon
+              name="chevronRight"
+              size={14}
+              xstyle={[styles.howChevron, explained && styles.howChevronOpen]}
+            />
+            How moves are picked
+          </summary>
+          <p {...stylex.props(styles.fine, styles.howText)}>
             Anyone away hands on their urgent work first. Then the busiest person hands the least
             busy one issue at a time, until nobody is under rain or in a storm. Otherwise overdue
-            work stays where it is, and nobody running late or away takes more.
+            work stays where it is, and nobody running late or away takes more. Loads read as a
+            multiple of each person's fair share: 1.0× is the team average.
           </p>
-        </div>
+        </details>
         {runningLate.length > 0 && (
           <div {...stylex.props(styles.note)}>
-            <WeatherIcon weather="storm" size={28} label="" />
+            <WeatherIcon weather="storm" size={26} label="" />
             <p>
               {late} {runningLate.length === 1 ? "stays" : "stay"} in a storm
               {moves ? " after these moves" : ""}: overdue work stays with whoever has it. Finish
@@ -144,57 +169,51 @@ export function RebalancePanel({
             </p>
           </div>
         )}
-        <div {...stylex.props(styles.horizons)}>
-          <Horizon
-            id="rebalance-now"
-            title="Now"
-            lead="Urgent work to hand over today."
-            empty="Nothing to move: nobody's urgent load is far above the average, or no one move would help."
-            suggestions={rebalanceNow}
-            busy={busy}
-            onReassign={onReassign}
-          >
-            {rebalanceNow.length > 0 &&
-              (asked ? (
-                <ConfirmMoves
-                  moves={asked}
-                  onConfirm={() => {
-                    onApplyNow(asked);
-                    setConfirming(null);
-                  }}
-                  onCancel={() => {
-                    setConfirming(null);
-                    setCancelled(true);
-                  }}
-                />
-              ) : (
-                <div>
-                  <Button
-                    data-apply-now
-                    disabled={applying || rebalanceNow.some(busy)}
-                    aria-busy={applying || undefined}
-                    onClick={() => setConfirming(rebalanceNow)}
-                  >
-                    {applying ? "Making today's moves…" : "Make all of today's moves"}
-                  </Button>
-                </div>
-              ))}
-          </Horizon>
-          <Horizon
-            id="rebalance-forecast"
-            title="Before the storm"
-            lead="Once today's moves are made: work to hand over before it turns urgent, week by week."
-            empty="Nothing to move ahead of time: no storm is coming that one move would head off."
-            suggestions={rebalanceForecast}
-            busy={busy}
-            onReassign={onReassign}
-          />
-        </div>
-        <div>
-          <Button variant="quiet" onClick={onClose}>
-            Close
-          </Button>
-        </div>
+        <Horizon
+          id="rebalance-now"
+          title="Now"
+          lead="Urgent work to hand over today."
+          empty="Nothing to move: nobody's urgent load is far above the average, or no one move would help."
+          suggestions={rebalanceNow}
+          busy={busy}
+          onReassign={onReassign}
+        >
+          {rebalanceNow.length > 0 &&
+            (asked ? (
+              <ConfirmMoves
+                moves={asked}
+                onConfirm={() => {
+                  onApplyNow(asked);
+                  setConfirming(null);
+                }}
+                onCancel={() => {
+                  setConfirming(null);
+                  setCancelled(true);
+                }}
+              />
+            ) : (
+              <Button
+                variant="primary"
+                data-apply-now
+                disabled={applying || rebalanceNow.some(busy)}
+                aria-busy={applying || undefined}
+                onClick={() => setConfirming(rebalanceNow)}
+                xstyle={styles.applyAll}
+              >
+                {applying ? "Making today's moves…" : "Make all of today's moves"}
+              </Button>
+            ))}
+        </Horizon>
+        <Horizon
+          id="rebalance-forecast"
+          title="Before the storm"
+          lead="Once today's moves are made: work to hand over before it turns urgent."
+          empty="Nothing to move ahead of time: no storm is coming that one move would head off."
+          suggestions={rebalanceForecast}
+          busy={busy}
+          onReassign={onReassign}
+          byWeek
+        />
       </div>
     </Card>
   );
@@ -208,6 +227,7 @@ function Horizon({
   suggestions,
   busy,
   onReassign,
+  byWeek,
   children,
 }: {
   id: string;
@@ -217,38 +237,72 @@ function Horizon({
   suggestions: Suggestion[];
   busy: (move: Suggestion) => boolean;
   onReassign: (move: Suggestion) => void;
+  /** Splits the moves into the weeks whose storm they head off. */
+  byWeek?: boolean;
   /** Anything to do with the whole list, shown above it. */
   children?: ComponentChildren;
 }) {
+  const list = (moves: Suggestion[]) => (
+    <ol {...stylex.props(styles.list)}>
+      {moves.map((suggestion) => (
+        <SuggestionItem
+          key={suggestion.issue.id}
+          suggestion={suggestion}
+          busy={busy(suggestion)}
+          onReassign={() => onReassign(suggestion)}
+        />
+      ))}
+    </ol>
+  );
   return (
     <section aria-labelledby={id} {...stylex.props(styles.horizon)}>
       <div>
         <h3 id={id} {...stylex.props(styles.subheading)}>
           {title}
+          {suggestions.length > 0 && (
+            <span {...stylex.props(styles.tally)}>
+              <VisuallyHidden>: </VisuallyHidden>
+              {suggestions.length}
+              <VisuallyHidden>{suggestions.length === 1 ? " move" : " moves"}</VisuallyHidden>
+            </span>
+          )}
         </h3>
-        <p {...stylex.props(styles.muted)}>{lead}</p>
+        <p {...stylex.props(styles.fine)}>{lead}</p>
       </div>
       {children}
       {suggestions.length === 0 ? (
-        <p {...stylex.props(styles.empty)}>{empty}</p>
+        <p {...stylex.props(styles.empty)}>
+          <WeatherIcon weather="sun" size={22} label="" />
+          {empty}
+        </p>
+      ) : byWeek ? (
+        weeksOf(suggestions).map(([week, moves]) => (
+          <section key={week} aria-label={`Week ${week}`} {...stylex.props(styles.week)}>
+            <h4 aria-hidden="true" {...stylex.props(styles.weekHeading)}>
+              {week === 1 ? "This week" : `Week ${week}`}
+            </h4>
+            {list(moves)}
+          </section>
+        ))
       ) : (
-        <ol {...stylex.props(styles.list)}>
-          {suggestions.map((suggestion) => (
-            <SuggestionItem
-              key={suggestion.issue.id}
-              suggestion={suggestion}
-              busy={busy(suggestion)}
-              onReassign={() => onReassign(suggestion)}
-            />
-          ))}
-        </ol>
+        list(suggestions)
       )}
     </section>
   );
 }
 
+/** The moves in the order they came, gathered by week. */
+function weeksOf(moves: Suggestion[]): [number, Suggestion[]][] {
+  const weeks = new Map<number, Suggestion[]>();
+  for (const move of moves) {
+    const week = move.week ?? 0;
+    weeks.set(week, [...(weeks.get(week) ?? []), move]);
+  }
+  return [...weeks];
+}
+
 function SuggestionItem({
-  suggestion: { issue, from, to, week, toWeather, reason },
+  suggestion: { issue, from, to, week, fromWeather, toWeather, fromLoad, toLoad, reason },
   busy,
   onReassign,
 }: {
@@ -258,103 +312,243 @@ function SuggestionItem({
   onReassign: () => void;
 }) {
   const quadrant = issue.quadrant.toLowerCase() as keyof typeof quadrantInfo;
-  const icon = weatherIcon[toWeather];
   const when = week === null ? "now" : `in week ${week}`;
   return (
     <li aria-busy={busy || undefined} {...stylex.props(styles.item, busy && styles.busy)}>
-      <div {...stylex.props(styles.issueLine)}>
-        <a href={issue.url} target="_blank" rel="noreferrer" {...stylex.props(styles.identifier)}>
-          {issue.identifier}
-        </a>
-        <span {...stylex.props(styles.title)} title={issue.title}>
-          {issue.title}
-        </span>
-      </div>
-      <div {...stylex.props(styles.moveLine)}>
+      <div {...stylex.props(styles.itemMeta)}>
         <span {...stylex.props(styles.quadrant, quadrantFill[quadrant])}>
           {quadrantInfo[quadrant].name}
         </span>
+        <a href={issue.url} target="_blank" rel="noreferrer" {...stylex.props(styles.identifier)}>
+          {issue.identifier}
+        </a>
         {week !== null && issue.becomesUrgentOn && (
-          <span {...stylex.props(styles.muted)}>urgent {describeDay(issue.becomesUrgentOn)}</span>
+          <span {...stylex.props(styles.fine)}>urgent {describeDay(issue.becomesUrgentOn)}</span>
         )}
       </div>
-      <div {...stylex.props(styles.moveLine)}>
+      <p {...stylex.props(styles.title)} title={issue.title}>
+        {issue.title}
+      </p>
+      <Button
+        size="sm"
+        iconEnd="arrowRight"
+        disabled={busy}
+        aria-label={`Hand ${issue.identifier} to ${to.name}`}
+        data-reassign={issue.id}
+        onClick={onReassign}
+        xstyle={styles.handOver}
+      >
+        {busy ? "Handing…" : "Hand over"}
+      </Button>
+      <div title={reason} {...stylex.props(styles.transfer)}>
         <VisuallyHidden>Move from</VisuallyHidden>
-        <Who person={from} />
-        <span aria-hidden="true" {...stylex.props(styles.arrow)}>
-          →
+        <Side person={from} load={fromLoad} weather={fromWeather} when={when} />
+        <span aria-hidden="true" {...stylex.props(styles.transferArrow)}>
+          <Icon name="arrowRight" size={14} />
         </span>
         <VisuallyHidden>to</VisuallyHidden>
-        <Who person={to} />
-        <span {...stylex.props(styles.after)}>
-          <WeatherIcon
-            weather={icon}
-            size={22}
-            label={`${to.name} would be: ${weatherLabels[icon]} ${when}.`}
-          />
-          <span aria-hidden="true">{when}</span>
-        </span>
-      </div>
-      <p {...stylex.props(styles.reason)}>{reason}</p>
-      <div>
-        <Button
-          variant="quiet"
-          disabled={busy}
-          aria-label={`Hand ${issue.identifier} to ${to.name}`}
-          data-reassign={issue.id}
-          onClick={onReassign}
-          xstyle={styles.reassign}
-        >
-          Hand over
-        </Button>
+        <Side person={to} load={toLoad} weather={toWeather} when={when} />
       </div>
     </li>
   );
 }
 
+/** One end of a move: who, and their load before → after, with the weather it leaves them in. */
+function Side({
+  person,
+  load,
+  weather,
+  when,
+}: {
+  person: Person;
+  load: Suggestion["toLoad"];
+  weather: WeatherKind;
+  when: string;
+}) {
+  const icon = weatherIcon[weather];
+  return (
+    <span {...stylex.props(styles.side, toneOf[icon])}>
+      {/* The weather it leaves them in sits on their avatar, like a status. */}
+      <span {...stylex.props(styles.face)}>
+        <Avatar name={person.name} src={person.avatarUrl} size={28} />
+        <span {...stylex.props(styles.faceWeather)}>
+          <WeatherIcon
+            weather={icon}
+            size={16}
+            label={`${person.name} would be: ${weatherLabels[icon]} ${when}.`}
+          />
+        </span>
+      </span>
+      <span {...stylex.props(styles.sideText)}>
+        <span {...stylex.props(styles.sideName)}>{person.name}</span>
+        <span {...stylex.props(styles.load)}>
+          {load ? (
+            <>
+              {load.before !== null && (
+                <>
+                  {times(load.before)}
+                  <span aria-hidden="true" {...stylex.props(styles.loadArrow)}>
+                    →
+                  </span>
+                  <VisuallyHidden> to </VisuallyHidden>
+                </>
+              )}
+              <strong {...stylex.props(styles.loadAfter)}>{times(load.after)}</strong>
+            </>
+          ) : (
+            "away"
+          )}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/** A load as a multiple of a fair share, e.g. "2.5×". */
+const times = (ratio: number) => `${Number.isInteger(ratio) ? ratio.toFixed(1) : ratio}×`;
+
 function Who({ person }: { person: Person }) {
   return (
     <span {...stylex.props(styles.who)}>
-      <Avatar name={person.name} src={person.avatarUrl} size={22} />
+      <Avatar name={person.name} src={person.avatarUrl} size={20} />
       {person.name}
     </span>
   );
 }
 
 const styles = stylex.create({
-  panel: { display: "flex", flexDirection: "column", gap: space.lg },
-  heading: {
-    fontFamily: fonts.display,
-    fontSize: "1.125rem",
-    fontWeight: 700,
-    marginBottom: space.xxs,
+  // Docked, it fills the dock's height and scrolls inside, keeping its header in view.
+  card: {
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    padding: 0,
+    overflow: "hidden",
   },
-  subheading: { fontFamily: fonts.display, fontSize: "1rem", fontWeight: 700 },
-  muted: { color: colors.inkMuted, fontSize: "0.9375rem" },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    paddingBlock: space.sm,
+    paddingInlineStart: space.md,
+    paddingInlineEnd: space.sm,
+    borderBottom: `1px solid ${colors.border}`,
+  },
+  badge: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 32,
+    height: 32,
+    flexShrink: 0,
+    borderRadius: radii.sm,
+    color: colors.onSelected,
+    backgroundColor: colors.selected,
+    boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.14)",
+  },
+  heading: {
+    flexGrow: 1,
+    minWidth: 0,
+    fontFamily: fonts.display,
+    fontSize: "1.0625rem",
+    fontWeight: 750,
+    letterSpacing: "-0.01em",
+    outline: "none",
+  },
+  close: { flexShrink: 0 },
+  scroll: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.lg,
+    minHeight: 0,
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    padding: space.md,
+  },
+  how: { marginBlock: `calc(-1 * ${space.xxs})` },
+  howToggle: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: space.xxs,
+    paddingBlock: space.xxs,
+    paddingInline: space.xs,
+    marginInlineStart: `calc(-1 * ${space.xs})`,
+    borderRadius: radii.pill,
+    color: colors.inkMuted,
+    fontSize: "0.8125rem",
+    fontWeight: 600,
+    cursor: "pointer",
+    listStyle: "none",
+    "::-webkit-details-marker": { display: "none" },
+    backgroundColor: {
+      default: "transparent",
+      [media.hover]: { default: "transparent", ":hover": colors.hover },
+    },
+    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+  },
+  howChevron: {
+    transitionProperty: "transform",
+    transitionDuration: "200ms",
+    transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)",
+  },
+  howChevronOpen: { transform: "rotate(90deg)" },
+  howText: { marginTop: space.xxs },
+  subheading: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.xs,
+    fontFamily: fonts.display,
+    fontSize: "0.9375rem",
+    fontWeight: 750,
+  },
+  tally: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "1.6em",
+    height: "1.6em",
+    paddingInline: "0.45em",
+    borderRadius: radii.pill,
+    backgroundColor: colors.hover,
+    color: colors.inkMuted,
+    fontFamily: fonts.body,
+    fontSize: "0.75rem",
+    fontWeight: 700,
+    fontVariantNumeric: "tabular-nums",
+  },
+  fine: { color: colors.inkMuted, fontSize: "0.8125rem", lineHeight: 1.45 },
   note: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    paddingBlock: space.sm,
+    paddingInline: space.sm,
+    borderRadius: radii.md,
+    color: weatherTones.stormInk,
+    backgroundColor: weatherTones.stormFill,
+    fontSize: "0.8125rem",
+    lineHeight: 1.45,
+  },
+  horizon: { display: "flex", flexDirection: "column", gap: space.sm, minWidth: 0 },
+  applyAll: { width: "100%" },
+  empty: {
     display: "flex",
     alignItems: "center",
     gap: space.sm,
     padding: space.sm,
     borderRadius: radii.md,
-    border: `1px solid ${colors.border}`,
-    backgroundColor: colors.surfaceStrong,
-    fontSize: "0.9375rem",
-    lineHeight: 1.4,
-  },
-  horizons: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
-    gap: space.lg,
-    alignItems: "start",
-  },
-  horizon: { display: "flex", flexDirection: "column", gap: space.sm, minWidth: 0 },
-  empty: {
-    padding: space.md,
-    borderRadius: radii.md,
-    border: `1px dashed ${colors.border}`,
+    border: `1px dashed ${colors.controlBorder}`,
     color: colors.inkMuted,
-    fontSize: "0.9375rem",
+    fontSize: "0.8125rem",
+    lineHeight: 1.45,
+  },
+  week: { display: "flex", flexDirection: "column", gap: space.xs },
+  weekHeading: {
+    fontSize: "0.6875rem",
+    fontWeight: 700,
+    letterSpacing: "0.07em",
+    textTransform: "uppercase",
+    color: colors.inkMuted,
   },
   list: {
     listStyle: "none",
@@ -364,59 +558,123 @@ const styles = stylex.create({
     flexDirection: "column",
     gap: space.xs,
   },
+  // Which issue and the button on top, then its title and who to whom across the card.
   item: {
-    display: "flex",
-    flexDirection: "column",
-    gap: space.xxs,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    columnGap: space.sm,
+    rowGap: "6px",
     padding: space.sm,
     borderRadius: radii.md,
-    border: `1px solid ${colors.border}`,
+    border: `1px solid ${colors.controlBorder}`,
     backgroundColor: colors.surfaceStrong,
+    boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(29, 26, 51, 0.05)",
+    minWidth: 0,
+    transitionProperty: "opacity",
+    transitionDuration: "200ms",
+  },
+  itemMeta: {
+    gridColumn: "1",
+    gridRow: "1",
+    display: "flex",
+    alignItems: "center",
+    gap: space.xs,
     minWidth: 0,
   },
-  issueLine: { display: "flex", alignItems: "baseline", gap: space.xs, minWidth: 0 },
-  identifier: {
-    flexShrink: 0,
-    fontWeight: 700,
-    fontSize: "0.875rem",
-    color: colors.ink,
-    textDecoration: { default: "none", ":hover": "underline" },
-  },
   title: {
+    gridColumn: "1 / -1",
     minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    fontSize: "0.9375rem",
-  },
-  moveLine: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: space.xs,
     fontSize: "0.875rem",
+    fontWeight: 550,
+  },
+  handOver: { gridColumn: "2", gridRow: "1", alignSelf: "center" },
+  identifier: {
+    flexShrink: 0,
+    fontWeight: 700,
+    fontSize: "0.75rem",
+    letterSpacing: "0.01em",
+    color: colors.inkMuted,
+    textDecoration: { default: "none", ":hover": "underline" },
+    outline: { default: "none", ":focus-visible": `3px solid ${colors.focus}` },
+    borderRadius: "4px",
   },
   quadrant: {
-    paddingInline: space.xs,
-    paddingBlock: "1px",
+    flexShrink: 0,
+    paddingInline: "7px",
+    paddingBlock: "2px",
     borderRadius: radii.pill,
-    fontSize: "0.75rem",
+    fontSize: "0.6875rem",
     fontWeight: 700,
+    lineHeight: 1.3,
   },
-  who: { display: "inline-flex", alignItems: "center", gap: space.xxs, fontWeight: 600 },
-  arrow: { color: colors.inkMuted },
-  after: { display: "inline-flex", alignItems: "center", gap: space.xxs, color: colors.inkMuted },
-  reason: { fontSize: "0.8125rem", color: colors.inkMuted, lineHeight: 1.4 },
-  busy: { opacity: 0.6 },
-  reassign: { paddingBlock: "6px", fontSize: "0.875rem" },
+  // Two ends with an arrow between, sharing the width evenly whatever the names.
+  transfer: {
+    gridColumn: "1 / -1",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+    alignItems: "center",
+    gap: space.xs,
+    paddingTop: space.xs,
+    borderTop: `1px solid ${colors.border}`,
+  },
+  transferArrow: { display: "inline-flex", color: colors.inkMuted },
+  side: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    minWidth: 0,
+    paddingBlock: "5px",
+    paddingInline: "6px",
+    borderRadius: radii.sm,
+  },
+  face: { position: "relative", display: "inline-flex", flexShrink: 0 },
+  faceWeather: {
+    position: "absolute",
+    right: "-6px",
+    bottom: "-5px",
+    display: "inline-flex",
+    padding: "1px",
+    borderRadius: "50%",
+    backgroundColor: colors.surfaceStrong,
+    boxShadow: "0 1px 2px rgba(29, 26, 51, 0.18)",
+  },
+  sideText: { display: "flex", flexDirection: "column", minWidth: 0 },
+  sideName: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontSize: "0.8125rem",
+    fontWeight: 600,
+  },
+  load: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "3px",
+    fontSize: "0.75rem",
+    color: colors.inkMuted,
+    fontVariantNumeric: "tabular-nums",
+    whiteSpace: "nowrap",
+  },
+  loadArrow: { opacity: 0.6, paddingInline: "1px" },
+  loadAfter: { color: colors.ink, fontWeight: 700, marginInlineEnd: "2px" },
+  busy: { opacity: 0.55 },
   confirm: {
     display: "flex",
     flexDirection: "column",
     gap: space.sm,
     padding: space.sm,
     borderRadius: radii.md,
-    border: `1px solid ${colors.border}`,
+    border: `1px solid ${colors.controlBorder}`,
     backgroundColor: colors.surfaceStrong,
+  },
+  confirmQuestion: {
+    fontFamily: fonts.display,
+    fontSize: "0.9375rem",
+    fontWeight: 700,
+    outline: "none",
   },
   confirmList: {
     margin: 0,
@@ -425,5 +683,24 @@ const styles = stylex.create({
     flexDirection: "column",
     gap: space.xxs,
   },
+  confirmLine: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: space.xs,
+    fontSize: "0.8125rem",
+  },
+  arrow: { color: colors.inkMuted },
+  who: { display: "inline-flex", alignItems: "center", gap: space.xxs, fontWeight: 600 },
   actions: { display: "flex", flexWrap: "wrap", gap: space.xs },
+});
+
+// Each end of a move tinted by the weather it leaves that person in.
+const toneOf = stylex.create({
+  sun: { backgroundColor: weatherTones.sunFill },
+  partly: { backgroundColor: weatherTones.partlyFill },
+  rain: { backgroundColor: weatherTones.rainFill },
+  storm: { backgroundColor: weatherTones.stormFill },
+  fog: { backgroundColor: weatherTones.fogFill },
+  away: { backgroundColor: weatherTones.awayFill },
 });

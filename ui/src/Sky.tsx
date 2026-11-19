@@ -51,6 +51,7 @@ export function Sky({ time = "sunset", weather = "partly", children }: SkyProps)
 
 function DawnSky({ weather, children }: { weather: Weather; children: ComponentChildren }) {
   const wet = weather === "rain" || weather === "storm";
+  const sunny = weather === "sun" || weather === "partly";
   const tint = weather === "storm" ? styles.bodyStorm : weather === "rain" ? styles.bodyRain : null;
   const rainCanvas = useRain(wet ? (weather === "storm" ? "storm" : "rain") : null, TURN_MS);
   // Browser chrome and overscroll follow the sky; the page arrives with its first weather's.
@@ -79,6 +80,17 @@ function DawnSky({ weather, children }: { weather: Weather; children: ComponentC
             />
           ))}
         </div>
+        {/* Slow shafts of light from the sun's corner: full on a clear day, faint through cloud. */}
+        <div
+          {...stylex.props(
+            styles.layer,
+            styles.sunlight,
+            weather === "partly" && styles.sunlightFaint,
+            !sunny && styles.hidden,
+          )}
+        >
+          <div {...stylex.props(styles.beams, !sunny && styles.still)} />
+        </div>
         {clouds.map((cloud, i) => (
           <Cloud
             key={cloud.top}
@@ -92,6 +104,8 @@ function DawnSky({ weather, children }: { weather: Weather; children: ComponentC
         <div {...stylex.props(styles.layer, styles.motion, !wet && styles.hidden)}>
           <canvas ref={rainCanvas} {...stylex.props(styles.rain)} />
         </div>
+        {/* Spray where the rain lands, so it meets the ground instead of stopping at the edge. */}
+        <div {...stylex.props(styles.layer, styles.spray, !wet && styles.hidden)} />
         <div {...stylex.props(styles.layer, styles.motion, weather !== "storm" && styles.hidden)}>
           <div {...stylex.props(styles.lightning, weather !== "storm" && styles.still)} />
         </div>
@@ -218,6 +232,8 @@ const drift = stylex.keyframes({
   to: { transform: `translateX(-${MIST_TILE}px)` },
 });
 
+const turn = stylex.keyframes({ to: { transform: "rotate(360deg)" } });
+
 const REDUCED_MOTION = "@media (prefers-reduced-motion: reduce)";
 // Long enough to notice the sky turning, short enough that the board doesn't wait on it.
 const TURN_MS = 1600;
@@ -275,6 +291,32 @@ const styles = stylex.create({
     animationName: flash,
     animationDuration: "11s",
     animationIterationCount: "infinite",
+  },
+  // Plain opacity rather than a blend mode, which would repaint the whole sky as the rays turn.
+  sunlight: { opacity: 0.42 },
+  sunlightFaint: { opacity: 0.18 },
+  // A wheel of soft rays centred on the top-right corner, faded out from its middle and turned
+  // so slowly it reads as light shifting rather than motion. Only its transform animates.
+  beams: {
+    position: "absolute",
+    width: "200vmax",
+    height: "200vmax",
+    top: "-100vmax",
+    right: "-100vmax",
+    backgroundImage:
+      // Each ray fades in and out over its width, so no edge is ever hard.
+      "repeating-conic-gradient(from 0deg, rgba(255, 244, 214, 0.75) 0deg, rgba(255, 244, 214, 0) 7deg, rgba(255, 244, 214, 0) 17deg, rgba(255, 244, 214, 0.45) 21deg, rgba(255, 244, 214, 0) 26deg, rgba(255, 244, 214, 0) 36deg, rgba(255, 244, 214, 0.75) 36deg)",
+    maskImage: "radial-gradient(closest-side, #000 0%, rgba(0, 0, 0, 0.35) 28%, transparent 55%)",
+    willChange: "transform",
+    animationName: turn,
+    animationDuration: "320s",
+    animationTimingFunction: "linear",
+    animationIterationCount: "infinite",
+    animationPlayState: { default: "running", [REDUCED_MOTION]: "paused" },
+  },
+  spray: {
+    backgroundImage:
+      "linear-gradient(to top, rgba(226, 231, 243, 0.42), rgba(226, 231, 243, 0.12) 18%, transparent 34%)",
   },
   // Rain and lightning only move, so with reduced motion they aren't there at all.
   motion: { display: { default: "block", [REDUCED_MOTION]: "none" } },

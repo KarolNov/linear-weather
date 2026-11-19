@@ -32,7 +32,7 @@ const styles = stylex.create({
     color: colors.ink,
     backgroundColor: colors.surface,
     borderColor: "rgba(255, 255, 255, 0.7)",
-    backdropFilter: "blur(16px)",
+    backdropFilter: "blur(16px) saturate(1.3)",
     boxShadow: shadows.card,
   },
 });

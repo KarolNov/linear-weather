@@ -263,8 +263,11 @@ describe("applying moves", () => {
     from: person("tony"),
     to: person(to),
     week: null,
+    fromWeather: "RAIN",
     toWeather: "CLOUDY",
     reason: "",
+    fromLoad: null,
+    toLoad: null,
   });
   const moves = [move(1, "wanda"), move(2, "clint"), move(3, "steve")];
 

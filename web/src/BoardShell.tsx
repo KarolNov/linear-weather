@@ -6,6 +6,8 @@ import {
   Badge,
   Button,
   Card,
+  Chip,
+  Count,
   type Glyph,
   Logo,
   Sky,
@@ -82,9 +84,7 @@ export function BoardShell({ viewer, board, boardError, demo }: BoardShellProps)
         >
           <Avatar name={viewer.name} src={viewer.avatarUrl} size={30} />
           <span {...stylex.props(styles.viewerName)}>{viewer.name}</span>
-          <Button type="submit" variant="quiet">
-            {demo ? "Exit demo" : "Sign out"}
-          </Button>
+          <Button type="submit">{demo ? "Exit demo" : "Sign out"}</Button>
         </form>
       </header>
 
@@ -358,28 +358,33 @@ function TeamBoard({
         <div {...stylex.props(styles.controls)}>
           {withIssues.length > 0 && (
             <Button
-              variant="quiet"
+              icon={allExpanded ? "collapse" : "expand"}
               onClick={() => setExpanded(new Set(allExpanded ? [] : withIssues))}
-              xstyle={styles.expandAll}
             >
               {allExpanded ? "Collapse all" : "Expand all"}
             </Button>
           )}
           <Button
-            variant="quiet"
+            icon="balance"
+            selected={rebalancing}
             aria-expanded={rebalancing}
             aria-controls={rebalancing ? "rebalance-panel" : undefined}
             onClick={() => setRebalancing(!rebalancing)}
-            xstyle={styles.expandAll}
           >
-            {moves === 0 ? "Rebalance" : `Rebalance · ${moves}`}
+            Rebalance
+            {moves > 0 && (
+              <>
+                <VisuallyHidden>:</VisuallyHidden>
+                <Count>{moves}</Count>
+              </>
+            )}
           </Button>
           <Button
-            variant="quiet"
+            icon="sliders"
+            selected={editingRules}
             aria-expanded={editingRules}
             aria-controls={editingRules ? "rules-panel" : undefined}
             onClick={() => setEditingRules(!editingRules)}
-            xstyle={styles.expandAll}
           >
             Sorting rules
           </Button>
@@ -398,27 +403,12 @@ function TeamBoard({
           />
         </div>
       )}
-      {rebalancing && (
-        <div id="rebalance-panel">
-          <RebalancePanel
-            teamName={team.name}
-            rebalanceNow={team.rebalanceNow}
-            rebalanceForecast={team.rebalanceForecast}
-            runningLate={runningLate(people)}
-            pending={pending}
-            applying={applying}
-            onReassign={(move) => makeMoves([move], false)}
-            onApplyNow={(moves) => makeMoves(moves, true)}
-            onClose={() => setRebalancing(false)}
-          />
-        </div>
-      )}
       {failure && (
         <div id="board-failure" tabIndex={-1} {...stylex.props(styles.failureFocus)}>
           <Alert weather="rain">
             <span {...stylex.props(styles.failure)}>
               {failure}
-              <Button variant="quiet" onClick={() => setFailure(null)} xstyle={styles.expandAll}>
+              <Button size="sm" variant="ghost" icon="close" onClick={() => setFailure(null)}>
                 Dismiss
               </Button>
             </span>
@@ -428,31 +418,50 @@ function TeamBoard({
       <VisuallyHidden>
         <span role="status">{status}</span>
       </VisuallyHidden>
-      <div {...stylex.props(styles.people)}>
-        {people.map((person, i) => (
-          <PersonMatrix
-            key={keyOf(person)}
-            person={person}
-            today={today}
-            expanded={expanded.has(keyOf(person))}
-            onExpandedChange={(open) => setOne(keyOf(person), open)}
-            onPlace={place}
-            onCapacityChange={(factor) =>
-              person.assignee && changeCapacity(person.assignee, factor)
-            }
-            onAddTimeOff={async (startsOn, endsOn) =>
-              person.assignee ? addTimeOff(person.assignee, startsOn, endsOn) : false
-            }
-            onRemoveTimeOff={(timeOff) =>
-              person.assignee && removeTimeOff(person.assignee, timeOff)
-            }
-            pending={pending}
-            xstyle={[
-              entrance.board,
-              entrance.delay(PERSON_DELAY_MS + Math.min(i, MAX_STAGGERED) * PERSON_STEP_MS),
-            ]}
-          />
-        ))}
+      {/* While rebalancing, the panel docks beside the people on a wide screen, so each move's
+          effect on their weather and forecast shows as it's made. */}
+      <div {...stylex.props(styles.boardArea, rebalancing && styles.docked)}>
+        {rebalancing && (
+          <div id="rebalance-panel" {...stylex.props(styles.dock)}>
+            <RebalancePanel
+              teamName={team.name}
+              rebalanceNow={team.rebalanceNow}
+              rebalanceForecast={team.rebalanceForecast}
+              runningLate={runningLate(people)}
+              pending={pending}
+              applying={applying}
+              onReassign={(move) => makeMoves([move], false)}
+              onApplyNow={(moves) => makeMoves(moves, true)}
+              onClose={() => setRebalancing(false)}
+            />
+          </div>
+        )}
+        <div {...stylex.props(styles.people, rebalancing && styles.peopleDocked)}>
+          {people.map((person, i) => (
+            <PersonMatrix
+              key={keyOf(person)}
+              person={person}
+              today={today}
+              expanded={expanded.has(keyOf(person))}
+              onExpandedChange={(open) => setOne(keyOf(person), open)}
+              onPlace={place}
+              onCapacityChange={(factor) =>
+                person.assignee && changeCapacity(person.assignee, factor)
+              }
+              onAddTimeOff={async (startsOn, endsOn) =>
+                person.assignee ? addTimeOff(person.assignee, startsOn, endsOn) : false
+              }
+              onRemoveTimeOff={(timeOff) =>
+                person.assignee && removeTimeOff(person.assignee, timeOff)
+              }
+              pending={pending}
+              xstyle={[
+                entrance.board,
+                entrance.delay(PERSON_DELAY_MS + Math.min(i, MAX_STAGGERED) * PERSON_STEP_MS),
+              ]}
+            />
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -462,10 +471,9 @@ function TeamBoard({
 function TeamForecast({ weather }: { weather: TeamWeather }) {
   const icon = weatherIcon[weather.kind];
   return (
-    <p {...stylex.props(styles.forecast)}>
-      <WeatherIcon weather={icon} size={28} label={`Team weather: ${weatherLabels[icon]}.`} />
-      <span>{weather.reason}</span>
-    </p>
+    <Chip weather={icon} label={`Team weather: ${weatherLabels[icon]}.`} xstyle={styles.chip}>
+      <strong {...stylex.props(styles.chipLead)}>{weather.reason}</strong>
+    </Chip>
   );
 }
 
@@ -475,13 +483,10 @@ function TeamForecast({ weather }: { weather: TeamWeather }) {
  */
 function BacklogRotFlag({ reason }: { reason: string }) {
   return (
-    <p {...stylex.props(styles.forecast, styles.rot)}>
-      <WeatherIcon weather="fog" size={28} label="" />
-      <span>
-        <strong>Backlog rot:</strong> {reason}. Close what nobody will do, or give it a priority or
-        a due date.
-      </span>
-    </p>
+    <Chip weather="fog" xstyle={styles.chip}>
+      <strong {...stylex.props(styles.chipLead)}>Backlog rot:</strong> {reason}. Close what nobody
+      will do, or give it a priority or a due date.
+    </Chip>
   );
 }
 
@@ -517,6 +522,10 @@ const weatherLegend: [Glyph, string][] = [
   ["fog", "can't tell yet: undated or unestimated work"],
   ["away", "on time off: out of the average, and their urgent work needs a taker"],
 ];
+
+// Wide enough for the people beside the panel to keep two columns.
+const DOCKED = "@media (min-width: 1080px)";
+const PANEL_WIDTH = "clamp(380px, 32vw, 460px)";
 
 const styles = stylex.create({
   failureFocus: { outline: "none" },
@@ -570,31 +579,8 @@ const styles = stylex.create({
   onSky: { color: boardSky.text, transitionProperty: "color", transitionDuration: "1.6s" },
   // Muted by fading whatever colour the sky gives text.
   subtitle: { opacity: 0.8 },
-  forecast: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: space.xs,
-    marginTop: space.sm,
-    paddingBlock: space.xxs,
-    paddingInlineStart: space.xxs,
-    paddingInlineEnd: space.md,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surface,
-    border: `1px solid ${colors.border}`,
-    backdropFilter: "blur(16px)",
-    fontSize: "0.9375rem",
-    fontWeight: 600,
-    lineHeight: 1.3,
-  },
-  // Its own line under the weather, edged in the fog it warns of.
-  rot: {
-    display: "flex",
-    width: "fit-content",
-    maxWidth: "100%",
-    borderColor: colors.fog,
-    borderWidth: 2,
-    fontWeight: 500,
-  },
+  chip: { marginTop: space.sm, marginInlineEnd: space.xs },
+  chipLead: { fontWeight: 650 },
   board: { display: "flex", flexDirection: "column", gap: space.lg },
   boardHeader: {
     display: "flex",
@@ -602,6 +588,27 @@ const styles = stylex.create({
     alignItems: "flex-end",
     justifyContent: "space-between",
     gap: space.md,
+  },
+  boardArea: { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: space.md },
+  docked: {
+    gridTemplateColumns: { default: "minmax(0, 1fr)", [DOCKED]: `minmax(0, 1fr) ${PANEL_WIDTH}` },
+    alignItems: "start",
+  },
+  // On a wide screen the panel sits to the right and stays in view as the board scrolls, and
+  // scrolls on its own when its moves run longer than the window.
+  dock: {
+    gridColumn: { default: null, [DOCKED]: "2" },
+    gridRow: { default: null, [DOCKED]: "1" },
+    position: { default: null, [DOCKED]: "sticky" },
+    top: { default: null, [DOCKED]: "76px" },
+    display: { default: null, [DOCKED]: "flex" },
+    flexDirection: "column",
+    maxHeight: { default: null, [DOCKED]: "calc(100dvh - 92px)" },
+    minWidth: 0,
+  },
+  peopleDocked: {
+    gridColumn: { default: null, [DOCKED]: "1" },
+    gridRow: { default: null, [DOCKED]: "1" },
   },
   // Side by side, as many as fit; each card only as tall as its own list.
   people: {
@@ -611,7 +618,6 @@ const styles = stylex.create({
     gap: space.md,
   },
   controls: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: space.xs },
-  expandAll: { paddingBlock: "8px", fontSize: "0.875rem" },
   failure: {
     display: "flex",
     flexWrap: "wrap",

@@ -104,15 +104,17 @@ type DemoIssue = [
 
 // The Avengers. Matches the sign-in page's preview. With the default rules (urgent = due within 14 days or
 // overdue; important = Medium priority or higher):
-// - Tony is overloaded: 11 urgent, 3 of them overdue, and one due today.
+// - Tony is overloaded: 11 urgent, two of them due today. Nobody's work is overdue: overdue
+//   work never moves, so it would keep its holder stormy however the board is rebalanced, and the
+//   demo should show Rebalance clearing every storm. The one overdue issue is unassigned.
 // - Steve has 2 urgent, Natasha 4, Bruce 6 with more turning urgent next week, Clint 1.
 // - Thor's work has no due dates: fog.
 // - Every quadrant and every priority appears, some issues are unestimated, and a few are
 //   unassigned.
 const AVENGERS_ISSUES: DemoIssue[] = [
-  [tony, "Patch the arc reactor's memory leak", 1, -5, 5, "In Progress"],
-  [tony, "Recall the Mark XLII suits that fly off on their own", 1, -2, 8, "In Progress"],
-  [tony, "Answer the board about the Stark Expo budget", 3, -1, null, "Todo"],
+  [tony, "Patch the arc reactor's memory leak", 1, 1, 5, "In Progress"],
+  [tony, "Recall the Mark XLII suits that fly off on their own", 1, 2, 8, "In Progress"],
+  [tony, "Answer the board about the Stark Expo budget", 3, 0, null, "Todo"],
   [tony, "Ship JARVIS voice commands to the Quinjet", 2, 0, 3, "In Progress"],
   [tony, "Rewire the Helicarrier's turbines", 1, 1, 8, "In Progress"],
   [tony, "Upgrade War Machine's targeting", 2, 2, 5, "Todo"],
@@ -122,15 +124,15 @@ const AVENGERS_ISSUES: DemoIssue[] = [
   [tony, "Replace the repulsor gloves' firmware", 2, 9, null, "Todo"],
   [tony, "Stock the lab with more blueberries", 0, 12, null, "Todo"],
   [tony, "Design a suit for deep space", 2, 20, 13, "Backlog"],
-  [tony, "Tidy the workshop", 4, null, 1, "Backlog"],
+  [tony, "Tidy the workshop", 4, 31, 1, "Backlog"],
 
   [steve, "Brief the team on the Sokovia Accords", 2, 5, 2, "In Progress"],
   [steve, "Find Bucky's last known location", 1, 10, 5, "In Progress"],
-  [steve, "Update the shield-throwing training plan", 3, 25, 3, "Todo"],
+  [steve, "Update the shield-throwing training plan", 3, 29, 3, "Todo"],
   [steve, "Catch up on the last 70 years", 4, null, null, "Backlog"],
-  [steve, "Restore the 1940s motorcycle", 4, 40, 2, "Backlog"],
+  [steve, "Restore the 1940s motorcycle", 4, 36, 2, "Backlog"],
 
-  [natasha, "Debrief on Budapest", 2, -3, 3, "In Progress"],
+  [natasha, "Debrief on Budapest", 2, 3, 3, "In Progress"],
   [natasha, "Infiltrate the HYDRA cell in Lagos", 1, 4, 8, "In Progress"],
   [natasha, "Rotate the safehouse codes", 3, 8, 1, "Todo"],
   [natasha, "Audit the Red Room files", 2, 11, 5, "In Review"],
@@ -145,7 +147,7 @@ const AVENGERS_ISSUES: DemoIssue[] = [
   [bruce, "Brew a calming tea for the lab", 3, 13, 1, "Todo"],
   [bruce, "Model the Tesseract's energy signature", 1, 14, 13, "Backlog"],
   [bruce, "Prepare the Culver University lecture", 2, 17, 5, "Todo"],
-  [bruce, "Publish the cell regeneration study", 3, 19, 8, "Todo"],
+  [bruce, "Publish the cell regeneration study", 3, 29, 8, "Todo"],
 
   [thor, "Return Mjölnir to its rightful spot", 2, null, 1, "Todo"],
   [thor, "Find the Infinity Stones", 1, null, null, "Backlog"],
@@ -165,15 +167,23 @@ const AVENGERS_ISSUES: DemoIssue[] = [
   [null, "Rename the Quinjet", 0, null, 1, "Backlog"],
 ];
 
-// S.H.I.E.L.D. Ops: Natasha is on both teams, but her Ops work is separate.
+// S.H.I.E.L.D. Ops: Natasha is on both teams, but her Ops work is separate. Counted in points.
+// Phil is in a storm today, and one handover clears it; the weeks ahead are evenly spread.
 const OPS_ISSUES: DemoIssue[] = [
-  [phil, "Restore Lola's flight systems", 2, 3, 5, "In Progress"],
-  [phil, "Recruit for the new field team", 3, 15, 3, "Todo"],
+  [phil, "Restore Lola's flight systems", 2, 2, 3, "In Progress"],
+  [phil, "Recruit for the new field team", 3, 24, 2, "Todo"],
   [phil, "Sign the Avengers' trading cards", 4, null, 1, "Backlog"],
-  [maria, "Audit Helicarrier crew rosters", 1, -1, 3, "In Progress"],
-  [maria, "Schedule the quarterly fire drill", 3, 9, 1, "Todo"],
-  [melinda, "Run the cavalry refresher course", 2, 20, 5, "Todo"],
+  [maria, "Audit Helicarrier crew rosters", 1, 1, 3, "In Progress"],
+  [maria, "Schedule the quarterly fire drill", 3, 12, 1, "Todo"],
+  [melinda, "Run the cavalry refresher course", 2, 19, 2, "Todo"],
   [natasha, "Hand over the Lagos safehouse", 3, 5, 2, "Todo"],
+  [phil, "Vet the new Playground recruits", 2, 4, 2, "Todo"],
+  [phil, "Brief the Director on the Theta Protocol", 1, 10, 2, "Todo"],
+  [maria, "Draft next quarter's watch rota", 3, 26, 2, "Todo"],
+  [melinda, "Spar with the new field agents", 3, 33, 2, "Todo"],
+  [natasha, "Teach the field team hand-to-hand", 2, 17, 2, "Todo"],
+  [natasha, "Plan the Ops off-site", 3, 31, 2, "Todo"],
+  [maria, "Recertify the Helicarrier crew", 3, 38, 2, "Todo"],
   [null, "Find a new HQ after the Triskelion", 1, 30, 13, "Backlog"],
 ];
 
@@ -210,10 +220,10 @@ function relationsOf(identifier: string): BlockingFragment["relations"] {
 /**
  * The issues in each team's current cycle, by identifier. Nothing moves until a team counts the
  * current cycle as urgent:
- * - Steve's training plan (Medium, due in 25 days, Schedule) moves to Do.
+ * - Steve's training plan (Medium, due in 29 days, Schedule) moves to Do.
  * - Thor's Mjölnir (High, no due date, Schedule) moves to Do.
  * - Clint's farmhouse roof (Low, no due date, Drop) moves to Delegate.
- * - Melinda's cavalry refresher (High, due in 20 days, Schedule) moves to Do.
+ * - Melinda's cavalry refresher (High, due in 19 days, Schedule) moves to Do.
  * - Tony's arc reactor, Mark XLII suits and JARVIS work are urgent already, so they stay put.
  * The cycle ends in `CYCLE_DAYS_LEFT` days, so the Forecast shows them leaving Do after that.
  */

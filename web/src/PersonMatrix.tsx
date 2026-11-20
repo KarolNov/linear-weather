@@ -17,7 +17,7 @@ import {
   type TimeOff,
 } from "./board";
 import { IssueCard } from "./IssueCard";
-import { entrance, useChanged } from "./motion";
+import { EASE_OUT, entrance, SETTLE_KEY, useChanged, useSettle } from "./motion";
 import { dot, quadrantDot, quadrantInfo } from "./quadrants";
 import { TimeOffList } from "./TimeOff";
 import { weatherIcon } from "./weather";
@@ -57,6 +57,14 @@ export function PersonMatrix({
   xstyle,
 }: PersonMatrixProps) {
   const [only, setOnly] = useState<Quadrant | null>(null);
+  // Quadrants whose long list the PM asked to see whole. A list starts cut at `LIST_CAP` cards.
+  const [whole, setWhole] = useState<ReadonlySet<Quadrant>>(NO_QUADRANTS);
+  // A list that fits again is cut again once it grows, unless the PM asks anew.
+  if ([...whole].some((q) => matrix[q].length <= LIST_CAP)) {
+    setWhole(new Set([...whole].filter((q) => matrix[q].length > LIST_CAP)));
+  }
+  // The issues on show in the open list, so one moved into a cut list stays in sight.
+  const onShow = useRef<ReadonlySet<string>>(new Set());
   const weatherChanged = useChanged(weather?.kind);
   // A quadrant the PM just moved the last issue out of shows every quadrant again, and stays
   // unpicked, so moving an issue back in later doesn't hide the rest.
@@ -97,7 +105,7 @@ export function PersonMatrix({
         opacity: [fromOpacity, expanded ? 1 : 0],
         overflow: ["hidden", "hidden"],
       },
-      { duration: expanded ? OPEN_MS : CLOSE_MS, easing: SLIDE_EASING },
+      { duration: expanded ? OPEN_MS : CLOSE_MS, easing: EASE_OUT },
     );
     sliding.current = animation;
     animation.onfinish = () => {
@@ -124,6 +132,24 @@ export function PersonMatrix({
   const name = assignee?.name ?? "Unassigned";
   const total = countIssues(matrix);
   const shown = QUADRANTS.filter((q) => (only ? q === only : matrix.counts[q] > 0));
+  // A long list shows its first few, so an open card doesn't grow into a page of its own. A
+  // quadrant picked on its own shows whole, and an issue already on show stays, wherever it lands.
+  const visible = (q: Quadrant) =>
+    only === q || whole.has(q) || matrix[q].length <= LIST_CAP
+      ? matrix[q]
+      : matrix[q].filter((issue, i) => i < LIST_CAP || onShow.current.has(issue.id));
+  const list = useRef<HTMLDivElement>(null);
+  // Issues coming and going (a move, a hand-over, Linear's news) settle the list into its new
+  // shape rather than jumping to it.
+  useSettle(
+    list,
+    shown.map((q) => `${q}:${visible(q).map((issue) => issue.id)}`).join(" "),
+    `${only}`,
+    open && expanded,
+  );
+  onShow.current = new Set(
+    open && expanded ? shown.flatMap((q) => visible(q).map((issue) => issue.id)) : [],
+  );
   // Counts cards as they render, across quadrants, for the reveal's stagger.
   let revealed = 0;
 
@@ -244,7 +270,9 @@ export function PersonMatrix({
           ref={details}
           open={open}
           onToggle={(event) => {
-            if (!event.currentTarget.open) setOnly(null);
+            if (event.currentTarget.open) return;
+            setOnly(null);
+            setWhole(NO_QUADRANTS);
           }}
         >
           {/* biome-ignore lint/a11y/noStaticElementInteractions: <summary> is the native toggle. */}
@@ -278,32 +306,64 @@ export function PersonMatrix({
               reveal: the cards drop in one after another, the first few at least. Not keyed by
               `expanded`, so the cards hold still while the list slides shut. */}
           <div ref={body} {...stylex.props(styles.slide)}>
-            <div key={`${open}-${only}`} {...stylex.props(styles.groups)}>
-              {shown.map((q) => (
-                <section key={q} aria-label={`${name}: ${quadrantInfo[q].name}`}>
-                  <h3 {...stylex.props(styles.groupHeading)}>
-                    <span aria-hidden="true" {...stylex.props(dot.dot, quadrantDot[q])} />
-                    {quadrantInfo[q].name}
-                    <span {...stylex.props(styles.groupCount)}>{matrix.counts[q]}</span>
-                  </h3>
-                  <ul {...stylex.props(styles.list)}>
-                    {matrix[q].map((issue) => (
-                      <IssueCard
-                        key={issue.id}
-                        issue={issue}
-                        quadrant={q}
-                        today={today}
-                        onPlace={onPlace && ((to) => onPlace(issue, to))}
-                        pending={pending?.has(issue.id)}
-                        xstyle={[
-                          entrance.reveal,
-                          entrance.delay(Math.min(revealed++, MAX_STAGGERED) * CARD_STEP_MS),
-                        ]}
-                      />
-                    ))}
-                  </ul>
-                </section>
-              ))}
+            <div ref={list} data-settle-root {...stylex.props(styles.settle)}>
+              <div key={`${open}-${only}`} {...stylex.props(styles.groups)}>
+                {shown.map((q) => {
+                  const cards = visible(q);
+                  const hidden = matrix[q].length - cards.length;
+                  const label = `${name}'s ${quadrantInfo[q].name} issues`;
+                  return (
+                    <section key={q} aria-label={`${name}: ${quadrantInfo[q].name}`}>
+                      {/* Headings and buttons glide with the cards around them. */}
+                      <h3
+                        {...{ [SETTLE_KEY]: `heading-${q}` }}
+                        {...stylex.props(styles.groupHeading)}
+                      >
+                        <span aria-hidden="true" {...stylex.props(dot.dot, quadrantDot[q])} />
+                        {quadrantInfo[q].name}
+                        <span {...stylex.props(styles.groupCount)}>{matrix.counts[q]}</span>
+                      </h3>
+                      <ul {...stylex.props(styles.list)}>
+                        {cards.map((issue) => (
+                          <IssueCard
+                            key={issue.id}
+                            issue={issue}
+                            quadrant={q}
+                            today={today}
+                            onPlace={onPlace && ((to) => onPlace(issue, to))}
+                            pending={pending?.has(issue.id)}
+                            xstyle={[
+                              entrance.reveal,
+                              entrance.delay(Math.min(revealed++, MAX_STAGGERED) * CARD_STEP_MS),
+                            ]}
+                          />
+                        ))}
+                      </ul>
+                      {only !== q && matrix[q].length > LIST_CAP && (
+                        <button
+                          type="button"
+                          aria-expanded={hidden === 0}
+                          onClick={() => {
+                            // Showing fewer lets go of the issues kept in sight past the cut too.
+                            if (whole.has(q)) {
+                              const theirs = new Set(matrix[q].map((issue) => issue.id));
+                              onShow.current = new Set(
+                                [...onShow.current].filter((id) => !theirs.has(id)),
+                              );
+                            }
+                            setWhole(toggled(whole, q));
+                          }}
+                          {...{ [SETTLE_KEY]: `more-${q}` }}
+                          {...stylex.props(styles.more)}
+                        >
+                          {hidden > 0 ? `Show ${hidden} more` : "Show fewer"}
+                          <VisuallyHidden>{` of ${label}`}</VisuallyHidden>
+                        </button>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </details>
@@ -374,6 +434,18 @@ function Forecast({ name, weeks }: { name: string; weeks: ForecastWeek[] }) {
   );
 }
 
+/** How many cards a quadrant's list shows before "Show N more". */
+export const LIST_CAP = 6;
+
+const NO_QUADRANTS: ReadonlySet<Quadrant> = new Set();
+
+/** The set with `q` added, or taken out if it was there. */
+function toggled(set: ReadonlySet<Quadrant>, q: Quadrant): ReadonlySet<Quadrant> {
+  const next = new Set(set);
+  if (!next.delete(q)) next.add(q);
+  return next;
+}
+
 // Opening a list is frequent, so the stagger is tight and stops after a few cards: a long list
 // shouldn't keep the PM waiting for its tail.
 const CARD_STEP_MS = 20;
@@ -383,7 +455,6 @@ const MAX_STAGGERED = 6;
 // so this is `motion.easeOut` spelled out.
 const OPEN_MS = 260;
 const CLOSE_MS = 200;
-const SLIDE_EASING = "cubic-bezier(0.23, 1, 0.32, 1)";
 
 const styles = stylex.create({
   card: {
@@ -554,6 +625,35 @@ const styles = stylex.create({
   // Keeps the list's top margin inside, as it is mid-slide with overflow hidden: otherwise the
   // margin collapses out once the slide ends and the card grows by it in one jump.
   slide: { display: "flow-root" },
+  // Holds the cards that just left while they fade out where they were, and keeps the list's
+  // margin inside for the same reason as the slide.
+  settle: { display: "flow-root", position: "relative" },
+  more: {
+    display: "flex",
+    alignItems: "center",
+    width: "fit-content",
+    minHeight: { default: null, [media.touch]: "44px" },
+    marginTop: "4px",
+    marginInlineStart: "-8px",
+    paddingBlock: "4px",
+    paddingInline: "8px",
+    borderWidth: 0,
+    borderRadius: radii.sm,
+    font: "inherit",
+    fontSize: "0.75rem",
+    fontWeight: 500,
+    color: colors.inkMuted,
+    cursor: "pointer",
+    backgroundColor: {
+      default: "transparent",
+      [media.hover]: { default: "transparent", ":hover": colors.hover },
+    },
+    outline: { default: "none", ":focus-visible": `2px solid ${colors.focus}` },
+    transitionProperty: "transform, background-color",
+    transitionDuration: `${motion.press}, ${motion.hover}`,
+    transitionTimingFunction: `${motion.easeOut}, ease`,
+    transform: { default: null, ":active": "scale(0.97)" },
+  },
   groups: {
     display: "flex",
     flexDirection: "column",

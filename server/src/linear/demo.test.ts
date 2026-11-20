@@ -72,9 +72,9 @@ describe("demoIssues", () => {
       ]),
     );
     expect(load).toMatchObject({
-      "Tony Stark": { urgent: 11, overdue: 3 },
+      "Tony Stark": { urgent: 11, overdue: 0 },
       "Steve Rogers": { urgent: 2 },
-      "Natasha Romanoff": { urgent: 4 },
+      "Natasha Romanoff": { urgent: 4, overdue: 0 },
       "Bruce Banner": { urgent: 6 },
       "Thor Odinson": { urgent: 0, undated: 7 },
       "Clint Barton": { urgent: 1 },

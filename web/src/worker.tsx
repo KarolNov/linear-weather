@@ -1,4 +1,5 @@
 import { type Context, Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { html, raw } from "hono/html";
 import { renderToString } from "preact-render-to-string";
 import { skyTops, type Weather } from "ui";
@@ -63,9 +64,9 @@ export const app = new Hono<{ Bindings: Bindings }>()
     return renderPage(c, props, sky);
   })
   // The public pages: what the app does (the OAuth app's homepage) and what it keeps. Static, so
-  // they don't ask the server who is signed in.
+  // they don't ask the server who is signed in; a session cookie is enough to offer the board.
   .get("/about", (c) =>
-    renderPage(c, { viewer: null, page: "about" }, sunset, {
+    renderPage(c, { viewer: null, page: "about", signedIn: hasSession(c) }, sunset, {
       title: "About · Weather Forecast for Linear",
       description: ABOUT_DESCRIPTION,
     }),
@@ -76,6 +77,11 @@ export const app = new Hono<{ Bindings: Bindings }>()
       description: "What Weather Forecast for Linear reads from Linear, and what it keeps.",
     }),
   );
+
+// The server's session cookie (server/src/session.ts). It may have expired there; the board
+// sends anyone it no longer signs in back to sign-in.
+const hasSession = (c: Context<{ Bindings: Bindings }>) =>
+  getCookie(c, "lw_session") !== undefined || undefined;
 
 const ABOUT_DESCRIPTION =
   "See who on your Linear team is overloaded now and who is about to be, and hand work over before the storm.";
@@ -92,6 +98,9 @@ function renderPage(
 ) {
   // Escape "<" so the JSON can't close the <script> tag early.
   const propsJson = JSON.stringify(props).replaceAll("<", "\\u003c");
+  // The public pages need no script: their styles are in the stylesheet and their entrance is
+  // CSS. In dev, Vite collects StyleX rules from the modules the client loads, so it still runs.
+  const hydrate = !props.page || import.meta.env.DEV;
   return c.html(html`<!doctype html>
       <html lang="en">
         <head>
@@ -103,11 +112,11 @@ function renderPage(
           <style>${raw(`${globalCss}\nbody{background:${sky.body}}`)}</style>
           <link rel="stylesheet" href="${stylesheet}" />
           ${import.meta.env.DEV ? html`<script type="module" src="/@vite/client"></script>` : ""}
-          <script type="module" src="${clientScript}"></script>
+          ${hydrate ? html`<script type="module" src="${clientScript}"></script>` : ""}
         </head>
         <body>
           <div id="app">${raw(renderToString(<App {...props} />))}</div>
-          <script id="app-props" type="application/json">${raw(propsJson)}</script>
+          ${hydrate ? html`<script id="app-props" type="application/json">${raw(propsJson)}</script>` : ""}
         </body>
       </html>`);
 }

@@ -12,6 +12,8 @@ export const colors = stylex.defineVars({
   inkFaint: "#8a8f98",
   inkOnSky: "#fffaf3",
   inkOnSkyMuted: "rgba(255, 250, 243, 0.78)",
+  /** Ink for the gold end of the sunset, where light ink fades: the sunset's dusk purple. */
+  inkOnSunsetGold: "#46246b",
 
   surface: "rgba(255, 255, 255, 0.97)",
   surfaceStrong: "#ffffff",

@@ -2,7 +2,8 @@ import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren } from "preact";
 import { Card, LinkButton, Logo, Sky, type Weather, WeatherIcon } from "ui";
 import { colors, fonts, radii, space } from "ui/tokens.stylex";
-import { entrance } from "./motion";
+import { enterPage as enter, PAGE_STEP as STEP } from "./motion";
+import { SignInCtas } from "./SignInCtas";
 
 // The public pages, for anyone deciding whether to let the app into their Linear workspace:
 // what it does (/about, the OAuth app's homepage) and what it keeps (/privacy). Both are static,
@@ -16,7 +17,7 @@ const ISSUES = `${REPOSITORY}/issues`;
 /** When the privacy page last changed. Update it with the page. */
 const PRIVACY_UPDATED = "20 November 2026";
 
-export function InfoPage({ page }: { page: InfoPageName }) {
+export function InfoPage({ page, signedIn }: { page: InfoPageName; signedIn?: boolean }) {
   return (
     <Sky time="sunset">
       <div {...stylex.props(styles.page)}>
@@ -34,7 +35,9 @@ export function InfoPage({ page }: { page: InfoPageName }) {
           </nav>
         </header>
 
-        <main {...stylex.props(enter(STEP))}>{page === "about" ? <About /> : <Privacy />}</main>
+        <main {...stylex.props(enter(STEP))}>
+          {page === "about" ? <About signedIn={signedIn} /> : <Privacy />}
+        </main>
 
         <Footer />
       </div>
@@ -42,7 +45,7 @@ export function InfoPage({ page }: { page: InfoPageName }) {
   );
 }
 
-function About() {
+function About({ signedIn }: { signedIn?: boolean }) {
   return (
     <>
       <section {...stylex.props(styles.hero)}>
@@ -51,15 +54,17 @@ function About() {
           Weather Forecast reads your Linear team's issues and shows, person by person, who is
           overloaded now and who is about to be, so you can hand work over before the storm.
         </p>
-        <div {...stylex.props(styles.ctas)}>
-          <LinkButton href="/auth/login" size="lg">
-            Sign in with Linear
-            <span aria-hidden="true">→</span>
-          </LinkButton>
-          <LinkButton href="/?demo=true" variant="glass" size="lg">
-            Explore the demo
-          </LinkButton>
-        </div>
+        {/* Signing in again would replace the session, so whoever is signed in goes back. */}
+        {signedIn ? (
+          <div>
+            <LinkButton href="/" size="lg">
+              Open your board
+              <span aria-hidden="true">→</span>
+            </LinkButton>
+          </div>
+        ) : (
+          <SignInCtas />
+        )}
       </section>
 
       <Card xstyle={styles.prose}>
@@ -141,10 +146,10 @@ function Feature({
       <span {...stylex.props(styles.featureIcon)}>
         <WeatherIcon weather={weather} size={28} label="" />
       </span>
-      <span>
+      <div>
         <h3 {...stylex.props(styles.h3)}>{title}</h3>
         <p {...stylex.props(styles.p)}>{children}</p>
-      </span>
+      </div>
     </li>
   );
 }
@@ -165,10 +170,11 @@ function Privacy() {
 
         <h2 {...stylex.props(styles.h2)}>What the app reads from Linear</h2>
         <p {...stylex.props(styles.p)}>
-          Your name, avatar and workspace name; your teams and their members; and the open issues of
-          the team you're looking at: titles, assignees, priorities, estimates, due dates, states,
-          cycles and which issues block others. It reads them each time you open or refresh the
-          board, and doesn't store them.
+          Your name, avatar and workspace name; your teams and their members, with each member's
+          Linear status (its emoji, text and when it ends) and timezone; and the open issues of the
+          team you're looking at: titles, assignees, priorities, estimates, due dates, states,
+          cycles, and which issues block others and whether those are still open. It reads them each
+          time you open or refresh the board, and doesn't store them.
         </p>
 
         <h2 {...stylex.props(styles.h2)}>What the app keeps</h2>
@@ -176,14 +182,15 @@ function Privacy() {
           <li>
             <strong>Your sign-in.</strong> The Linear tokens from signing in, kept on the server
             (Cloudflare KV) and never sent to your browser. Your browser holds only a random session
-            cookie. Tokens are deleted after 30 days, or at once when you sign out, which also
-            revokes them with Linear.
+            cookie. Tokens are deleted 30 days after you sign in or the app last renews them with
+            Linear, or at once when you sign out, which also revokes them with Linear.
           </li>
           <li>
             <strong>The board's settings</strong>, which anyone on the team sees (Cloudflare D1):
-            each team's sorting rules, the issues placed in a quadrant by hand, how much of a week
-            each person works, and their time off. They're stored against Linear's ids for the team,
-            issue or person, with no names, titles or other issue content.
+            each team's sorting rules (including which Linear status texts, such as "On vacation",
+            count as away), the issues placed in a quadrant by hand, how much of a week each person
+            works, and their time off. They're stored against Linear's ids for the team, issue or
+            person, with no names, titles or other issue content.
           </li>
         </ul>
         <p {...stylex.props(styles.p)}>
@@ -264,11 +271,7 @@ export function Footer() {
   );
 }
 
-const STEP = 150;
-const enter = (delayMs: number) => [entrance.page, entrance.delay(delayMs)];
-
 const WIDE = "@media (min-width: 720px)";
-const ROOMY = "@media (min-width: 480px)";
 
 const styles = stylex.create({
   page: {
@@ -321,11 +324,6 @@ const styles = stylex.create({
     fontSize: "1.125rem",
     lineHeight: 1.55,
     color: colors.inkOnSkyMuted,
-  },
-  ctas: {
-    display: "flex",
-    flexDirection: { default: "column", [ROOMY]: "row" },
-    gap: space.sm,
   },
 
   prose: {
@@ -383,9 +381,9 @@ const styles = stylex.create({
     marginTop: "auto",
     fontSize: "0.875rem",
   },
-  // The footer sits on the gold end of the sunset, where light ink fades: the dusk purple reads.
+  // The footer sits on the gold end of the sunset, where light ink fades.
   footerLink: {
-    color: "#46246b",
+    color: colors.inkOnSunsetGold,
     fontWeight: 500,
     textDecoration: { default: "none", ":hover": "underline" },
   },

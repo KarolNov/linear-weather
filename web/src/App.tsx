@@ -6,6 +6,8 @@ import { SignInPage } from "./SignInPage";
 export interface AppProps {
   /** One of the public pages (/about, /privacy), shown whoever is signed in. */
   page?: InfoPageName;
+  /** On a public page: whether this browser has a session, to offer the board instead of sign-in. */
+  signedIn?: boolean;
   viewer: Viewer | null;
   /** We couldn't tell whether anyone is signed in, because the server or Linear failed. */
   linearUnavailable?: boolean;
@@ -19,6 +21,7 @@ export interface AppProps {
 
 export function App({
   page,
+  signedIn,
   viewer,
   linearUnavailable,
   authError,
@@ -26,7 +29,7 @@ export function App({
   board,
   boardError,
 }: AppProps) {
-  if (page) return <InfoPage page={page} />;
+  if (page) return <InfoPage page={page} signedIn={signedIn} />;
   if (viewer) {
     return <BoardShell viewer={viewer} board={board ?? null} boardError={boardError} demo={demo} />;
   }

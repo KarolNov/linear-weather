@@ -87,6 +87,12 @@ export const entrance = stylex.create({
   delay: (ms: number) => ({ animationDelay: `${ms}ms` }),
 });
 
+/** Milliseconds between one piece of a public page starting to appear and the next. */
+export const PAGE_STEP = 150;
+
+/** A public page's piece rising in after `delayMs`. */
+export const enterPage = (delayMs: number) => [entrance.page, entrance.delay(delayMs)];
+
 /**
  * Whether a value has changed since its component mounted, so `entrance.changed` marks a value a
  * move changed rather than every value on the board as it first draws.

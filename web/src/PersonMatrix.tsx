@@ -17,7 +17,7 @@ import {
   type TimeOff,
 } from "./board";
 import { IssueCard } from "./IssueCard";
-import { entrance, SETTLE_KEY, useChanged, useSettle } from "./motion";
+import { EASE_OUT, entrance, SETTLE_KEY, useChanged, useSettle } from "./motion";
 import { dot, quadrantDot, quadrantInfo } from "./quadrants";
 import { TimeOffList } from "./TimeOff";
 import { weatherIcon } from "./weather";
@@ -59,6 +59,12 @@ export function PersonMatrix({
   const [only, setOnly] = useState<Quadrant | null>(null);
   // Quadrants whose long list the PM asked to see whole. A list starts cut at `LIST_CAP` cards.
   const [whole, setWhole] = useState<ReadonlySet<Quadrant>>(NO_QUADRANTS);
+  // A list that fits again is cut again once it grows, unless the PM asks anew.
+  if ([...whole].some((q) => matrix[q].length <= LIST_CAP)) {
+    setWhole(new Set([...whole].filter((q) => matrix[q].length > LIST_CAP)));
+  }
+  // The issues on show in the open list, so one moved into a cut list stays in sight.
+  const onShow = useRef<ReadonlySet<string>>(new Set());
   const weatherChanged = useChanged(weather?.kind);
   // A quadrant the PM just moved the last issue out of shows every quadrant again, and stays
   // unpicked, so moving an issue back in later doesn't hide the rest.
@@ -99,7 +105,7 @@ export function PersonMatrix({
         opacity: [fromOpacity, expanded ? 1 : 0],
         overflow: ["hidden", "hidden"],
       },
-      { duration: expanded ? OPEN_MS : CLOSE_MS, easing: SLIDE_EASING },
+      { duration: expanded ? OPEN_MS : CLOSE_MS, easing: EASE_OUT },
     );
     sliding.current = animation;
     animation.onfinish = () => {
@@ -126,9 +132,12 @@ export function PersonMatrix({
   const name = assignee?.name ?? "Unassigned";
   const total = countIssues(matrix);
   const shown = QUADRANTS.filter((q) => (only ? q === only : matrix.counts[q] > 0));
-  // A long list shows its first few, so an open card doesn't grow into a page of its own.
+  // A long list shows its first few, so an open card doesn't grow into a page of its own. A
+  // quadrant picked on its own shows whole, and an issue already on show stays, wherever it lands.
   const visible = (q: Quadrant) =>
-    whole.has(q) || matrix[q].length <= LIST_CAP ? matrix[q] : matrix[q].slice(0, LIST_CAP);
+    only === q || whole.has(q) || matrix[q].length <= LIST_CAP
+      ? matrix[q]
+      : matrix[q].filter((issue, i) => i < LIST_CAP || onShow.current.has(issue.id));
   const list = useRef<HTMLDivElement>(null);
   // Issues coming and going (a move, a hand-over, Linear's news) settle the list into its new
   // shape rather than jumping to it.
@@ -137,6 +146,9 @@ export function PersonMatrix({
     shown.map((q) => `${q}:${visible(q).map((issue) => issue.id)}`).join(" "),
     `${only}`,
     open && expanded,
+  );
+  onShow.current = new Set(
+    open && expanded ? shown.flatMap((q) => visible(q).map((issue) => issue.id)) : [],
   );
   // Counts cards as they render, across quadrants, for the reveal's stagger.
   let revealed = 0;
@@ -294,7 +306,7 @@ export function PersonMatrix({
               reveal: the cards drop in one after another, the first few at least. Not keyed by
               `expanded`, so the cards hold still while the list slides shut. */}
           <div ref={body} {...stylex.props(styles.slide)}>
-            <div ref={list} {...stylex.props(styles.settle)}>
+            <div ref={list} data-settle-root {...stylex.props(styles.settle)}>
               <div key={`${open}-${only}`} {...stylex.props(styles.groups)}>
                 {shown.map((q) => {
                   const cards = visible(q);
@@ -327,11 +339,20 @@ export function PersonMatrix({
                           />
                         ))}
                       </ul>
-                      {matrix[q].length > LIST_CAP && (
+                      {only !== q && matrix[q].length > LIST_CAP && (
                         <button
                           type="button"
                           aria-expanded={hidden === 0}
-                          onClick={() => setWhole(toggled(whole, q))}
+                          onClick={() => {
+                            // Showing fewer lets go of the issues kept in sight past the cut too.
+                            if (whole.has(q)) {
+                              const theirs = new Set(matrix[q].map((issue) => issue.id));
+                              onShow.current = new Set(
+                                [...onShow.current].filter((id) => !theirs.has(id)),
+                              );
+                            }
+                            setWhole(toggled(whole, q));
+                          }}
                           {...{ [SETTLE_KEY]: `more-${q}` }}
                           {...stylex.props(styles.more)}
                         >
@@ -434,7 +455,6 @@ const MAX_STAGGERED = 6;
 // so this is `motion.easeOut` spelled out.
 const OPEN_MS = 260;
 const CLOSE_MS = 200;
-const SLIDE_EASING = "cubic-bezier(0.23, 1, 0.32, 1)";
 
 const styles = stylex.create({
   card: {

@@ -61,9 +61,7 @@ function show(person: Person) {
 const cards = () => [...root.querySelectorAll<HTMLElement>("li[data-settle]")];
 const doList = () => page.getByRole("region", { name: "Tony Stark: Do" });
 /** The element whose height eases as the list changes. */
-const settler = () =>
-  root.querySelector<HTMLElement>("li[data-settle]")?.closest("ul")?.parentElement?.parentElement
-    ?.parentElement as HTMLElement;
+const settler = () => root.querySelector<HTMLElement>("[data-settle-root]") as HTMLElement;
 const ghosts = () => [...root.querySelectorAll<HTMLElement>("li[aria-hidden='true']")];
 
 describe("a person's issue list", () => {
@@ -100,6 +98,46 @@ describe("a person's issue list", () => {
     await expect
       .element(page.getByRole("button", { name: "Show 3 more of Tony Stark's Do issues" }))
       .toBeVisible();
+  });
+
+  it("keeps an issue moved into a capped list in sight", async () => {
+    show(tonyWith(range(1, 8), [issue(20)]));
+    await expect.element(doList()).toBeVisible();
+    // AVG-20 is placed in Do by hand, and sorts past the cut.
+    show(tonyWith([...range(1, 8), issue(20)]));
+    expect(cards().map((card) => card.dataset.settle)).toContain("i-20");
+    await expect
+      .element(page.getByRole("button", { name: "Show 2 more of Tony Stark's Do issues" }))
+      .toBeVisible();
+  });
+
+  it("cuts a list again once it has fitted, even after it was shown whole", async () => {
+    show(tonyWith(range(1, 10)));
+    await expect.element(doList()).toBeVisible();
+    await userEvent.click(
+      page.getByRole("button", { name: "Show 4 more of Tony Stark's Do issues" }),
+    );
+    show(tonyWith(range(1, 5)));
+    show(tonyWith(range(1, 9)));
+    // AVG-6 to AVG-9 are new since the list shrank, so only AVG-6 makes the cut.
+    expect(cards()).toHaveLength(LIST_CAP);
+  });
+
+  it("shows a quadrant picked on its own whole", async () => {
+    render(
+      <PersonMatrix
+        person={tonyWith(range(1, 10))}
+        today="2026-10-18"
+        expanded={false}
+        onExpandedChange={() => {}}
+      />,
+      root,
+    );
+    await userEvent.click(page.getByRole("button", { name: /^Do/ }));
+    show(tonyWith(range(1, 10)));
+    await expect.element(doList()).toBeVisible();
+    expect(cards()).toHaveLength(10);
+    expect(root.textContent).not.toContain("more");
   });
 
   it("eases into its new height as issues leave, and fades out the ones that left", async () => {

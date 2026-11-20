@@ -2,7 +2,7 @@ import * as stylex from "@stylexjs/stylex";
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Avatar, Button, Card, Icon, VisuallyHidden, WeatherIcon, weatherLabels } from "ui";
-import { colors, media, radii, space } from "ui/tokens.stylex";
+import { colors, media, motion, radii, space } from "ui/tokens.stylex";
 import {
   describeDay,
   listOf,
@@ -539,7 +539,7 @@ const styles = stylex.create({
   howChevron: {
     transitionProperty: "transform",
     transitionDuration: "200ms",
-    transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)",
+    transitionTimingFunction: motion.easeOut,
   },
   howChevronOpen: { transform: "rotate(90deg)" },
   howText: { marginTop: space.xxs },

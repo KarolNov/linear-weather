@@ -1223,11 +1223,12 @@ describe("reassigning", () => {
   });
 
   it.each([
-    [DEMO_TEAM.id, ["Tony Stark"], ["Bruce Banner", "Steve Rogers", "Tony Stark"]],
-    [DEMO_OPS_TEAM.id, ["Phil Coulson"], []],
+    [DEMO_TEAM.id, ["Tony Stark"], ["Bruce Banner", "Steve Rogers", "Tony Stark"], null],
+    // One hand-over clears Phil's storm, as the demo tells it.
+    [DEMO_OPS_TEAM.id, ["Phil Coulson"], [], 1],
   ])(
     "clears the demo's storms on %s once every suggested move is made",
-    async (teamId, now, ahead) => {
+    async (teamId, now, ahead, moves) => {
       const linear = new DemoLinear({ today });
       const ask = async <T>(query: string, variables: Record<string, unknown> = {}) => {
         const result = await run(query, { teamId, ...variables }, { linear });
@@ -1273,7 +1274,9 @@ describe("reassigning", () => {
       };
 
       expect(await storms()).toEqual({ now, ahead });
-      expect(await makeMoves("NOW")).toBeGreaterThan(0);
+      const made = await makeMoves("NOW");
+      if (moves === null) expect(made).toBeGreaterThan(0);
+      else expect(made).toBe(moves);
       expect((await storms()).now).toEqual([]);
       if (ahead.length > 0) expect(await makeMoves("FORECAST")).toBeGreaterThan(0);
       expect(await storms()).toEqual({ now: [], ahead: [] });

@@ -99,14 +99,15 @@ export function useChanged<T>(value: T): boolean {
   return changed.current;
 }
 
+/** `motion.easeOut` spelled out, for WAAPI: it wants the curve, not the CSS variable. */
+export const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
+
 /** The attribute a list's items carry, set to their key, for `useSettle` to follow them. */
 export const SETTLE_KEY = "data-settle";
 
 // A list settling after a change: quick, since it follows something the PM did or Linear sent.
 const SETTLE_MS = 240;
 const LEAVE_MS = 180;
-// `motion.easeOut` spelled out: WAAPI wants the curve, not the CSS variable.
-const SETTLE_EASING = "cubic-bezier(0.23, 1, 0.32, 1)";
 
 interface Snapshot {
   /** What was shown: a change of scene (a quadrant picked, say) only eases the height. */
@@ -168,7 +169,7 @@ function snapshot(el: HTMLElement, scene: string): Snapshot {
 }
 
 function settle(el: HTMLElement, was: Snapshot, sameScene: boolean): void {
-  const options = { duration: SETTLE_MS, easing: SETTLE_EASING };
+  const options = { duration: SETTLE_MS, easing: EASE_OUT };
   // From wherever a settle still under way has things now, which the snapshot caught.
   settling.get(el)?.cancel();
   const now = itemsOf(el);
@@ -179,6 +180,11 @@ function settle(el: HTMLElement, was: Snapshot, sameScene: boolean): void {
     for (const [key, item] of now) {
       const old = was.items.get(key);
       if (!old) continue;
+      // Moved to another quadrant, it's a new element with the list's entrance: it's been here
+      // all along, so it glides in solid instead of fading in on the way.
+      for (const running of item.getAnimations()) {
+        if (running instanceof CSSAnimation) running.finish();
+      }
       const rect = item.getBoundingClientRect();
       const dx = old.rect.left - was.box.left - (rect.left - box.left);
       const dy = old.rect.top - was.box.top - (rect.top - box.top);
@@ -193,13 +199,9 @@ function settle(el: HTMLElement, was: Snapshot, sameScene: boolean): void {
   }
 
   if (Math.abs(was.box.height - box.height) >= 1) {
-    const ease = el.animate(
-      {
-        height: [`${was.box.height}px`, `${box.height}px`],
-        overflow: ["hidden", "hidden"],
-      },
-      options,
-    );
+    // Not clipped: the items are already where they end up, and a card's open menu or focus
+    // ring hangs past the list's edge.
+    const ease = el.animate({ height: [`${was.box.height}px`, `${box.height}px`] }, options);
     settling.set(el, ease);
   }
 }
@@ -229,7 +231,7 @@ function leave(
   el.append(ghost);
   const fade = ghost.animate(
     { opacity: [1, 0], transform: ["none", "scale(0.97)"] },
-    { duration: LEAVE_MS, easing: SETTLE_EASING, fill: "forwards" },
+    { duration: LEAVE_MS, easing: EASE_OUT, fill: "forwards" },
   );
   fade.onfinish = () => ghost.remove();
   fade.oncancel = () => ghost.remove();

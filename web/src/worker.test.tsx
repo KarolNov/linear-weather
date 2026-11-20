@@ -653,6 +653,29 @@ describe("web worker", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["/about", "About · Weather Forecast for Linear", "A weather report for your team"],
+    ["/privacy", "Privacy · Weather Forecast for Linear", "What the app keeps"],
+  ])("serves %s to anyone, without asking the server", async (path, title, heading) => {
+    const { bindings, fetch } = serverReturning(fury);
+    const res = await app.request(path, { headers: { cookie: "lw_session=abc" } }, bindings);
+    expect(res.status).toBe(200);
+    const page = await res.text();
+    expect(page).toContain(`<title>${title}</title>`);
+    expect(page).toContain(heading);
+    expect(page).toContain('<meta name="description"');
+    expect(page).toContain('href="/privacy"');
+    expect(page).not.toContain("Nick Fury");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("links the public pages from the sign-in page", async () => {
+    const { bindings } = serverReturning(null);
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain('href="/about"');
+    expect(page).toContain('href="/privacy"');
+  });
+
   it("explains a cancelled sign-in", async () => {
     const { bindings } = serverReturning(null);
     const res = await app.request("/?auth_error=access_denied", {}, bindings);

@@ -1,6 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { Alert, Avatar, Card, LinkButton, Logo, Sky, type Weather, WeatherIcon } from "ui";
 import { colors, fonts, radii, space } from "ui/tokens.stylex";
+import { Footer } from "./InfoPages";
 import { entrance } from "./motion";
 
 export interface SignInPageProps {
@@ -57,6 +58,8 @@ export function SignInPage({ linearUnavailable, authError }: SignInPageProps) {
 
           <ForecastPreview />
         </main>
+
+        <Footer />
       </div>
     </Sky>
   );

@@ -1,4 +1,4 @@
-# Linear Weather
+# Weather Forecast for Linear
 
 A team-load "weather report" for [Linear](https://linear.app), built on its GraphQL API.
 

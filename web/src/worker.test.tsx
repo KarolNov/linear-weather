@@ -653,6 +653,61 @@ describe("web worker", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["/about", "About · Weather Forecast for Linear", "How it works", "Who else sees it"],
+    ["/privacy", "Privacy · Weather Forecast for Linear", "What the app keeps", "How it works"],
+  ])("serves %s to anyone, without asking the server", async (path, title, heading, other) => {
+    const { bindings, fetch } = serverReturning(fury);
+    const res = await app.request(path, { headers: { cookie: "lw_session=abc" } }, bindings);
+    expect(res.status).toBe(200);
+    const page = await res.text();
+    expect(page).toContain(`<title>${title}</title>`);
+    expect(page).toContain(heading);
+    expect(page).not.toContain(other);
+    expect(page).toContain('<meta name="description"');
+    expect(page).not.toContain("Nick Fury");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("leaves the client script off the public pages in production", async () => {
+    vi.stubEnv("DEV", false);
+    try {
+      const { bindings } = serverReturning(null);
+      const about = await (await app.request("/about", {}, bindings)).text();
+      expect(about).not.toContain("/assets/client.js");
+      expect(about).not.toContain('id="app-props"');
+      const signIn = await (await app.request("/", {}, bindings)).text();
+      expect(signIn).toContain('id="app-props"');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("links the privacy page from the about page's text", async () => {
+    const { bindings } = serverReturning(null);
+    const page = await (await app.request("/about", {}, bindings)).text();
+    expect(page).toMatch(/<a href="\/privacy"[^>]*>\s*privacy page\s*<\/a>/);
+  });
+
+  it("offers the board, not sign-in, on /about to a browser with a session", async () => {
+    const { bindings } = serverReturning(null);
+    const signedIn = await (
+      await app.request("/about", { headers: { cookie: "lw_session=abc" } }, bindings)
+    ).text();
+    expect(signedIn).toContain("Open your board");
+    expect(signedIn).not.toContain('href="/auth/login"');
+    const signedOut = await (await app.request("/about", {}, bindings)).text();
+    expect(signedOut).toContain('href="/auth/login"');
+    expect(signedOut).not.toContain("Open your board");
+  });
+
+  it("links the public pages from the sign-in page", async () => {
+    const { bindings } = serverReturning(null);
+    const page = await (await app.request("/", {}, bindings)).text();
+    expect(page).toContain('href="/about"');
+    expect(page).toContain('href="/privacy"');
+  });
+
   it("explains a cancelled sign-in", async () => {
     const { bindings } = serverReturning(null);
     const res = await app.request("/?auth_error=access_denied", {}, bindings);

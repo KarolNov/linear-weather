@@ -1,7 +1,9 @@
 import * as stylex from "@stylexjs/stylex";
-import { Alert, Avatar, Card, LinkButton, Logo, Sky, type Weather, WeatherIcon } from "ui";
+import { Alert, Avatar, Card, Logo, Sky, type Weather, WeatherIcon } from "ui";
 import { colors, fonts, radii, space } from "ui/tokens.stylex";
-import { entrance } from "./motion";
+import { Footer } from "./InfoPages";
+import { enterPage as enter, PAGE_STEP as STEP } from "./motion";
+import { SignInCtas } from "./SignInCtas";
 
 export interface SignInPageProps {
   linearUnavailable?: boolean;
@@ -36,17 +38,7 @@ export function SignInPage({ linearUnavailable, authError }: SignInPageProps) {
                       {signInErrorMessage(authError)}
                     </Alert>
                   )}
-                  <div {...stylex.props(styles.ctas)}>
-                    <LinkButton href="/auth/login" size="lg">
-                      Sign in with Linear
-                      <span aria-hidden="true">→</span>
-                    </LinkButton>
-                    {/* Nick Fury's board for a mocked Avengers team, for trying it without a
-                        Linear workspace. */}
-                    <LinkButton href="/?demo=true" variant="glass" size="lg">
-                      Explore the demo
-                    </LinkButton>
-                  </div>
+                  <SignInCtas xstyle={styles.ctas} />
                   <p {...stylex.props(styles.fineprint)}>
                     You'll see exactly the teams and issues you can see in Linear.
                   </p>
@@ -57,6 +49,8 @@ export function SignInPage({ linearUnavailable, authError }: SignInPageProps) {
 
           <ForecastPreview />
         </main>
+
+        <Footer />
       </div>
     </Sky>
   );
@@ -144,11 +138,7 @@ function signInErrorMessage(code: string): string {
 
 // The page settles in piece by piece, top to bottom, then the example forecast row by row.
 // People see this page rarely, so a little choreography is welcome.
-// Milliseconds between one piece of the page starting to appear and the next.
-const STEP = 150;
 const ROW_STEP = 100;
-
-const enter = (delayMs: number) => [entrance.page, entrance.delay(delayMs)];
 
 const WIDE = "@media (min-width: 960px)";
 // Wide enough for the two sign-in buttons to sit side by side.
@@ -204,12 +194,7 @@ const styles = stylex.create({
     alignItems: { default: "stretch", [ROOMY]: "flex-start" },
     gap: space.sm,
   },
-  ctas: {
-    display: "flex",
-    flexDirection: { default: "column", [ROOMY]: "row" },
-    gap: space.sm,
-    marginTop: space.xs,
-  },
+  ctas: { marginTop: space.xs },
   fineprint: {
     fontSize: "0.875rem",
     color: colors.inkOnSkyMuted,

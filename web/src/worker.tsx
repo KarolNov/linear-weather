@@ -1,4 +1,5 @@
 import { type Context, Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { html, raw } from "hono/html";
 import { renderToString } from "preact-render-to-string";
 import { skyTops, type Weather } from "ui";
@@ -58,29 +59,67 @@ export const app = new Hono<{ Bindings: Bindings }>()
           ? { board: loaded.board }
           : { board: null, boardError: loaded.boardError })),
     };
-    // Escape "<" so the JSON can't close the <script> tag early.
-    const propsJson = JSON.stringify(props).replaceAll("<", "\\u003c");
     const teamWeather = props.board?.team?.weather;
     const sky = props.viewer ? boardSky(teamWeather ? skyFor(teamWeather.kind) : "partly") : sunset;
+    return renderPage(c, props, sky);
+  })
+  // The public pages: what the app does (the OAuth app's homepage) and what it keeps. Static, so
+  // they don't ask the server who is signed in; a session cookie is enough to offer the board.
+  .get("/about", (c) =>
+    renderPage(c, { viewer: null, page: "about", signedIn: hasSession(c) }, sunset, {
+      title: "About · Weather Forecast for Linear",
+      description: ABOUT_DESCRIPTION,
+    }),
+  )
+  .get("/privacy", (c) =>
+    renderPage(c, { viewer: null, page: "privacy" }, sunset, {
+      title: "Privacy · Weather Forecast for Linear",
+      description: "What Weather Forecast for Linear reads from Linear, and what it keeps.",
+    }),
+  );
 
-    return c.html(html`<!doctype html>
+// The server's session cookie (server/src/session.ts). It may have expired there; the board
+// sends anyone it no longer signs in back to sign-in.
+const hasSession = (c: Context<{ Bindings: Bindings }>) =>
+  getCookie(c, "lw_session") !== undefined || undefined;
+
+const ABOUT_DESCRIPTION =
+  "See who on your Linear team is overloaded now and who is about to be, and hand work over before the storm.";
+
+/** The HTML page around the app, server-rendered, with the props the client hydrates from. */
+function renderPage(
+  c: Context<{ Bindings: Bindings }>,
+  props: AppProps,
+  sky: { theme: string; body: string },
+  meta: { title: string; description: string } = {
+    title: "Weather Forecast for Linear",
+    description: ABOUT_DESCRIPTION,
+  },
+) {
+  // Escape "<" so the JSON can't close the <script> tag early.
+  const propsJson = JSON.stringify(props).replaceAll("<", "\\u003c");
+  // The public pages need no script: their styles are in the stylesheet and their entrance is
+  // CSS. In dev, Vite collects StyleX rules from the modules the client loads, so it still runs.
+  const hydrate = !props.page || import.meta.env.DEV;
+  return c.html(html`<!doctype html>
       <html lang="en">
         <head>
           <meta charset="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <meta name="theme-color" content="${sky.theme}" />
-          <title>Weather Forecast for Linear</title>
+          <meta name="description" content="${meta.description}" />
+          <title>${meta.title}</title>
           <style>${raw(`${globalCss}\nbody{background:${sky.body}}`)}</style>
           <link rel="stylesheet" href="${stylesheet}" />
           ${import.meta.env.DEV ? html`<script type="module" src="/@vite/client"></script>` : ""}
-          <script type="module" src="${clientScript}"></script>
+          ${hydrate ? html`<script type="module" src="${clientScript}"></script>` : ""}
         </head>
         <body>
           <div id="app">${raw(renderToString(<App {...props} />))}</div>
-          <script id="app-props" type="application/json">${raw(propsJson)}</script>
+          ${hydrate ? html`<script id="app-props" type="application/json">${raw(propsJson)}</script>` : ""}
         </body>
       </html>`);
-  });
+}
 
 const UNAVAILABLE = Symbol("unavailable");
 

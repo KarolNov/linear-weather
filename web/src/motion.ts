@@ -1,5 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
-import { useRef } from "preact/hooks";
+import type { RefObject } from "preact";
+import { useLayoutEffect, useRef } from "preact/hooks";
 import { media, motion } from "ui/tokens.stylex";
 
 // Entrances shared by the pages. Everything rises a little and fades in; with reduced motion it
@@ -96,4 +97,140 @@ export function useChanged<T>(value: T): boolean {
   const changed = useRef(false);
   if (value !== first.current) changed.current = true;
   return changed.current;
+}
+
+/** The attribute a list's items carry, set to their key, for `useSettle` to follow them. */
+export const SETTLE_KEY = "data-settle";
+
+// A list settling after a change: quick, since it follows something the PM did or Linear sent.
+const SETTLE_MS = 240;
+const LEAVE_MS = 180;
+// `motion.easeOut` spelled out: WAAPI wants the curve, not the CSS variable.
+const SETTLE_EASING = "cubic-bezier(0.23, 1, 0.32, 1)";
+
+interface Snapshot {
+  /** What was shown: a change of scene (a quadrant picked, say) only eases the height. */
+  scene: string;
+  box: DOMRect;
+  items: Map<string, { el: HTMLElement; rect: DOMRect }>;
+}
+
+/** The settling animations running on each element, so a change mid-settle starts from there. */
+const settling = new WeakMap<Element, Animation>();
+
+/**
+ * Settles a list into its new shape when what it shows changes, instead of jumping: its height
+ * eases from the old to the new, items that stay glide to where they now sit, and items that
+ * left fade out where they were. Items mark themselves with `SETTLE_KEY` set to their key; new
+ * ones bring their own entrance. `items` says what's shown, e.g. the keys in order; within the
+ * same `scene` items move, and when the scene changes (a quadrant picked) only the height eases.
+ * Nothing moves while `enabled` is false, or with reduced motion: the list just changes.
+ */
+export function useSettle(
+  container: RefObject<HTMLElement>,
+  items: string,
+  scene: string,
+  enabled = true,
+): void {
+  const committed = useRef(items);
+  const before = useRef<Snapshot | null>(null);
+  // Read during render, before the change reaches the DOM: there's no later moment to see the
+  // old layout. Reading is all it does.
+  const el = container.current;
+  if (items !== committed.current && !before.current && el && enabled) {
+    before.current = snapshot(el, scene);
+  }
+  useLayoutEffect(() => {
+    const was = before.current;
+    before.current = null;
+    if (committed.current === items) return;
+    committed.current = items;
+    const el = container.current;
+    if (!was || !el || !enabled || !el.isConnected) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    settle(el, was, was.scene === scene);
+  }, [items]);
+}
+
+function itemsOf(el: HTMLElement): Map<string, HTMLElement> {
+  const found = new Map<string, HTMLElement>();
+  for (const item of el.querySelectorAll<HTMLElement>(`[${SETTLE_KEY}]`)) {
+    found.set(item.getAttribute(SETTLE_KEY) as string, item);
+  }
+  return found;
+}
+
+function snapshot(el: HTMLElement, scene: string): Snapshot {
+  const items = new Map<string, { el: HTMLElement; rect: DOMRect }>();
+  for (const [key, item] of itemsOf(el))
+    items.set(key, { el: item, rect: item.getBoundingClientRect() });
+  return { scene, box: el.getBoundingClientRect(), items };
+}
+
+function settle(el: HTMLElement, was: Snapshot, sameScene: boolean): void {
+  const options = { duration: SETTLE_MS, easing: SETTLE_EASING };
+  // From wherever a settle still under way has things now, which the snapshot caught.
+  settling.get(el)?.cancel();
+  const now = itemsOf(el);
+  for (const item of now.values()) settling.get(item)?.cancel();
+  const box = el.getBoundingClientRect();
+
+  if (sameScene) {
+    for (const [key, item] of now) {
+      const old = was.items.get(key);
+      if (!old) continue;
+      const rect = item.getBoundingClientRect();
+      const dx = old.rect.left - was.box.left - (rect.left - box.left);
+      const dy = old.rect.top - was.box.top - (rect.top - box.top);
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+      const glide = item.animate({ transform: [`translate(${dx}px, ${dy}px)`, "none"] }, options);
+      settling.set(item, glide);
+    }
+    for (const [key, old] of was.items) {
+      if (now.has(key)) continue;
+      leave(el, old, was.box);
+    }
+  }
+
+  if (Math.abs(was.box.height - box.height) >= 1) {
+    const ease = el.animate(
+      {
+        height: [`${was.box.height}px`, `${box.height}px`],
+        overflow: ["hidden", "hidden"],
+      },
+      options,
+    );
+    settling.set(el, ease);
+  }
+}
+
+/** An item that left, fading out where it was: a copy, since the list no longer has it. */
+function leave(
+  el: HTMLElement,
+  { el: item, rect }: { el: HTMLElement; rect: DOMRect },
+  box: DOMRect,
+) {
+  const ghost = item.cloneNode(true) as HTMLElement;
+  ghost.removeAttribute(SETTLE_KEY);
+  ghost.removeAttribute("id");
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.inert = true;
+  Object.assign(ghost.style, {
+    position: "absolute",
+    top: `${rect.top - box.top}px`,
+    left: `${rect.left - box.left}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    margin: "0",
+    boxSizing: "border-box",
+    pointerEvents: "none",
+    animation: "none",
+  });
+  el.append(ghost);
+  const fade = ghost.animate(
+    { opacity: [1, 0], transform: ["none", "scale(0.97)"] },
+    { duration: LEAVE_MS, easing: SETTLE_EASING, fill: "forwards" },
+  );
+  fade.onfinish = () => ghost.remove();
+  fade.oncancel = () => ghost.remove();
 }

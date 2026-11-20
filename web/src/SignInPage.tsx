@@ -67,7 +67,7 @@ const sampleTeam: { name: string; weather: Weather; summary: string; week: Weath
   {
     name: "Tony Stark",
     weather: "storm",
-    summary: "11 urgent, 3 overdue",
+    summary: "11 urgent, 2 due today",
     week: ["storm", "storm", "rain", "partly"],
   },
   {

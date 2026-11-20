@@ -4,7 +4,7 @@ import { Badge, VisuallyHidden } from "ui";
 import { colors, fonts, media, motion, radii, shadows, space } from "ui/tokens.stylex";
 import { type BoardIssue, type CalendarDate, describeDue, QUADRANTS, type Quadrant } from "./board";
 import { useDismiss } from "./dismiss";
-import { entrance } from "./motion";
+import { entrance, SETTLE_KEY } from "./motion";
 import { quadrantEdge, quadrantFill, quadrantInfo } from "./quadrants";
 
 export interface IssueCardProps {
@@ -26,6 +26,8 @@ export function IssueCard({ issue, quadrant, today, onPlace, pending, xstyle }: 
   return (
     <li
       aria-busy={pending || undefined}
+      // So the list can follow the card as it moves, and fade it out once it's gone.
+      {...{ [SETTLE_KEY]: issue.id }}
       {...stylex.props(
         styles.card,
         quadrantEdge[quadrant],

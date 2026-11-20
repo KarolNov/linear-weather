@@ -145,10 +145,10 @@ describe("schema", () => {
     const byName = new Map(team.people.map((p) => [p.name, p.matrix]));
     expect(byName.get("Tony Stark")?.counts).toEqual({ do: 9, schedule: 1, delegate: 2, drop: 1 });
     expect(byName.get("Tony Stark")?.do[0]).toEqual({
-      identifier: "AVG-1",
+      identifier: "AVG-4",
       quadrant: "DO",
       quadrantSource: "RULE",
-      placementReason: "Urgent priority, overdue by 5 days",
+      placementReason: "High priority, due today",
       becomesUrgentOn: today,
     });
     expect(byName.get("Wanda Maximoff")?.counts).toEqual({
@@ -216,9 +216,9 @@ describe("schema", () => {
         reason: "1 urgent issue, 0.25× the team average",
       },
       "Natasha Romanoff": {
-        kind: "STORM",
+        kind: "CLOUDY",
         load: 4,
-        reason: "4 urgent issues, 1.0× the team average; 1 issue overdue",
+        reason: "4 urgent issues, 1.0× the team average",
       },
       "Steve Rogers": { kind: "SUNNY", load: 2, reason: "2 urgent issues, 0.5× the team average" },
       "Thor Odinson": {
@@ -229,13 +229,13 @@ describe("schema", () => {
       "Tony Stark": {
         kind: "STORM",
         load: 11,
-        reason: "11 urgent issues, 2.75× the team average; 3 issues overdue",
+        reason: "11 urgent issues, 2.75× the team average",
       },
       "Wanda Maximoff": { kind: "SUNNY", load: 0, reason: "Nothing urgent" },
     });
     expect(team.weather).toEqual({
       kind: "STORM",
-      reason: "Tony Stark is in a storm; Natasha Romanoff has overdue work",
+      reason: "Tony Stark is in a storm",
     });
   });
 
@@ -298,20 +298,16 @@ describe("schema", () => {
       "2026-11-01",
       "2026-11-08",
     ]);
-    // Three more turn urgent this week, then his work comes due and leaves.
+    // Two more turn urgent this week, then most of his work comes due and leaves.
     expect(bruce.map((w) => [w.weather.kind, w.weather.load])).toEqual([
-      ["STORM", 6],
-      ["STORM", 4],
-      ["SUNNY", 0],
-      ["SUNNY", 0],
+      ["STORM", 5],
+      ["STORM", 3],
+      ["CLOUDY", 1],
+      ["CLOUDY", 1],
     ]);
-    expect(bruce[0]?.turningUrgent.map((i) => i.identifier)).toEqual([
-      "AVG-31",
-      "AVG-32",
-      "AVG-33",
-    ]);
+    expect(bruce[0]?.turningUrgent.map((i) => i.identifier)).toEqual(["AVG-31", "AVG-32"]);
     expect(bruce[0]?.summary).toBe(
-      "1 Urgent-priority issue, 1 High-priority issue and 1 Medium-priority issue become urgent",
+      "1 Urgent-priority issue and 1 High-priority issue become urgent",
     );
     // Clint's one dated issue comes due; what's left has no date.
     expect(byName["Clint Barton"]?.map((w) => w.weather.kind)).toEqual([
@@ -377,7 +373,7 @@ describe("schema", () => {
       from: { name: "Tony Stark" },
       to: { name: "Wanda Maximoff" },
       week: null,
-      // Still a storm: his overdue work stays with him.
+      // Still a storm: he has plenty more.
       fromWeather: "STORM",
       toWeather: "SUNNY",
       reason:
@@ -387,7 +383,7 @@ describe("schema", () => {
     // Forecast moves only work not urgent yet, ahead of the week it would storm, on the board
     // today's moves leave: Wanda has taken some of Tony's, so Steve is the one free now.
     expect(team.forecast[0]).toMatchObject({
-      issue: { identifier: "AVG-33", quadrant: "SCHEDULE" },
+      issue: { identifier: "AVG-32", quadrant: "SCHEDULE" },
       from: { name: "Bruce Banner" },
       to: { name: "Steve Rogers" },
       week: 1,
@@ -434,7 +430,7 @@ describe("stored rules and overrides", () => {
     expect(matrix?.drop).toContainEqual({
       identifier: "AVG-1",
       quadrantSource: "OVERRIDE",
-      placementReason: "Placed by hand; the rules say Do (Urgent priority, overdue by 5 days)",
+      placementReason: "Placed by hand; the rules say Do (Urgent priority, due in 1 day)",
     });
   });
 
@@ -450,8 +446,9 @@ describe("stored rules and overrides", () => {
     });
     const board = await data<Board>(tony);
     expect(board.team.rules).toEqual({ urgencyWindowDays: 1 });
-    // Only Urgent priority is important now, and only today or overdue is urgent.
-    expect(tonyOf(board)?.counts).toEqual({ do: 2, schedule: 2, delegate: 2, drop: 7 });
+    // Only Urgent priority is important now, and only today or overdue is urgent: none of Tony's
+    // Urgent-priority work is due today.
+    expect(tonyOf(board)?.counts).toEqual({ do: 0, schedule: 4, delegate: 2, drop: 7 });
   });
 
   it("flags backlog rot across the team, its unassigned issues included", async () => {
@@ -567,7 +564,7 @@ describe("mutations", () => {
     expect(result.updateQuadrantRules.__typename).toBe("UpdateRulesSuccess");
     expect(result.updateQuadrantRules.team?.rules).toEqual(strict);
     // By the defaults Tony has { do: 9, schedule: 1, delegate: 2, drop: 1 }.
-    expect(tonyCounts(result)).toEqual({ do: 2, schedule: 2, delegate: 2, drop: 7 });
+    expect(tonyCounts(result)).toEqual({ do: 0, schedule: 4, delegate: 2, drop: 7 });
 
     // And it's kept: the next request sorts by the new rules too.
     const { team } = await data<{ team: { rules: unknown } }>(
@@ -733,14 +730,14 @@ describe("mutations", () => {
       identifier: "AVG-1",
       quadrant: "DROP",
       quadrantSource: "OVERRIDE",
-      placementReason: "Placed by hand; the rules say Do (Urgent priority, overdue by 5 days)",
+      placementReason: "Placed by hand; the rules say Do (Urgent priority, due in 1 day)",
     });
     expect(tonyIn(moved)).toEqual({ do: 8, drop: 2 });
     expect(back.issue).toEqual({
       identifier: "AVG-1",
       quadrant: "DO",
       quadrantSource: "RULE",
-      placementReason: "Urgent priority, overdue by 5 days",
+      placementReason: "Urgent priority, due in 1 day",
     });
     expect(tonyIn(back)).toEqual({ do: 9, drop: 1 });
     expect(await new Store(env.DB).overrides(["demo-issue-avg-1"])).toEqual(new Map());
@@ -1001,7 +998,7 @@ describe("time off", () => {
     ]);
     expect(added.team?.people.find((p) => p.name === "Natasha Romanoff")?.weather).toEqual({
       kind: "AWAY",
-      reason: "Away until Oct 23, holding 4 urgent issues (1 overdue)",
+      reason: "Away until Oct 23, holding 4 urgent issues",
     });
     expect(added.team?.weather.kind).toBe("STORM");
     expect(added.team?.weather.reason).toContain("Natasha Romanoff is away with 4 urgent issues");
@@ -1126,7 +1123,7 @@ describe("capacity", () => {
     // 24 urgent issues over 5.5 people: Natasha's share is 2.18.
     expect(result.team?.people.find((p) => p.name === "Natasha Romanoff")).toMatchObject({
       capacity: 0.5,
-      weather: { reason: "4 urgent issues at half time, 1.83× their share; 1 issue overdue" },
+      weather: { reason: "4 urgent issues at half time, 1.83× their share" },
     });
 
     // Kept, and the same on her other team.
@@ -1197,7 +1194,7 @@ describe("reassigning", () => {
     });
     expect(loadOf((before.data as { team: Loads }).team, "Tony Stark")).toEqual({
       now: 11,
-      week1: 6,
+      week1: 3,
     });
 
     // AVG-10, "Replace the repulsor gloves' firmware": Tony's, High priority, due in 9 days.
@@ -1215,7 +1212,7 @@ describe("reassigning", () => {
       assignee: { name: "Wanda Maximoff" },
     });
     expect(loadOf(reassignIssue.team, "Wanda Maximoff")).toEqual({ now: 1, week1: 1 });
-    expect(loadOf(reassignIssue.team, "Tony Stark")).toEqual({ now: 10, week1: 5 });
+    expect(loadOf(reassignIssue.team, "Tony Stark")).toEqual({ now: 10, week1: 2 });
 
     // Linear keeps it: the next request reads it from there.
     const after = await run(`{ team { ${LOADS} } }`, {}, { linear });
@@ -1224,6 +1221,67 @@ describe("reassigning", () => {
       week1: 1,
     });
   });
+
+  it.each([
+    [DEMO_TEAM.id, ["Tony Stark"], ["Bruce Banner", "Steve Rogers", "Tony Stark"]],
+    [DEMO_OPS_TEAM.id, ["Phil Coulson"], []],
+  ])(
+    "clears the demo's storms on %s once every suggested move is made",
+    async (teamId, now, ahead) => {
+      const linear = new DemoLinear({ today });
+      const ask = async <T>(query: string, variables: Record<string, unknown> = {}) => {
+        const result = await run(query, { teamId, ...variables }, { linear });
+        expect(result.errors).toBeUndefined();
+        return result.data as T;
+      };
+      type Board = {
+        team: {
+          people: {
+            name: string;
+            weather: { kind: string };
+            forecast: { weather: { kind: string } }[];
+          }[];
+        };
+      };
+      /** Who is in a storm today, and who in some forecast week. */
+      const storms = async () => {
+        const { team } = await ask<Board>(
+          "query ($teamId: ID) { team(id: $teamId) { people { name weather { kind } forecast { weather { kind } } } } }",
+        );
+        return {
+          now: team.people.filter((p) => p.weather.kind === "STORM").map((p) => p.name),
+          ahead: team.people
+            .filter((p) => p.forecast.some((w) => w.weather.kind === "STORM"))
+            .map((p) => p.name),
+        };
+      };
+      /** Makes every move the board suggests, as Hand over does, and says how many there were. */
+      const makeMoves = async (horizon: "NOW" | "FORECAST") => {
+        const { team } = await ask<{
+          team: { suggestions: { issue: { id: string }; to: { id: string } }[] };
+        }>(
+          `query ($teamId: ID) { team(id: $teamId) { suggestions: rebalanceSuggestions(horizon: ${horizon}) { issue { id } to { id } } } }`,
+        );
+        for (const { issue, to } of team.suggestions) {
+          const { reassignIssue } = await ask<ReassignResult>(reassign, {
+            issueId: issue.id,
+            userId: to.id,
+          });
+          expect(reassignIssue.__typename).toBe("ReassignSuccess");
+        }
+        return team.suggestions.length;
+      };
+
+      expect(await storms()).toEqual({ now, ahead });
+      expect(await makeMoves("NOW")).toBeGreaterThan(0);
+      expect((await storms()).now).toEqual([]);
+      if (ahead.length > 0) expect(await makeMoves("FORECAST")).toBeGreaterThan(0);
+      expect(await storms()).toEqual({ now: [], ahead: [] });
+      // Nothing is left to suggest.
+      expect(await makeMoves("NOW")).toBe(0);
+      expect(await makeMoves("FORECAST")).toBe(0);
+    },
+  );
 
   it("won't reassign an issue the viewer can't see", async () => {
     const result = await run(reassign, { issueId: "someone-elses", userId: "demo-user-wanda" });

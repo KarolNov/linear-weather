@@ -12,7 +12,7 @@ A team that never saved rules SHALL be sorted by, and report, the defaults: impo
   - **GIVEN** a team that never saved rules
   - **WHEN** a client asks for the team's `rules`
   - **THEN** it gets important from 3 (Medium), a 14-day window, NOT_URGENT for no due date, a 40% Drop alert, an empty away list, and both opt-in rules off
-- **Scenario: Store unavailable falls back to the defaults**
+- **Scenario: Store unavailable falls back to the defaults** <!-- accepted -->
   - **GIVEN** a team saved its own rules but the app's database can't be read
   - **WHEN** the board loads
   - **THEN** it loads without an error, sorted by the default rules

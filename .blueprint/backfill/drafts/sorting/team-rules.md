@@ -8,7 +8,7 @@ Let a PM read and change a team's sorting rules, checked field by field before a
 ### Requirement: Defaults for a team without rules
 A team that never saved rules SHALL be sorted by, and report, the defaults: important from Medium, a 14-day urgency window, undated issues not urgent, a 40% Drop alert, no away statuses, and the blocker and current-cycle rules off.
 
-- **Scenario: New team reads the defaults**
+- **Scenario: New team reads the defaults** <!-- accepted -->
   - **GIVEN** a team that never saved rules
   - **WHEN** a client asks for the team's `rules`
   - **THEN** it gets important from 3 (Medium), a 14-day window, NOT_URGENT for no due date, a 40% Drop alert, an empty away list, and both opt-in rules off

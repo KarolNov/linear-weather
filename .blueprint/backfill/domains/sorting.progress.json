@@ -31,7 +31,12 @@
       "anchors": [
         "web/src/RulesPanel.tsx",
         "server/src/placements.ts"
-      ]
+      ],
+      "review": {
+        "accepted": 1,
+        "amended": 0,
+        "rejected": 0
+      }
     },
     "sorting/hand-placement": {
       "purpose": "Let a PM place an issue in a quadrant by hand, or hand it back to the rules, while its due date still drives urgency",

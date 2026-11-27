@@ -50,7 +50,7 @@ When a team opts in, an issue that blocks another still-open issue MUST count as
   - **GIVEN** the team counts blockers as important
   - **WHEN** a Low priority issue due in 3 days blocks an open issue
   - **THEN** it is in Do with the reason "Low priority, blocks other issues, due in 3 days"
-- **Scenario: Blocking only finished work does not count**
+- **Scenario: Blocking only finished work does not count** <!-- accepted -->
   - **GIVEN** the team counts blockers as important
   - **WHEN** an issue blocks only issues that are already done
   - **THEN** it is placed as if it blocked nothing

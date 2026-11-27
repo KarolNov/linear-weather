@@ -46,7 +46,7 @@ An issue with a due date MUST count as urgent when it is due in fewer whole cale
 ### Requirement: Opt-in blocker and cycle rules
 When a team opts in, an issue that blocks another still-open issue MUST count as important whatever its priority, and an issue in the team's current cycle MUST count as urgent whatever its due date until that cycle's last day has passed.
 
-- **Scenario: Blocker counts as important**
+- **Scenario: Blocker counts as important** <!-- accepted -->
   - **GIVEN** the team counts blockers as important
   - **WHEN** a Low priority issue due in 3 days blocks an open issue
   - **THEN** it is in Do with the reason "Low priority, blocks other issues, due in 3 days"

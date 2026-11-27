@@ -24,7 +24,7 @@ An issue MUST count as important when its Linear priority is set and at or above
   - **GIVEN** the team counts only High or higher as important
   - **WHEN** a Medium priority issue is due in 3 days
   - **THEN** it is in Delegate
-- **Scenario: No priority is never important**
+- **Scenario: No priority is never important** <!-- accepted -->
   - **WHEN** an issue with No priority is due in 3 days
   - **THEN** it is in Delegate with the reason "No priority, due in 3 days"
 

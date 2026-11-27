@@ -70,7 +70,7 @@ Every placed issue SHALL carry a reason built as its priority label, then "block
   - **GIVEN** the team counts the current cycle as urgent
   - **WHEN** a High priority issue due in 43 days is in the current cycle
   - **THEN** its reason is "High priority, due in 43 days, in the current cycle"
-- **Scenario: Reason shown on the board**
+- **Scenario: Reason shown on the board** <!-- accepted -->
   - **WHEN** a PM hovers an issue's title on the board
   - **THEN** the reason is shown as its tooltip
 

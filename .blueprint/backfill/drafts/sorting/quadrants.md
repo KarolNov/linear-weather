@@ -38,7 +38,7 @@ An issue with a due date MUST count as urgent when it is due in fewer whole cale
 - **Scenario: Overdue issue is urgent** <!-- accepted -->
   - **WHEN** an important issue was due 2 days ago
   - **THEN** it is in Do with a reason ending "overdue by 2 days"
-- **Scenario: Undated issue follows the team's no-due-date choice**
+- **Scenario: Undated issue follows the team's no-due-date choice** <!-- accepted -->
   - **GIVEN** the team's rules say issues with no due date are urgent
   - **WHEN** a High priority issue has no due date
   - **THEN** it is in Do with the reason "High priority, no due date", where by default it would be in Schedule

@@ -54,7 +54,7 @@ When a team opts in, an issue that blocks another still-open issue MUST count as
   - **GIVEN** the team counts blockers as important
   - **WHEN** an issue blocks only issues that are already done
   - **THEN** it is placed as if it blocked nothing
-- **Scenario: Current cycle counts as urgent until it ends**
+- **Scenario: Current cycle counts as urgent until it ends** <!-- accepted -->
   - **GIVEN** the team counts the current cycle as urgent and the cycle's last day is today
   - **WHEN** a Low priority undated issue in the cycle is placed today, and again tomorrow
   - **THEN** today it is in Delegate with the reason "Low priority, no due date, in the current cycle", and tomorrow it is in Drop

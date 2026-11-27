@@ -12,7 +12,7 @@ An issue SHALL land in Do when it is important and urgent, Schedule when importa
   - **GIVEN** the default rules and today is 2026-10-18
   - **WHEN** a High priority issue is due 2026-10-21
   - **THEN** it is in Do with the reason "High priority, due in 3 days"
-- **Scenario: Neither important nor urgent lands in Drop**
+- **Scenario: Neither important nor urgent lands in Drop** <!-- accepted -->
   - **GIVEN** the default rules and today is 2026-10-18
   - **WHEN** a Low priority issue is due 2026-11-30
   - **THEN** it is in Drop with the reason "Low priority, due in 43 days"

@@ -9,7 +9,8 @@
       "!server/schema.graphql",
       "!web/src/generated.ts",
       "!server/src/trusted-documents.ts",
-      "!web/src/document-ids.ts"
+      "!web/src/document-ids.ts",
+      "!.blueprint"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },

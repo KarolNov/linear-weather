@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "docs": {
+    "backend": "notion",
+    "location": {
+      "root": "https://app.notion.com/p/42543cce21f281c588afe647513dbfe9",
+      "specs": "collection://42543cce-21f2-8157-8f2e-000b455263f2",
+      "blueprints": "collection://42543cce-21f2-81f3-a178-000b2d7ccc00"
+    }
+  },
+  "tickets": {
+    "tracker": "none"
+  },
+  "project": "https://app.notion.com/p/40a43cce21f281749f6afeb909a08e0e",
+  "domains": {},
+  "specs": {},
+  "changes": {}
+}

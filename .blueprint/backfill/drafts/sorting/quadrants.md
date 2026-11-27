@@ -66,7 +66,7 @@ When a team opts in, an issue that blocks another still-open issue MUST count as
 ### Requirement: Placement reason
 Every placed issue SHALL carry a reason built as its priority label, then "blocks other issues" when that counted, then its due wording ("due today", "due in N days", "overdue by N days" or "no due date", with "1 day" in the singular), then "in the current cycle" when that counted, joined by commas.
 
-- **Scenario: Reason with the cycle**
+- **Scenario: Reason with the cycle** <!-- accepted -->
   - **GIVEN** the team counts the current cycle as urgent
   - **WHEN** a High priority issue due in 43 days is in the current cycle
   - **THEN** its reason is "High priority, due in 43 days, in the current cycle"

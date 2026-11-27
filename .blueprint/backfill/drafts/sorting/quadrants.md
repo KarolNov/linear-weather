@@ -99,6 +99,6 @@ Due dates MUST be counted in whole calendar days against today's date in UTC, un
 ### Requirement: Quadrant names on the board
 The board SHALL name each quadrant with its meaning: Do "Important and urgent", Schedule "Important, not urgent yet", Delegate "Urgent, less important", Drop "Neither, question it", each in its own colour shared by the legend, the matrix and the issue cards.
 
-- **Scenario: Legend explains the quadrants**
+- **Scenario: Legend explains the quadrants** <!-- accepted -->
   - **WHEN** a PM opens a team's board
   - **THEN** a legend lists Do, Schedule, Delegate and Drop with their meanings

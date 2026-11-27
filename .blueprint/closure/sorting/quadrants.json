@@ -1,0 +1,18 @@
+{
+  "mode": "file",
+  "why": "the TypeScript helper failed (Node.js v24.22.2)",
+  "files": {
+    "ui/src/tokens.stylex.ts": {"distance": 1, "via": ["ui"], "hash": "7eeb65cb59a7", "whole": true},
+    "web/src/board.ts": {"distance": 1, "via": [], "hash": "8007ab8be6e1", "whole": true},
+    "web/src/generated.ts": {"distance": 2, "via": [], "hash": "b0cda2d0be29", "whole": true}
+  },
+  "symbols": [],
+  "external": [
+    "@graphql-typed-document-node/core",
+    "@stylexjs/stylex"
+  ],
+  "locked": {
+    "@graphql-typed-document-node/core": "3.2.0",
+    "@stylexjs/stylex": "0.19.1"
+  }
+}

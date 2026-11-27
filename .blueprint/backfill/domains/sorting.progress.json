@@ -17,7 +17,14 @@
         "accepted": 18,
         "amended": 0,
         "rejected": 0
-      }
+      },
+      "ref": "https://app.notion.com/p/42543cce21f2817e8d5bc4c921f35549",
+      "specVersion": "7f8140be7571c10c",
+      "anchorsFiles": {
+        "server/src/domain/quadrant.ts": "9841b20362a8",
+        "web/src/quadrants.ts": "9c5fe3f5f211"
+      },
+      "syncedCommit": "0a3430fb3fbb51ac9cabae58315d84da27fb28ea"
     },
     "sorting/team-rules": {
       "purpose": "Let a PM edit a team's sorting rules, validated field by field, with defaults for teams that never set them",

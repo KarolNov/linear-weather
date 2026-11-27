@@ -90,9 +90,9 @@ Every placed issue SHALL say the first day the rules call it urgent: today when 
   - **THEN** it has no day it turns urgent
 
 ### Requirement: Calendar-day arithmetic
-Due dates MUST be counted in whole calendar days against today's date in UTC, unaffected by daylight-saving changes. <!-- verify: "today" is the UTC date, so a PM far from UTC may see placements a day off near midnight; is that acceptable? -->
+Due dates MUST be counted in whole calendar days against today's date in UTC, unaffected by daylight-saving changes.
 
-- **Scenario: Across a daylight-saving change**
+- **Scenario: Across a daylight-saving change** <!-- accepted -->
   - **WHEN** an issue's due date is a week away across a daylight-saving change
   - **THEN** it is due in 7 days
 

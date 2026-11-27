@@ -20,7 +20,7 @@ An issue SHALL land in Do when it is important and urgent, Schedule when importa
 ### Requirement: Importance by priority threshold
 An issue MUST count as important when its Linear priority is set and at or above the team's "important from" priority, and "No priority" MUST never count as important by priority.
 
-- **Scenario: Stricter threshold drops Medium**
+- **Scenario: Stricter threshold drops Medium** <!-- accepted -->
   - **GIVEN** the team counts only High or higher as important
   - **WHEN** a Medium priority issue is due in 3 days
   - **THEN** it is in Delegate

@@ -20,7 +20,7 @@ A team that never saved rules SHALL be sorted by, and report, the defaults: impo
 ### Requirement: Saving replaces the team's rules
 Saving rules for a team SHALL replace them for every later request, and the answer SHALL carry the team so the client can read the board already sorted by the new rules.
 
-- **Scenario: Matrices follow new rules at once**
+- **Scenario: Matrices follow new rules at once** <!-- accepted -->
   - **GIVEN** a team on the default rules where one person has Do 9, Schedule 1, Delegate 2, Drop 1
   - **WHEN** a PM saves important from Urgent only and a 1-day window
   - **THEN** the answer is a success whose team shows that person with Do 0, Schedule 4, Delegate 2, Drop 7, and the next request reads the same rules

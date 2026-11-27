@@ -58,7 +58,7 @@ When a team opts in, an issue that blocks another still-open issue MUST count as
   - **GIVEN** the team counts the current cycle as urgent and the cycle's last day is today
   - **WHEN** a Low priority undated issue in the cycle is placed today, and again tomorrow
   - **THEN** today it is in Delegate with the reason "Low priority, no due date, in the current cycle", and tomorrow it is in Drop
-- **Scenario: Linear cannot say what is in the cycle**
+- **Scenario: Linear cannot say what is in the cycle** <!-- accepted -->
   - **GIVEN** the team counts the current cycle as urgent
   - **WHEN** Linear fails to answer which issues are in the current cycle
   - **THEN** the board still loads, sorted as if the cycle rule were off

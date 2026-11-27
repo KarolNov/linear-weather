@@ -84,7 +84,7 @@ Every placed issue SHALL say the first day the rules call it urgent: today when 
 - **Scenario: Overdue issue turns urgent today, not in the past** <!-- accepted -->
   - **WHEN** an issue is overdue
   - **THEN** the day it turns urgent is today
-- **Scenario: Undated issue never turns urgent**
+- **Scenario: Undated issue never turns urgent** <!-- accepted -->
   - **GIVEN** the team's rules say issues with no due date aren't urgent
   - **WHEN** an issue has no due date and is not urgent for its cycle
   - **THEN** it has no day it turns urgent

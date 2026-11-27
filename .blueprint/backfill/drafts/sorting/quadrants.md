@@ -35,7 +35,7 @@ An issue with a due date MUST count as urgent when it is due in fewer whole cale
   - **GIVEN** the default 14-day window
   - **WHEN** one important issue is due in 13 days and another in exactly 14
   - **THEN** the first is in Do and the second in Schedule
-- **Scenario: Overdue issue is urgent**
+- **Scenario: Overdue issue is urgent** <!-- accepted -->
   - **WHEN** an important issue was due 2 days ago
   - **THEN** it is in Do with a reason ending "overdue by 2 days"
 - **Scenario: Undated issue follows the team's no-due-date choice**

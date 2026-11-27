@@ -77,7 +77,7 @@ Every placed issue SHALL carry a reason built as its priority label, then "block
 ### Requirement: Day it turns urgent
 Every placed issue SHALL say the first day the rules call it urgent: today when it already is urgent, the day its due date enters the window when that is later, and none when it never will be.
 
-- **Scenario: Turns urgent 13 days before its due date**
+- **Scenario: Turns urgent 13 days before its due date** <!-- accepted -->
   - **GIVEN** the default 14-day window and today is 2026-10-18
   - **WHEN** an issue is due 2026-11-30
   - **THEN** it turns urgent on 2026-11-17

@@ -36,7 +36,7 @@ The priority threshold, urgency window and no-due-date choice MUST be given on e
 ### Requirement: Field-by-field validation
 Proposed rules MUST be refused, with nothing saved, when any field is out of range, and the refusal MUST list every problem at once, each naming its field and a message, with all messages joined as the overall message.
 
-- **Scenario: Several problems reported together**
+- **Scenario: Several problems reported together** <!-- accepted -->
   - **WHEN** a PM saves important from 0 and a 0-day window
   - **THEN** the answer is InvalidRules with the problems "Important from must be a priority: 1 (Urgent) to 4 (Low)." on `importantFrom` and "The urgency window must be 1 to 365 whole days." on `urgencyWindowDays`, and the saved rules are unchanged
 - **Scenario: Drop alert out of range**

@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "passes": {
+    "1": "done"
+  },
+  "survey": {
+    "summary": "pnpm workspace on Cloudflare Workers: server/ (Hono + GraphQL Yoga + Pothos, D1, a Durable Object per team), web/ (Preact board, server-rendered by a Hono Worker) and ui/ (shared Preact components).\nA pure rules engine in server/src/domain sorts each person's Linear issues into Eisenhower quadrants and derives weather, a forecast and rebalance moves, exposed as derived fields on mirrored Linear types.\nAround it: a rate-limited Linear client, OAuth sign-in, a demo workspace, live updates from Linear webhooks over SSE, trusted documents and query limits.",
+    "excluded": [
+      "server/migrations/**",
+      "server/scripts/**",
+      "web/scripts/**",
+      "server/test/**",
+      ".github/**",
+      "docs/**",
+      "server/src/linear/generated.ts",
+      "web/src/generated.ts",
+      "web/src/document-ids.ts",
+      "server/src/trusted-documents.ts",
+      "server/schema.graphql",
+      "server/worker-configuration.d.ts",
+      "*.json",
+      "*.yaml",
+      ".gitignore",
+      ".gitattributes",
+      ".nvmrc",
+      "*.md",
+      "vitest.config.ts",
+      "server/*.ts",
+      "server/*.json",
+      "server/*.jsonc",
+      "server/.env.example",
+      "web/*.ts",
+      "web/*.json",
+      "web/*.jsonc",
+      "ui/*.ts",
+      "ui/*.json"
+    ],
+    "vocabulary": {
+      "quadrant": "Do, Schedule, Delegate or Drop: where an issue sits in the Eisenhower matrix",
+      "sorting rules": "a team's rules for what counts as important and urgent (quadrant_rules)",
+      "hand placement": "a PM's override of an issue's quadrant",
+      "backlog rot": "too much of a team's open work sitting in Drop",
+      "weather": "a person's urgent load against their fair share (sunny to storm), or away",
+      "fair share": "the team average, scaled by a person's capacity",
+      "forecast": "the weather week by week ahead, from due dates; fog is undated work",
+      "capacity": "how much of a full-time week a person works",
+      "time off / away status": "ranges added on the board, or a Linear status the team lists as away",
+      "rebalance": "suggested reassignments that clear today's storm or the ones ahead, applied in Linear",
+      "board": "the PM's web page showing the team"
+    },
+    "order": [
+      "sorting",
+      "weather",
+      "linear",
+      "api",
+      "board"
+    ]
+  },
+  "domains": {
+    "sorting": {
+      "purpose": "Putting issues into quadrants: sorting rules per team, hand placements, each person's matrix, backlog rot",
+      "folders": [
+        "server/src/domain/quadrant*",
+        "server/src/domain/matrix*",
+        "server/src/domain/backlog*",
+        "server/src/placements.ts",
+        "web/src/RulesPanel*",
+        "web/src/IssueCard*",
+        "web/src/PersonMatrix*",
+        "web/src/quadrants.ts"
+      ]
+    },
+    "weather": {
+      "purpose": "Who is overloaded and what to do about it: weather now, the forecast and fog, capacity, time off, away statuses, rebalance, the sky",
+      "folders": [
+        "server/src/domain/weather*",
+        "server/src/domain/forecast*",
+        "server/src/domain/capacity*",
+        "server/src/domain/time-off*",
+        "server/src/domain/away-status*",
+        "server/src/domain/rebalance*",
+        "web/src/weather.ts",
+        "web/src/TimeOff.tsx",
+        "web/src/RebalancePanel.tsx",
+        "ui/src/Sky*",
+        "ui/src/WeatherIcon*",
+        "ui/src/rain*",
+        "ui/src/useRain*"
+      ]
+    },
+    "linear": {
+      "purpose": "Talking to Linear: the rate-limited client, paged queries, batching, reassigning, webhooks into live board updates, and the demo workspace that stands in for Linear",
+      "folders": [
+        "server/src/linear/*.graphql",
+        "server/src/linear/client*",
+        "server/src/linear/team-issues*",
+        "server/src/linear/demo*",
+        "server/src/workspace*",
+        "server/src/webhooks*",
+        "server/src/team-channel*",
+        "server/src/live*",
+        "server/src/db/demo-*",
+        "web/src/live*"
+      ]
+    },
+    "api": {
+      "purpose": "Our GraphQL server: schema, mutation error unions, trusted documents, query limits, D1 storage, sign-in and sessions",
+      "folders": [
+        "server/src/index*",
+        "server/src/schema*",
+        "server/src/limits*",
+        "server/src/trusted-documents-plugin.ts",
+        "server/src/env.d.ts",
+        "server/src/auth*",
+        "server/src/linear-oauth*",
+        "server/src/session*",
+        "server/src/db/store*",
+        "server/src/db/tables*"
+      ]
+    },
+    "board": {
+      "purpose": "The web app around the board: the SSR worker, board shell, team picker, sign-in page, /about and /privacy, the client data layer and shared UI",
+      "folders": [
+        "web/src/App*",
+        "web/src/BoardShell*",
+        "web/src/client*",
+        "web/src/worker*",
+        "web/src/TeamPicker*",
+        "web/src/InfoPages*",
+        "web/src/SignIn*",
+        "web/src/dismiss*",
+        "web/src/motion*",
+        "web/src/board.*",
+        "web/src/mutations*",
+        "web/src/operations*",
+        "web/src/document-id.ts",
+        "web/src/document-ids.test.ts",
+        "web/src/document-text*",
+        "ui/src/Alert*",
+        "ui/src/Avatar*",
+        "ui/src/Badge*",
+        "ui/src/Button*",
+        "ui/src/Card*",
+        "ui/src/Chip*",
+        "ui/src/Icon*",
+        "ui/src/Logo*",
+        "ui/src/VisuallyHidden*",
+        "ui/src/tokens.stylex.ts",
+        "ui/src/index.ts"
+      ]
+    }
+  }
+}

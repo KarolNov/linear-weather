@@ -81,7 +81,7 @@ Every placed issue SHALL say the first day the rules call it urgent: today when 
   - **GIVEN** the default 14-day window and today is 2026-10-18
   - **WHEN** an issue is due 2026-11-30
   - **THEN** it turns urgent on 2026-11-17
-- **Scenario: Overdue issue turns urgent today, not in the past**
+- **Scenario: Overdue issue turns urgent today, not in the past** <!-- accepted -->
   - **WHEN** an issue is overdue
   - **THEN** the day it turns urgent is today
 - **Scenario: Undated issue never turns urgent**

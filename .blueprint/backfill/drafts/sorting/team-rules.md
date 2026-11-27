@@ -28,7 +28,7 @@ Saving rules for a team SHALL replace them for every later request, and the answ
 ### Requirement: Optional fields keep their saved value
 The priority threshold, urgency window and no-due-date choice MUST be given on every save, while the Drop alert, away statuses and the blocker and cycle rules, when left out, MUST keep the team's saved values.
 
-- **Scenario: Drop alert kept when left out**
+- **Scenario: Drop alert kept when left out** <!-- accepted -->
   - **GIVEN** a team saved a 25% Drop alert
   - **WHEN** a PM saves rules without a Drop alert
   - **THEN** the team's Drop alert is still 25%

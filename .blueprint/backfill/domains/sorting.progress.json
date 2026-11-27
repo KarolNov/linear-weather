@@ -12,7 +12,12 @@
       "anchors": [
         "server/src/domain/quadrant.ts",
         "web/src/quadrants.ts"
-      ]
+      ],
+      "review": {
+        "accepted": 1,
+        "amended": 0,
+        "rejected": 0
+      }
     },
     "sorting/team-rules": {
       "purpose": "Let a PM edit a team's sorting rules, validated field by field, with defaults for teams that never set them",

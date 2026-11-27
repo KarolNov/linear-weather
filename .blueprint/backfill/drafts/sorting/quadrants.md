@@ -8,7 +8,7 @@ Put each open issue in Do, Schedule, Delegate or Drop by its team's sorting rule
 ### Requirement: Quadrant from importance and urgency
 An issue SHALL land in Do when it is important and urgent, Schedule when important and not urgent, Delegate when urgent and not important, and Drop when neither.
 
-- **Scenario: Important and urgent lands in Do**
+- **Scenario: Important and urgent lands in Do** <!-- accepted -->
   - **GIVEN** the default rules and today is 2026-10-18
   - **WHEN** a High priority issue is due 2026-10-21
   - **THEN** it is in Do with the reason "High priority, due in 3 days"

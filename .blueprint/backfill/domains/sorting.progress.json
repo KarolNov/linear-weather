@@ -1,0 +1,53 @@
+{
+  "domain": "sorting",
+  "passes": {
+    "2": "done",
+    "3": "pending",
+    "4": "pending",
+    "5": "pending"
+  },
+  "capabilities": {
+    "sorting/quadrants": {
+      "purpose": "Put an issue in Do, Schedule, Delegate or Drop by its team's rules, say why, and say the day it turns urgent",
+      "anchors": [
+        "server/src/domain/quadrant.ts",
+        "web/src/quadrants.ts"
+      ]
+    },
+    "sorting/team-rules": {
+      "purpose": "Let a PM edit a team's sorting rules, validated field by field, with defaults for teams that never set them",
+      "anchors": [
+        "web/src/RulesPanel.tsx",
+        "server/src/placements.ts"
+      ]
+    },
+    "sorting/hand-placement": {
+      "purpose": "Let a PM place an issue in a quadrant by hand, or hand it back to the rules, while its due date still drives urgency",
+      "anchors": [
+        "web/src/IssueCard.tsx",
+        "server/src/domain/matrix.ts",
+        "server/src/placements.ts"
+      ]
+    },
+    "sorting/matrix": {
+      "purpose": "Sort each person's issues into their Eisenhower matrix, most pressing first, with counts and points per quadrant",
+      "anchors": [
+        "server/src/domain/matrix.ts",
+        "web/src/PersonMatrix.tsx"
+      ]
+    },
+    "sorting/backlog-rot": {
+      "purpose": "Flag a team whose open issues sit in Drop beyond its alert percent, with the count and share as the reason",
+      "anchors": [
+        "server/src/domain/backlog.ts"
+      ]
+    }
+  },
+  "glue": [
+    "server/src/domain/*.test.ts",
+    "web/src/*.browser.test.tsx"
+  ],
+  "folded": false,
+  "covered": true,
+  "ref": "https://app.notion.com/p/42543cce21f28197bb76f20f31add3fc"
+}

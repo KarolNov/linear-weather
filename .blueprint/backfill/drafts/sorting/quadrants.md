@@ -31,7 +31,7 @@ An issue MUST count as important when its Linear priority is set and at or above
 ### Requirement: Urgency by due date
 An issue with a due date MUST count as urgent when it is due in fewer whole calendar days than the team's urgency window, due today, or overdue.
 
-- **Scenario: Edge of the urgency window**
+- **Scenario: Edge of the urgency window** <!-- accepted -->
   - **GIVEN** the default 14-day window
   - **WHEN** one important issue is due in 13 days and another in exactly 14
   - **THEN** the first is in Do and the second in Schedule

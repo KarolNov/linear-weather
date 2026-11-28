@@ -2,7 +2,7 @@
   "domain": "sorting",
   "passes": {
     "2": "done",
-    "3": "in-progress",
+    "3": "done",
     "4": "pending",
     "5": "pending"
   },

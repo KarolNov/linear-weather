@@ -45,7 +45,7 @@ Proposed rules MUST be refused, with nothing saved, when any field is out of ran
 - **Scenario: Too many or too long away statuses** <!-- accepted -->
   - **WHEN** a PM saves 11 away statuses, or one of 41 characters
   - **THEN** it is refused on `awayStatuses` with "List at most 10 away statuses." or "An away status is at most 40 characters."
-- **Scenario: Extremes are accepted**
+- **Scenario: Extremes are accepted** <!-- accepted -->
   - **WHEN** a PM saves important from 4 (Low), a 365-day window, a 99% Drop alert and ten statuses of up to 40 characters
   - **THEN** the rules are saved as given
 

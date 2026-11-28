@@ -12,7 +12,7 @@ A team's backlog rot SHALL count its open issues in Drop and all its open issues
   - **GIVEN** one person has Do 1, Schedule 1, Drop 3 and another Schedule 2, Delegate 1, Drop 4
   - **WHEN** the team's backlog rot is read with a 40% alert
   - **THEN** it reports 7 in Drop of 12 open issues
-- **Scenario: Unassigned issues count**
+- **Scenario: Unassigned issues count** <!-- accepted -->
   - **GIVEN** some of the team's unassigned issues are in Drop
   - **WHEN** the team's backlog rot is read
   - **THEN** its Drop count is the people's Drop counts plus the unassigned Drop count

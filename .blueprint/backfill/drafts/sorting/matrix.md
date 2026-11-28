@@ -64,7 +64,7 @@ Picking a quadrant in the 2×2 SHALL open the person's list narrowed to that qua
 ### Requirement: Long lists are capped
 In the full list, a quadrant with more than 6 issues SHALL show its first 6 with a "Show N more" button that shows the rest and then reads "Show fewer", while a quadrant picked on its own SHALL show whole.
 
-- **Scenario: Long Do list capped**
+- **Scenario: Long Do list capped** <!-- accepted -->
   - **GIVEN** a person has 10 issues in Do
   - **WHEN** the PM opens their list
   - **THEN** the first 6 Do issues show with "Show 4 more", and pressing it shows all 10 and reads "Show fewer"

@@ -58,7 +58,7 @@ A hand placement MUST stay when the team's rules change and when the issue is ha
   - **GIVEN** an issue was placed in Drop by hand
   - **WHEN** a PM saves new rules for its team
   - **THEN** the issue stays in Drop while the rule-placed issues move
-- **Scenario: Reassigned issue keeps its placement**
+- **Scenario: Reassigned issue keeps its placement** <!-- accepted -->
   - **GIVEN** an issue was placed in Drop by hand
   - **WHEN** it is handed to someone else on the team
   - **THEN** it is still in Drop, placed by hand

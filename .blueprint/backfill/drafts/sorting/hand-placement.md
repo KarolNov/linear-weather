@@ -91,7 +91,7 @@ Each issue card on the board SHALL offer a "Move to" menu listing the four quadr
 - **Scenario: Moving announces the result** <!-- accepted -->
   - **WHEN** a PM moves AVG-1 to Drop from its menu
   - **THEN** the card is busy until the answer comes, the board redraws from the answer, screen readers hear "Moved AVG-1 to Drop.", and the keyboard returns to the card's move button in its new quadrant
-- **Scenario: Handing back from the menu**
+- **Scenario: Handing back from the menu** <!-- accepted -->
   - **WHEN** a PM picks "Let the rules place it" on AVG-1
   - **THEN** screen readers hear "AVG-1 is back with the rules."
 - **Scenario: Failed move**

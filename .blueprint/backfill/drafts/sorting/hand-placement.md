@@ -12,7 +12,7 @@ Placing an issue in a quadrant by hand SHALL put it there whatever the rules say
   - **GIVEN** an Urgent priority issue due in 1 day sits in Do by the rules
   - **WHEN** a PM places it in Drop
   - **THEN** it is in Drop with `quadrantSource` OVERRIDE, and later requests still show it in Drop
-- **Scenario: Answer carries the matrix after the move**
+- **Scenario: Answer carries the matrix after the move** <!-- accepted -->
   - **GIVEN** the issue's assignee has Do 9 and Drop 1
   - **WHEN** a PM places one of their Do issues in Drop
   - **THEN** the answer carries the issue's team, where that person now has Do 8 and Drop 2

@@ -36,7 +36,14 @@
         "accepted": 16,
         "amended": 1,
         "rejected": 0
-      }
+      },
+      "ref": "https://app.notion.com/p/42643cce21f281c99bd3ff0cb34bfd4d",
+      "specVersion": "a07b32c0190413cf",
+      "anchorsFiles": {
+        "server/src/placements.ts": "c1244cbd8f21",
+        "web/src/RulesPanel.tsx": "29744542b9b5"
+      },
+      "syncedCommit": "ed24ca7ab1c0e9b843db463d8c409ed6be0707c3"
     },
     "sorting/hand-placement": {
       "purpose": "Let a PM place an issue in a quadrant by hand, or hand it back to the rules, while its due date still drives urgency",

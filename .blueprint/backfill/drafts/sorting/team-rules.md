@@ -65,7 +65,7 @@ Only a signed-in viewer, or a demo visitor, who can see the team in Linear SHALL
 - **Scenario: Team not visible** <!-- accepted -->
   - **WHEN** a PM saves valid rules for a team id they can't see
   - **THEN** the answer is TeamNotFound with "There's no such team, or you can't see it."
-- **Scenario: Invalid rules for an unseen team**
+- **Scenario: Invalid rules for an unseen team** <!-- accepted -->
   - **WHEN** a PM saves invalid rules for a team id they can't see
   - **THEN** the answer is InvalidRules, not TeamNotFound <!-- verify: validation is answered before the team is checked; should an unseen team win? -->
 - **Scenario: Linear rate limit spent**

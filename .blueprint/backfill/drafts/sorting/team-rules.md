@@ -75,7 +75,7 @@ Only a signed-in viewer, or a demo visitor, who can see the team in Linear SHALL
 ### Requirement: Rules panel on the board
 The board SHALL offer a "Sorting rules" panel, filled with the team's saved rules, that changes nothing until saved, closes on a successful save, and on a refusal stays open with each problem shown on its field.
 
-- **Scenario: Save closes the panel and announces it**
+- **Scenario: Save closes the panel and announces it** <!-- accepted -->
   - **GIVEN** a PM opened the rules panel
   - **WHEN** they change the urgency window and press "Save rules"
   - **THEN** the panel closes, the board redraws from the answer, and screen readers hear "Rules saved. The board is sorted by them now."

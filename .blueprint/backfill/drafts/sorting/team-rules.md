@@ -42,7 +42,7 @@ Proposed rules MUST be refused, with nothing saved, when any field is out of ran
 - **Scenario: Drop alert out of range** <!-- accepted -->
   - **WHEN** a PM saves a Drop alert of 100, 0 or 12.5
   - **THEN** it is refused on `dropAlertPercent` with "The Drop alert must be 1 to 99 whole percent."
-- **Scenario: Too many or too long away statuses**
+- **Scenario: Too many or too long away statuses** <!-- accepted -->
   - **WHEN** a PM saves 11 away statuses, or one of 41 characters
   - **THEN** it is refused on `awayStatuses` with "List at most 10 away statuses." or "An away status is at most 40 characters."
 - **Scenario: Extremes are accepted**

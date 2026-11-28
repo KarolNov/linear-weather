@@ -34,7 +34,7 @@ A team MUST be flagged as rotting only when Drop's share, rounded to a whole per
 ### Requirement: Reason in plain words
 Backlog rot SHALL give a reason "<drop> of <total> open issues (<percent>%) are in Drop, over|within the team's <alert>% alert", in the singular for one issue, and "No open issues" for a team with none.
 
-- **Scenario: Over the alert**
+- **Scenario: Over the alert** <!-- accepted -->
   - **WHEN** 7 of 12 open issues are in Drop and the alert is 40%
   - **THEN** the reason is "7 of 12 open issues (58%) are in Drop, over the team's 40% alert"
 - **Scenario: Singular wording**

@@ -54,7 +54,7 @@ A hand placement MUST only move the issue: the first day it turns urgent SHALL s
 ### Requirement: Hand placements outlast other changes
 A hand placement MUST stay when the team's rules change and when the issue is handed to someone else.
 
-- **Scenario: Rules change around a hand-placed issue**
+- **Scenario: Rules change around a hand-placed issue** <!-- accepted -->
   - **GIVEN** an issue was placed in Drop by hand
   - **WHEN** a PM saves new rules for its team
   - **THEN** the issue stays in Drop while the rule-placed issues move

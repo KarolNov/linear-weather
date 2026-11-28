@@ -24,7 +24,7 @@ Placing an issue in a quadrant by hand SHALL put it there whatever the rules say
 ### Requirement: Placement reason names the rules' quadrant
 An issue placed by hand SHALL give its reason as "Placed by hand; the rules say <quadrant> (<the rules' reason>)".
 
-- **Scenario: Reason after a hand placement**
+- **Scenario: Reason after a hand placement** <!-- accepted -->
   - **WHEN** a PM places an Urgent priority issue due in 1 day in Drop
   - **THEN** its reason is "Placed by hand; the rules say Do (Urgent priority, due in 1 day)"
 - **Scenario: Reason counts the team's opt-in rules**

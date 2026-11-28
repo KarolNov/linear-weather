@@ -41,7 +41,7 @@ Each person's card on the board SHALL show their open-issue total ("Nothing open
   - **GIVEN** a person has no issues in Delegate
   - **WHEN** the board shows their card
   - **THEN** the Delegate cell shows 0 and is disabled
-- **Scenario: Issue lists start shut**
+- **Scenario: Issue lists start shut** <!-- accepted -->
   - **WHEN** a PM opens a team's board
   - **THEN** every person's issue list is closed behind a "Show N issues" toggle
 

@@ -39,7 +39,7 @@ Proposed rules MUST be refused, with nothing saved, when any field is out of ran
 - **Scenario: Several problems reported together** <!-- accepted -->
   - **WHEN** a PM saves important from 0 and a 0-day window
   - **THEN** the answer is InvalidRules with the problems "Important from must be a priority: 1 (Urgent) to 4 (Low)." on `importantFrom` and "The urgency window must be 1 to 365 whole days." on `urgencyWindowDays`, and the saved rules are unchanged
-- **Scenario: Drop alert out of range**
+- **Scenario: Drop alert out of range** <!-- accepted -->
   - **WHEN** a PM saves a Drop alert of 100, 0 or 12.5
   - **THEN** it is refused on `dropAlertPercent` with "The Drop alert must be 1 to 99 whole percent."
 - **Scenario: Too many or too long away statuses**

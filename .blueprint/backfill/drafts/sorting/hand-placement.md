@@ -66,7 +66,7 @@ A hand placement MUST stay when the team's rules change and when the issue is ha
 ### Requirement: Who may place issues
 Only a signed-in viewer, or a demo visitor, who can see the issue in Linear SHALL be able to place it or hand it back; otherwise the answer MUST say why and save nothing.
 
-- **Scenario: Issue not visible**
+- **Scenario: Issue not visible** <!-- accepted -->
   - **WHEN** a PM places an issue id they can't see
   - **THEN** the answer is IssueNotFound with "There's no such issue, or you can't see it." and no placement is saved
 - **Scenario: Signed out placement**

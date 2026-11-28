@@ -62,7 +62,7 @@ Only a signed-in viewer, or a demo visitor, who can see the team in Linear SHALL
 - **Scenario: Signed out** <!-- accepted -->
   - **WHEN** a signed-out visitor saves rules
   - **THEN** the answer is Unauthorized with "Sign in with Linear first." and nothing is saved
-- **Scenario: Team not visible**
+- **Scenario: Team not visible** <!-- accepted -->
   - **WHEN** a PM saves valid rules for a team id they can't see
   - **THEN** the answer is TeamNotFound with "There's no such team, or you can't see it."
 - **Scenario: Invalid rules for an unseen team**

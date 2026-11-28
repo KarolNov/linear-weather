@@ -48,7 +48,7 @@ Each person's card on the board SHALL show their open-issue total ("Nothing open
 ### Requirement: Picking a quadrant narrows the list
 Picking a quadrant in the 2×2 SHALL open the person's list narrowed to that quadrant, and picking it again SHALL show every quadrant that has issues.
 
-- **Scenario: Pick opens the list narrowed**
+- **Scenario: Pick opens the list narrowed** <!-- accepted -->
   - **GIVEN** a person's list is shut
   - **WHEN** a PM picks their Do cell
   - **THEN** the list opens showing only Do, with the cell pressed and the other cells dimmed

@@ -12,7 +12,78 @@
     "tracker": "none"
   },
   "project": "https://app.notion.com/p/40a43cce21f281749f6afeb909a08e0e",
-  "domains": {},
-  "specs": {},
+  "domains": {
+    "sorting": {
+      "ref": "https://app.notion.com/p/42543cce21f28197bb76f20f31add3fc",
+      "purpose": "Putting issues into quadrants: sorting rules per team, hand placements, each person's matrix, backlog rot"
+    }
+  },
+  "specs": {
+    "sorting/backlog-rot": {
+      "ref": "https://app.notion.com/p/42643cce21f2813a896ddb6b07288644",
+      "specVersion": "e79d47631cd5af7d",
+      "anchors": [
+        "server/src/domain/backlog.ts"
+      ],
+      "anchorsFiles": {
+        "server/src/domain/backlog.ts": "c19f0e7bf731"
+      },
+      "syncedCommit": "4b403fe05240180be563c0fc6e63f93ac1362ae3"
+    },
+    "sorting/hand-placement": {
+      "ref": "https://app.notion.com/p/42643cce21f281ce8fcfeb4fe531d732",
+      "specVersion": "5d10ca11d54e9d78",
+      "anchors": [
+        "web/src/IssueCard.tsx",
+        "server/src/domain/matrix.ts",
+        "server/src/placements.ts"
+      ],
+      "anchorsFiles": {
+        "server/src/domain/matrix.ts": "773250d3386b",
+        "server/src/placements.ts": "c1244cbd8f21",
+        "web/src/IssueCard.tsx": "c42da0ae268b"
+      },
+      "syncedCommit": "92b34255fca0d88eb1c4e6f2dc84cf365defa9a7"
+    },
+    "sorting/matrix": {
+      "ref": "https://app.notion.com/p/42643cce21f28184ad12d4ed77ce7e8d",
+      "specVersion": "3ef3627d1f03e0d9",
+      "anchors": [
+        "server/src/domain/matrix.ts",
+        "web/src/PersonMatrix.tsx"
+      ],
+      "anchorsFiles": {
+        "server/src/domain/matrix.ts": "773250d3386b",
+        "web/src/PersonMatrix.tsx": "4482efb5d4b8"
+      },
+      "syncedCommit": "c66f16211db3143c4097b865497a0e87eaa7be81"
+    },
+    "sorting/quadrants": {
+      "ref": "https://app.notion.com/p/42543cce21f2817e8d5bc4c921f35549",
+      "specVersion": "7f8140be7571c10c",
+      "anchors": [
+        "server/src/domain/quadrant.ts",
+        "web/src/quadrants.ts"
+      ],
+      "anchorsFiles": {
+        "server/src/domain/quadrant.ts": "9841b20362a8",
+        "web/src/quadrants.ts": "9c5fe3f5f211"
+      },
+      "syncedCommit": "0a3430fb3fbb51ac9cabae58315d84da27fb28ea"
+    },
+    "sorting/team-rules": {
+      "ref": "https://app.notion.com/p/42643cce21f281c99bd3ff0cb34bfd4d",
+      "specVersion": "a07b32c0190413cf",
+      "anchors": [
+        "web/src/RulesPanel.tsx",
+        "server/src/placements.ts"
+      ],
+      "anchorsFiles": {
+        "server/src/placements.ts": "c1244cbd8f21",
+        "web/src/RulesPanel.tsx": "29744542b9b5"
+      },
+      "syncedCommit": "ed24ca7ab1c0e9b843db463d8c409ed6be0707c3"
+    }
+  },
   "changes": {}
 }

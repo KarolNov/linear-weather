@@ -107,7 +107,7 @@
     "server/src/domain/*.test.ts",
     "web/src/*.browser.test.tsx"
   ],
-  "folded": false,
+  "folded": true,
   "covered": true,
   "ref": "https://app.notion.com/p/42543cce21f28197bb76f20f31add3fc"
 }

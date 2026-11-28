@@ -68,7 +68,7 @@ In the full list, a quadrant with more than 6 issues SHALL show its first 6 with
   - **GIVEN** a person has 10 issues in Do
   - **WHEN** the PM opens their list
   - **THEN** the first 6 Do issues show with "Show 4 more", and pressing it shows all 10 and reads "Show fewer"
-- **Scenario: List that fits has no button**
+- **Scenario: List that fits has no button** <!-- accepted -->
   - **WHEN** a quadrant holds exactly 6 issues
   - **THEN** all 6 show and no "Show more" button appears
 - **Scenario: Next in line fills a capped list**

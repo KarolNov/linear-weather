@@ -27,7 +27,7 @@ A team MUST be flagged as rotting only when Drop's share, rounded to a whole per
 - **Scenario: Exactly at the alert is not rotting** <!-- accepted -->
   - **WHEN** 2 of 5 open issues are in Drop and the alert is 40%
   - **THEN** the team is not rotting, and with a 39% alert it is
-- **Scenario: Rounded share decides**
+- **Scenario: Rounded share decides** <!-- accepted -->
   - **WHEN** 400 of 1001 open issues are in Drop (39.96%) and the alert is 40%
   - **THEN** the team is not rotting, and the reason says "400 of 1001 open issues (40%) are in Drop, within the team's 40% alert"
 

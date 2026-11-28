@@ -52,7 +52,7 @@ Proposed rules MUST be refused, with nothing saved, when any field is out of ran
 ### Requirement: Away statuses are tidied
 Saved away statuses MUST be trimmed, with blank entries dropped and repeats kept once, ignoring case, before they are checked and stored.
 
-- **Scenario: Tidy on save**
+- **Scenario: Tidy on save** <!-- accepted -->
   - **WHEN** a PM saves the away statuses " Vacation ", "", "🌴", "vacation" and "  "
   - **THEN** the team's away statuses are "Vacation" and "🌴"
 

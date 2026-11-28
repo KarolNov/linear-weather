@@ -40,7 +40,7 @@ Backlog rot SHALL give a reason "<drop> of <total> open issues (<percent>%) are 
 - **Scenario: Singular wording** <!-- accepted -->
   - **WHEN** the team's only open issue is in Drop
   - **THEN** the reason is "1 of 1 open issue (100%) is in Drop, over the team's 40% alert"
-- **Scenario: Team with no open issues**
+- **Scenario: Team with no open issues** <!-- accepted -->
   - **WHEN** a team has no open issues
   - **THEN** it reports 0 of 0 with a share of 0, is not rotting, and the reason is "No open issues"
 

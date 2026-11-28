@@ -47,7 +47,7 @@ Backlog rot SHALL give a reason "<drop> of <total> open issues (<percent>%) are 
 ### Requirement: Flag on the board
 The board SHALL show a "Backlog rot" flag under the team's name only while the team is rotting, carrying the reason and the advice "Close what nobody will do, or give it a priority or a due date."
 
-- **Scenario: Lowering the alert raises the flag**
+- **Scenario: Lowering the alert raises the flag** <!-- accepted -->
   - **GIVEN** 8 of 47 open issues (17%) are in Drop and the team's alert is 40%, so no flag shows
   - **WHEN** a PM saves a 15% alert
   - **THEN** the board shows "Backlog rot: 8 of 47 open issues (17%) are in Drop, over the team's 15% alert. Close what nobody will do, or give it a priority or a due date."

@@ -84,7 +84,7 @@ When the app's database can't be read, the board SHALL still load, with every is
 ### Requirement: Move menu on each issue card
 Each issue card on the board SHALL offer a "Move to" menu listing the four quadrants with its current one disabled and marked "Here", plus "Let the rules place it" only for an issue placed by hand, and a hand-placed card SHALL show a "By hand" badge carrying its reason.
 
-- **Scenario: Menu for a rule-placed issue**
+- **Scenario: Menu for a rule-placed issue** <!-- accepted -->
   - **GIVEN** an issue in Schedule by the rules
   - **WHEN** a PM opens its move menu
   - **THEN** Do, Delegate and Drop can be picked, Schedule is disabled and marked "Here", and there is no "Let the rules place it"

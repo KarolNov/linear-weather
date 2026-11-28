@@ -8,7 +8,7 @@ Let a PM put an issue in a quadrant by hand, overriding the team's rules, or han
 ### Requirement: Place an issue by hand
 Placing an issue in a quadrant by hand SHALL put it there whatever the rules say, mark it as placed by hand, and keep it there for every later request.
 
-- **Scenario: Move a Do issue to Drop**
+- **Scenario: Move a Do issue to Drop** <!-- accepted -->
   - **GIVEN** an Urgent priority issue due in 1 day sits in Do by the rules
   - **WHEN** a PM places it in Drop
   - **THEN** it is in Drop with `quadrantSource` OVERRIDE, and later requests still show it in Drop
@@ -19,7 +19,7 @@ Placing an issue in a quadrant by hand SHALL put it there whatever the rules say
 - **Scenario: Placing in the rules' own quadrant pins it**
   - **GIVEN** an issue sits in Schedule by the rules
   - **WHEN** a client places it in Schedule through the API
-  - **THEN** it is marked placed by hand and stays in Schedule when the rules would move it <!-- verify: the API pins an issue placed in its rules' quadrant, while the board's menu disables that choice; keep both? -->
+  - **THEN** it is pinned there: marked placed by hand, and it stays in Schedule when the rules would move it
 
 ### Requirement: Placement reason names the rules' quadrant
 An issue placed by hand SHALL give its reason as "Placed by hand; the rules say <quadrant> (<the rules' reason>)".

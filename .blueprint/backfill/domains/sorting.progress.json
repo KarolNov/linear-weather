@@ -51,7 +51,12 @@
         "web/src/IssueCard.tsx",
         "server/src/domain/matrix.ts",
         "server/src/placements.ts"
-      ]
+      ],
+      "review": {
+        "accepted": 1,
+        "amended": 0,
+        "rejected": 0
+      }
     },
     "sorting/matrix": {
       "purpose": "Sort each person's issues into their Eisenhower matrix, most pressing first, with counts and points per quadrant",

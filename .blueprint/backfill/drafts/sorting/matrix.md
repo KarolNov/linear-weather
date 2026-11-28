@@ -75,7 +75,7 @@ In the full list, a quadrant with more than 6 issues SHALL show its first 6 with
   - **GIVEN** Do shows 6 of 10 issues
   - **WHEN** the first issue leaves Do
   - **THEN** the next issue in line takes its place and the button reads "Show 3 more"
-- **Scenario: Issue moved into a capped list stays in sight**
+- **Scenario: Issue moved into a capped list stays in sight** <!-- accepted -->
   - **GIVEN** Do shows 6 of 8 issues
   - **WHEN** an issue is moved into Do and sorts past the cut
   - **THEN** it still shows, and the button reads "Show 2 more"

@@ -69,7 +69,7 @@ Only a signed-in viewer, or a demo visitor, who can see the issue in Linear SHAL
 - **Scenario: Issue not visible** <!-- accepted -->
   - **WHEN** a PM places an issue id they can't see
   - **THEN** the answer is IssueNotFound with "There's no such issue, or you can't see it." and no placement is saved
-- **Scenario: Signed out placement**
+- **Scenario: Signed out placement** <!-- accepted -->
   - **WHEN** a signed-out visitor places an issue
   - **THEN** the answer is Unauthorized with "Sign in with Linear first."
 

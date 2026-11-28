@@ -57,9 +57,9 @@ Saved away statuses MUST be trimmed, with blank entries dropped and repeats kept
   - **THEN** the team's away statuses are "Vacation" and "🌴"
 
 ### Requirement: Who may change rules
-Only a signed-in viewer, or a demo visitor, who can see the team in Linear SHALL be able to change its rules; otherwise the answer MUST say why and save nothing. <!-- verify: any viewer who can see the team may change its rules, with no PM or admin role check; intended? -->
+Only a signed-in viewer, or a demo visitor, who can see the team in Linear SHALL be able to change its rules; otherwise the answer MUST say why and save nothing.
 
-- **Scenario: Signed out**
+- **Scenario: Signed out** <!-- accepted -->
   - **WHEN** a signed-out visitor saves rules
   - **THEN** the answer is Unauthorized with "Sign in with Linear first." and nothing is saved
 - **Scenario: Team not visible**

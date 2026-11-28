@@ -79,7 +79,7 @@ The board SHALL offer a "Sorting rules" panel, filled with the team's saved rule
   - **GIVEN** a PM opened the rules panel
   - **WHEN** they change the urgency window and press "Save rules"
   - **THEN** the panel closes, the board redraws from the answer, and screen readers hear "Rules saved. The board is sorted by them now."
-- **Scenario: Refusal marks the field**
+- **Scenario: Refusal marks the field** <!-- accepted -->
   - **WHEN** the server refuses the away statuses
   - **THEN** the panel stays open with the away-status field marked invalid and the server's message beside it
 - **Scenario: Away statuses one a line**

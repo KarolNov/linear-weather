@@ -67,10 +67,10 @@ Only a signed-in viewer, or a demo visitor, who can see the team in Linear SHALL
   - **THEN** the answer is TeamNotFound with "There's no such team, or you can't see it."
 - **Scenario: Invalid rules for an unseen team** <!-- accepted -->
   - **WHEN** a PM saves invalid rules for a team id they can't see
-  - **THEN** the answer is InvalidRules, not TeamNotFound <!-- verify: validation is answered before the team is checked; should an unseen team win? -->
-- **Scenario: Linear rate limit spent**
+  - **THEN** the answer is InvalidRules, not TeamNotFound
+- **Scenario: Linear rate limit spent** <!-- amended -->
   - **WHEN** Linear's rate limit is spent as a PM saves rules
-  - **THEN** the answer is LinearRateLimited with "Linear's rate limit is spent for now; try again later." and when the budget is back, if Linear said
+  - **THEN** the answer is LinearRateLimited with "Linear's rate limit is spent for now; try again later.", and when Linear's budget is back in full if Linear said, and nothing is saved
 
 ### Requirement: Rules panel on the board
 The board SHALL offer a "Sorting rules" panel, filled with the team's saved rules, that changes nothing until saved, closes on a successful save, and on a refusal stays open with each problem shown on its field.

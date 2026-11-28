@@ -46,7 +46,7 @@ Handing an issue back SHALL forget its hand placement so the rules place it agai
 ### Requirement: Due date still drives urgency
 A hand placement MUST only move the issue: the first day it turns urgent SHALL still follow its due date and the team's rules.
 
-- **Scenario: Day it turns urgent is unchanged**
+- **Scenario: Day it turns urgent is unchanged** <!-- accepted -->
   - **GIVEN** today is 2026-10-18 and a High priority issue due 2026-11-30 turns urgent on 2026-11-17
   - **WHEN** a PM places it in Drop
   - **THEN** it still turns urgent on 2026-11-17

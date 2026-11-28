@@ -35,7 +35,7 @@ An issue placed by hand SHALL give its reason as "Placed by hand; the rules say 
 ### Requirement: Hand it back to the rules
 Handing an issue back SHALL forget its hand placement so the rules place it again, and MUST succeed on an issue that was never placed by hand.
 
-- **Scenario: Back with the rules**
+- **Scenario: Back with the rules** <!-- accepted -->
   - **GIVEN** an issue the rules put in Do was placed in Drop by hand
   - **WHEN** a PM hands it back to the rules
   - **THEN** it is in Do with `quadrantSource` RULE and the reason "Urgent priority, due in 1 day"

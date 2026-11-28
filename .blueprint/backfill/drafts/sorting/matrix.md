@@ -79,7 +79,7 @@ In the full list, a quadrant with more than 6 issues SHALL show its first 6 with
   - **GIVEN** Do shows 6 of 8 issues
   - **WHEN** an issue is moved into Do and sorts past the cut
   - **THEN** it still shows, and the button reads "Show 2 more"
-- **Scenario: Shown-whole list is cut again after it fits**
+- **Scenario: Shown-whole list is cut again after it fits** <!-- accepted -->
   - **GIVEN** a PM showed a 10-issue Do list whole
   - **WHEN** Do shrinks to 5 issues and later grows to 9
   - **THEN** only the first 6 show again <!-- verify: a list shown whole is cut again once it has fitted; should the PM's "show more" survive a shrink? -->

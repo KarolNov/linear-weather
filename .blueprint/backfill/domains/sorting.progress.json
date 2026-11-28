@@ -76,7 +76,14 @@
         "accepted": 15,
         "amended": 0,
         "rejected": 0
-      }
+      },
+      "ref": "https://app.notion.com/p/42643cce21f28184ad12d4ed77ce7e8d",
+      "specVersion": "3ef3627d1f03e0d9",
+      "anchorsFiles": {
+        "server/src/domain/matrix.ts": "773250d3386b",
+        "web/src/PersonMatrix.tsx": "4482efb5d4b8"
+      },
+      "syncedCommit": "c66f16211db3143c4097b865497a0e87eaa7be81"
     },
     "sorting/backlog-rot": {
       "purpose": "Flag a team whose open issues sit in Drop beyond its alert percent, with the count and share as the reason",

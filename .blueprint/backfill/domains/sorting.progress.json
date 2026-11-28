@@ -71,7 +71,12 @@
       "anchors": [
         "server/src/domain/matrix.ts",
         "web/src/PersonMatrix.tsx"
-      ]
+      ],
+      "review": {
+        "accepted": 1,
+        "amended": 0,
+        "rejected": 0
+      }
     },
     "sorting/backlog-rot": {
       "purpose": "Flag a team whose open issues sit in Drop beyond its alert percent, with the count and share as the reason",

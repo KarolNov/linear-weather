@@ -8,7 +8,7 @@ Sort each person's open issues in a team, and the team's unassigned ones, into a
 ### Requirement: One matrix per person per team
 Each person on a team, and the team's unassigned issues, SHALL have a matrix holding their open issues in that team, each in the quadrant the team's rules or a hand placement put it.
 
-- **Scenario: People and the unassigned each get a matrix**
+- **Scenario: People and the unassigned each get a matrix** <!-- accepted -->
   - **WHEN** a client asks for a team's people and its unassigned issues
   - **THEN** each person has a matrix of their open issues in the team, and the unassigned issues have one of their own
 - **Scenario: Matrix asked for without a team**

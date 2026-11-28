@@ -76,7 +76,7 @@ Only a signed-in viewer, or a demo visitor, who can see the issue in Linear SHAL
 ### Requirement: Store unavailable shows no hand placements
 When the app's database can't be read, the board SHALL still load, with every issue placed by the rules.
 
-- **Scenario: Database down**
+- **Scenario: Database down** <!-- accepted -->
   - **GIVEN** an issue was placed in Drop by hand
   - **WHEN** the board loads while the app's database can't be read
   - **THEN** the board loads without an error and the issue is where the rules put it

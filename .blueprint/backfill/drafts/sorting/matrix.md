@@ -30,7 +30,7 @@ Within each quadrant, issues SHALL be ordered by due date, soonest first and und
 ### Requirement: Counts and points per quadrant
 Every matrix SHALL report how many issues are in each quadrant and the sum of their estimates, where an unestimated issue counts as an issue but adds no points.
 
-- **Scenario: Tally with fractional and missing estimates**
+- **Scenario: Tally with fractional and missing estimates** <!-- accepted -->
   - **WHEN** Do holds issues estimated 3 and 0.5, and Drop holds two unestimated issues
   - **THEN** counts are Do 2, Schedule 0, Delegate 0, Drop 2 and points are Do 3.5, Schedule 0, Delegate 0, Drop 0
 

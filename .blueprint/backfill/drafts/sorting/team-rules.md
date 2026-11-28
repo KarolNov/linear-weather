@@ -86,6 +86,6 @@ The board SHALL offer a "Sorting rules" panel, filled with the team's saved rule
   - **GIVEN** the team saved "🌴" and "vacation"
   - **WHEN** a PM opens the panel
   - **THEN** the away-status field shows them one a line, and what is typed is sent line by line for the server to tidy
-- **Scenario: Cancel waits for a save in flight**
+- **Scenario: Cancel waits for a save in flight** <!-- accepted -->
   - **WHEN** a save is on its way
   - **THEN** the save button reads "Saving…" and Cancel is disabled until the answer comes

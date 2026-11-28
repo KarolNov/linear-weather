@@ -1,0 +1,43 @@
+{
+  "mode": "file",
+  "why": "the TypeScript helper failed (Node.js v24.22.2)",
+  "files": {
+    "server/src/domain/capacity.ts": {"distance": 1, "via": [], "hash": "29973c9a907e", "whole": true},
+    "server/src/domain/quadrant.ts": {"distance": 1, "via": [], "hash": "9841b20362a8", "whole": true},
+    "server/src/domain/time-off.ts": {"distance": 1, "via": [], "hash": "41ff75f48f91", "whole": true},
+    "server/src/domain/weather.ts": {"distance": 1, "via": [], "hash": "cd60283a7f74", "whole": true},
+    "ui/src/Alert.tsx": {"distance": 2, "via": ["ui"], "hash": "14449a3b66e3", "whole": true},
+    "ui/src/Avatar.tsx": {"distance": 2, "via": ["ui"], "hash": "ff7f4faa4f6f", "whole": true},
+    "ui/src/Badge.tsx": {"distance": 2, "via": ["ui"], "hash": "fbf36eebd9a1", "whole": true},
+    "ui/src/Button.tsx": {"distance": 2, "via": ["ui"], "hash": "3e96befcb889", "whole": true},
+    "ui/src/Card.tsx": {"distance": 2, "via": ["ui"], "hash": "77a0f53c6659", "whole": true},
+    "ui/src/Chip.tsx": {"distance": 2, "via": ["ui"], "hash": "6d8a6f672c50", "whole": true},
+    "ui/src/Icon.tsx": {"distance": 2, "via": ["ui"], "hash": "414a8a2fc797", "whole": true},
+    "ui/src/Logo.tsx": {"distance": 2, "via": ["ui"], "hash": "d78f702bc917", "whole": true},
+    "ui/src/Sky.tsx": {"distance": 2, "via": ["ui"], "hash": "fb53919635d8", "whole": true},
+    "ui/src/VisuallyHidden.tsx": {"distance": 2, "via": ["ui"], "hash": "a6354d1f2873", "whole": true},
+    "ui/src/WeatherIcon.tsx": {"distance": 2, "via": ["ui"], "hash": "9a14b1b61287", "whole": true},
+    "ui/src/index.ts": {"distance": 1, "via": ["ui"], "hash": "34ac66d29d6a", "whole": true},
+    "ui/src/rain.ts": {"distance": 4, "via": ["ui"], "hash": "55ef7280ae34", "whole": true},
+    "ui/src/tokens.stylex.ts": {"distance": 1, "via": ["ui"], "hash": "7eeb65cb59a7", "whole": true},
+    "ui/src/useRain.ts": {"distance": 3, "via": ["ui"], "hash": "a42532292971", "whole": true},
+    "web/src/board.ts": {"distance": 1, "via": [], "hash": "8007ab8be6e1", "whole": true},
+    "web/src/dismiss.ts": {"distance": 1, "via": [], "hash": "abbf82303c07", "whole": true},
+    "web/src/generated.ts": {"distance": 2, "via": [], "hash": "b0cda2d0be29", "whole": true},
+    "web/src/motion.ts": {"distance": 1, "via": [], "hash": "e92ed8d1849c", "whole": true},
+    "web/src/quadrants.ts": {"distance": 1, "via": [], "hash": "9c5fe3f5f211", "whole": true}
+  },
+  "symbols": [],
+  "external": [
+    "@graphql-typed-document-node/core",
+    "@stylexjs/stylex",
+    "dataloader",
+    "preact"
+  ],
+  "locked": {
+    "@graphql-typed-document-node/core": "3.2.0",
+    "@stylexjs/stylex": "0.19.1",
+    "dataloader": "2.2.3",
+    "preact": "10.29.8"
+  }
+}

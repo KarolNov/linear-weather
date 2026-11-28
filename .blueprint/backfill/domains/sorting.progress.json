@@ -56,7 +56,15 @@
         "accepted": 16,
         "amended": 1,
         "rejected": 0
-      }
+      },
+      "ref": "https://app.notion.com/p/42643cce21f281ce8fcfeb4fe531d732",
+      "specVersion": "5d10ca11d54e9d78",
+      "anchorsFiles": {
+        "server/src/domain/matrix.ts": "773250d3386b",
+        "server/src/placements.ts": "c1244cbd8f21",
+        "web/src/IssueCard.tsx": "c42da0ae268b"
+      },
+      "syncedCommit": "92b34255fca0d88eb1c4e6f2dc84cf365defa9a7"
     },
     "sorting/matrix": {
       "purpose": "Sort each person's issues into their Eisenhower matrix, most pressing first, with counts and points per quadrant",

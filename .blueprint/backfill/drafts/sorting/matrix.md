@@ -18,7 +18,7 @@ Each person on a team, and the team's unassigned issues, SHALL have a matrix hol
 ### Requirement: Most pressing first
 Within each quadrant, issues SHALL be ordered by due date, soonest first and undated last, then by priority from Urgent to Low, with No priority after Low.
 
-- **Scenario: Order inside Delegate**
+- **Scenario: Order inside Delegate** <!-- accepted -->
   - **GIVEN** today is 2026-10-18 and the default rules
   - **WHEN** Delegate holds a Low priority issue due 2026-10-19, and a Low and a No-priority issue both due 2026-10-20
   - **THEN** the order is the one due 2026-10-19, then the Low one, then the No-priority one

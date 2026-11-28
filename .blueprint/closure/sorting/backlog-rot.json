@@ -1,0 +1,10 @@
+{
+  "mode": "file",
+  "why": "the TypeScript helper failed (Node.js v24.22.2)",
+  "files": {
+    "server/src/domain/quadrant.ts": {"distance": 1, "via": [], "hash": "9841b20362a8", "whole": true}
+  },
+  "symbols": [],
+  "external": [],
+  "locked": {}
+}

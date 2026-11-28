@@ -94,7 +94,13 @@
         "accepted": 9,
         "amended": 0,
         "rejected": 0
-      }
+      },
+      "ref": "https://app.notion.com/p/42643cce21f2813a896ddb6b07288644",
+      "specVersion": "e79d47631cd5af7d",
+      "anchorsFiles": {
+        "server/src/domain/backlog.ts": "c19f0e7bf731"
+      },
+      "syncedCommit": "4b403fe05240180be563c0fc6e63f93ac1362ae3"
     }
   },
   "glue": [

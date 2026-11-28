@@ -24,7 +24,7 @@ A team's backlog rot SHALL count its open issues in Drop and all its open issues
 ### Requirement: Rotting above the alert, by whole percent
 A team MUST be flagged as rotting only when Drop's share, rounded to a whole percent, is above the team's alert percent.
 
-- **Scenario: Exactly at the alert is not rotting**
+- **Scenario: Exactly at the alert is not rotting** <!-- accepted -->
   - **WHEN** 2 of 5 open issues are in Drop and the alert is 40%
   - **THEN** the team is not rotting, and with a 39% alert it is
 - **Scenario: Rounded share decides**

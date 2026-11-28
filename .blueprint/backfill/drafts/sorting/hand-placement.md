@@ -88,7 +88,7 @@ Each issue card on the board SHALL offer a "Move to" menu listing the four quadr
   - **GIVEN** an issue in Schedule by the rules
   - **WHEN** a PM opens its move menu
   - **THEN** Do, Delegate and Drop can be picked, Schedule is disabled and marked "Here", and there is no "Let the rules place it"
-- **Scenario: Moving announces the result**
+- **Scenario: Moving announces the result** <!-- accepted -->
   - **WHEN** a PM moves AVG-1 to Drop from its menu
   - **THEN** the card is busy until the answer comes, the board redraws from the answer, screen readers hear "Moved AVG-1 to Drop.", and the keyboard returns to the card's move button in its new quadrant
 - **Scenario: Handing back from the menu**

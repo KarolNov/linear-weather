@@ -94,6 +94,6 @@ Each issue card on the board SHALL offer a "Move to" menu listing the four quadr
 - **Scenario: Handing back from the menu** <!-- accepted -->
   - **WHEN** a PM picks "Let the rules place it" on AVG-1
   - **THEN** screen readers hear "AVG-1 is back with the rules."
-- **Scenario: Failed move**
+- **Scenario: Failed move** <!-- accepted -->
   - **WHEN** a move fails
   - **THEN** the board shows "Couldn't move <identifier>. <reason>" above the board and takes the keyboard there

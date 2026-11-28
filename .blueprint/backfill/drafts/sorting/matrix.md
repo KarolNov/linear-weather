@@ -56,7 +56,7 @@ Picking a quadrant in the 2×2 SHALL open the person's list narrowed to that qua
   - **GIVEN** a person's list is narrowed to Do
   - **WHEN** a PM picks Do again
   - **THEN** every quadrant with issues is listed
-- **Scenario: Last issue moved out of the picked quadrant**
+- **Scenario: Last issue moved out of the picked quadrant** <!-- accepted -->
   - **GIVEN** a person's list is narrowed to Drop, which holds one issue
   - **WHEN** a PM moves that issue to another quadrant
   - **THEN** the list shows every quadrant again, and stays that way when an issue later returns to Drop

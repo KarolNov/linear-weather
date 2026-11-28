@@ -16,7 +16,7 @@ A team's backlog rot SHALL count its open issues in Drop and all its open issues
   - **GIVEN** some of the team's unassigned issues are in Drop
   - **WHEN** the team's backlog rot is read
   - **THEN** its Drop count is the people's Drop counts plus the unassigned Drop count
-- **Scenario: Hand placements count where they were put**
+- **Scenario: Hand placements count where they were put** <!-- accepted -->
   - **GIVEN** an issue the rules put in Do was placed in Drop by hand
   - **WHEN** the team's backlog rot is read
   - **THEN** that issue counts in Drop

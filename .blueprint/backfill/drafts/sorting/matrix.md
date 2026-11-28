@@ -37,7 +37,7 @@ Every matrix SHALL report how many issues are in each quadrant and the sum of th
 ### Requirement: The 2×2 on the board
 Each person's card on the board SHALL show their open-issue total ("Nothing open", "1 open issue" or "N open issues") and a 2×2 of Do, Schedule, Delegate and Drop with each quadrant's count, an empty quadrant's cell disabled.
 
-- **Scenario: Empty quadrant cannot be picked**
+- **Scenario: Empty quadrant cannot be picked** <!-- accepted -->
   - **GIVEN** a person has no issues in Delegate
   - **WHEN** the board shows their card
   - **THEN** the Delegate cell shows 0 and is disabled

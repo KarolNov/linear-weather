@@ -39,7 +39,7 @@ Handing an issue back SHALL forget its hand placement so the rules place it agai
   - **GIVEN** an issue the rules put in Do was placed in Drop by hand
   - **WHEN** a PM hands it back to the rules
   - **THEN** it is in Do with `quadrantSource` RULE and the reason "Urgent priority, due in 1 day"
-- **Scenario: Clearing an issue never placed by hand**
+- **Scenario: Clearing an issue never placed by hand** <!-- accepted -->
   - **WHEN** a PM hands back an issue that was never placed by hand
   - **THEN** the answer is a success and the issue stays where the rules put it
 

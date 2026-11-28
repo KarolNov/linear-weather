@@ -82,7 +82,7 @@ The board SHALL offer a "Sorting rules" panel, filled with the team's saved rule
 - **Scenario: Refusal marks the field** <!-- accepted -->
   - **WHEN** the server refuses the away statuses
   - **THEN** the panel stays open with the away-status field marked invalid and the server's message beside it
-- **Scenario: Away statuses one a line**
+- **Scenario: Away statuses one a line** <!-- accepted -->
   - **GIVEN** the team saved "🌴" and "vacation"
   - **WHEN** a PM opens the panel
   - **THEN** the away-status field shows them one a line, and what is typed is sent line by line for the server to tidy

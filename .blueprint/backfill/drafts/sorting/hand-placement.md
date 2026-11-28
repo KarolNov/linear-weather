@@ -27,7 +27,7 @@ An issue placed by hand SHALL give its reason as "Placed by hand; the rules say 
 - **Scenario: Reason after a hand placement** <!-- accepted -->
   - **WHEN** a PM places an Urgent priority issue due in 1 day in Drop
   - **THEN** its reason is "Placed by hand; the rules say Do (Urgent priority, due in 1 day)"
-- **Scenario: Reason counts the team's opt-in rules**
+- **Scenario: Reason counts the team's opt-in rules** <!-- accepted -->
   - **GIVEN** the team counts blockers as important
   - **WHEN** a PM places a Low priority blocker due in 3 days in Drop
   - **THEN** its reason is "Placed by hand; the rules say Do (Low priority, blocks other issues, due in 3 days)"

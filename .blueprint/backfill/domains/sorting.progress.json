@@ -82,7 +82,12 @@
       "purpose": "Flag a team whose open issues sit in Drop beyond its alert percent, with the count and share as the reason",
       "anchors": [
         "server/src/domain/backlog.ts"
-      ]
+      ],
+      "review": {
+        "accepted": 1,
+        "amended": 0,
+        "rejected": 0
+      }
     }
   },
   "glue": [

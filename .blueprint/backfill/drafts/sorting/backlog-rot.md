@@ -8,7 +8,7 @@ Flag a team whose open work sits in Drop beyond the team's alert percent, giving
 ### Requirement: Drop share across the whole team
 A team's backlog rot SHALL count its open issues in Drop and all its open issues, in issues rather than points, across every person's matrix and the unassigned issues, with Drop's share between 0 and 1.
 
-- **Scenario: Adds up every matrix**
+- **Scenario: Adds up every matrix** <!-- accepted -->
   - **GIVEN** one person has Do 1, Schedule 1, Drop 3 and another Schedule 2, Delegate 1, Drop 4
   - **WHEN** the team's backlog rot is read with a 40% alert
   - **THEN** it reports 7 in Drop of 12 open issues

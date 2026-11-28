@@ -16,7 +16,7 @@ Placing an issue in a quadrant by hand SHALL put it there whatever the rules say
   - **GIVEN** the issue's assignee has Do 9 and Drop 1
   - **WHEN** a PM places one of their Do issues in Drop
   - **THEN** the answer carries the issue's team, where that person now has Do 8 and Drop 2
-- **Scenario: Placing in the rules' own quadrant pins it**
+- **Scenario: Placing in the rules' own quadrant pins it** <!-- amended -->
   - **GIVEN** an issue sits in Schedule by the rules
   - **WHEN** a client places it in Schedule through the API
   - **THEN** it is pinned there: marked placed by hand, and it stays in Schedule when the rules would move it

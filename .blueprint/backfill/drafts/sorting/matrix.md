@@ -11,7 +11,7 @@ Each person on a team, and the team's unassigned issues, SHALL have a matrix hol
 - **Scenario: People and the unassigned each get a matrix** <!-- accepted -->
   - **WHEN** a client asks for a team's people and its unassigned issues
   - **THEN** each person has a matrix of their open issues in the team, and the unassigned issues have one of their own
-- **Scenario: Matrix asked for without a team**
+- **Scenario: Matrix asked for without a team** <!-- accepted -->
   - **WHEN** a client asks for a user's matrix without a team id, on a user not reached through a team
   - **THEN** that field fails with "Which team? Pass teamId." while the rest of the answer stands
 

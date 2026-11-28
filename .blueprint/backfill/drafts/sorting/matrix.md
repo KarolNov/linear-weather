@@ -22,7 +22,7 @@ Within each quadrant, issues SHALL be ordered by due date, soonest first and und
   - **GIVEN** today is 2026-10-18 and the default rules
   - **WHEN** Delegate holds a Low priority issue due 2026-10-19, and a Low and a No-priority issue both due 2026-10-20
   - **THEN** the order is the one due 2026-10-19, then the Low one, then the No-priority one
-- **Scenario: Hand-placed issues sort among the rest**
+- **Scenario: Hand-placed issues sort among the rest** <!-- accepted -->
   - **GIVEN** a Low priority issue due 2026-10-20 is placed in Do by hand, and Do holds a High priority issue due 2026-10-25 by the rules
   - **WHEN** the matrix is built
   - **THEN** Do lists the hand-placed issue first, then the other

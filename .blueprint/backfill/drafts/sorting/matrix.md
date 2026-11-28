@@ -71,7 +71,7 @@ In the full list, a quadrant with more than 6 issues SHALL show its first 6 with
 - **Scenario: List that fits has no button** <!-- accepted -->
   - **WHEN** a quadrant holds exactly 6 issues
   - **THEN** all 6 show and no "Show more" button appears
-- **Scenario: Next in line fills a capped list**
+- **Scenario: Next in line fills a capped list** <!-- accepted -->
   - **GIVEN** Do shows 6 of 10 issues
   - **WHEN** the first issue leaves Do
   - **THEN** the next issue in line takes its place and the button reads "Show 3 more"
